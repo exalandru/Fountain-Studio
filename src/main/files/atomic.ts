@@ -6,7 +6,7 @@ import { basename, dirname, join } from 'node:path';
  * over the target. Calls targeting the same logical file must still be serialised by
  * their owning service.
  */
-export async function writeFileAtomic(path: string, data: string): Promise<void> {
+export async function writeFileAtomic(path: string, data: string | Uint8Array): Promise<void> {
   const parent = dirname(path);
   await mkdir(parent, { recursive: true });
   const temporary = join(
@@ -16,7 +16,8 @@ export async function writeFileAtomic(path: string, data: string): Promise<void>
 
   const handle = await open(temporary, 'w');
   try {
-    await handle.writeFile(data, 'utf8');
+    if (typeof data === 'string') await handle.writeFile(data, 'utf8');
+    else await handle.writeFile(data);
     await handle.sync();
   } finally {
     await handle.close();

@@ -19,11 +19,16 @@ export function useScreenplay(
   documentId: string | null,
   content: string,
   revision: number,
+  minutesPerPage: number,
 ): ParseResponse | null {
   const [result, setResult] = useState<ParseResponse | null>(null);
   const worker = useRef<Worker | null>(null);
   /** Last request sent; updated inside the effect, never during render. */
-  const expected = useRef<{ id: string | null; revision: number }>({ id: null, revision: -1 });
+  const expected = useRef<{ id: string | null; revision: number; minutesPerPage: number }>({
+    id: null,
+    revision: -1,
+    minutesPerPage,
+  });
 
   useEffect(() => {
     const instance = new Worker(new URL('../../workers/parse.worker.ts', import.meta.url), {
@@ -32,7 +37,13 @@ export function useScreenplay(
 
     instance.onmessage = (event: MessageEvent<ParseResponse>) => {
       const { id, revision: responseRevision } = event.data;
-      if (id !== expected.current.id || responseRevision !== expected.current.revision) return;
+      if (
+        id !== expected.current.id ||
+        responseRevision !== expected.current.revision ||
+        event.data.statistics.minutesPerPage !== expected.current.minutesPerPage
+      ) {
+        return;
+      }
       setResult(event.data);
     };
 
@@ -47,13 +58,13 @@ export function useScreenplay(
     if (documentId === null) return;
 
     const timer = setTimeout(() => {
-      expected.current = { id: documentId, revision };
-      const request: ParseRequest = { id: documentId, revision, source: content };
+      expected.current = { id: documentId, revision, minutesPerPage };
+      const request: ParseRequest = { id: documentId, revision, source: content, minutesPerPage };
       worker.current?.postMessage(request);
     }, DEBOUNCE_MS);
 
     return () => clearTimeout(timer);
-  }, [documentId, content, revision]);
+  }, [documentId, content, revision, minutesPerPage]);
 
   return result !== null && result.id === documentId ? result : null;
 }

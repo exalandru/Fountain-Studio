@@ -1,0 +1,242 @@
+import { join } from 'node:path';
+import PDFDocument from 'pdfkit';
+import type { Element, Screenplay } from '@shared/fountain/index.js';
+import { parse } from '@shared/fountain/index.js';
+import type { PdfExportOptions } from '@shared/ipc-contract.js';
+import type { PaginationItem } from '@shared/pagination/index.js';
+import { paginateScreenplay } from '@shared/pagination/index.js';
+
+const LINE_HEIGHT = 12;
+const CHARACTER_WIDTH = 7.2;
+
+interface RenderedPdf {
+  bytes: Uint8Array;
+  pageCount: number;
+}
+
+function fontPath(resourcesDirectory: string, name: string): string {
+  return join(resourcesDirectory, 'fonts', name);
+}
+
+function withNotes(screenplay: Screenplay): Screenplay {
+  const notes: Element[] = screenplay.annotations
+    .filter((annotation) => annotation.kind === 'note')
+    .map((annotation) => ({
+      id: `note-${annotation.range.from}`,
+      kind: 'note',
+      range: annotation.range,
+      line: annotation.line,
+      lineCount: annotation.text.split('\n').length,
+      text: annotation.text,
+      inline: [
+        {
+          text: annotation.text,
+          bold: false,
+          italic: false,
+          underline: false,
+          from: annotation.range.from,
+          to: annotation.range.to,
+        },
+      ],
+      forced: false,
+    }));
+  return {
+    ...screenplay,
+    elements: [...screenplay.elements, ...notes].sort(
+      (left, right) => left.range.from - right.range.from,
+    ),
+  };
+}
+
+function titleValues(screenplay: Screenplay, key: string): string[] {
+  return screenplay.titlePage.fields.get(key) ?? [];
+}
+
+function renderTitlePage(document: PDFKit.PDFDocument, screenplay: Screenplay): void {
+  document.addPage();
+  const width = document.page.width;
+  const height = document.page.height;
+  const title = titleValues(screenplay, 'title');
+  const credit = titleValues(screenplay, 'credit');
+  const authors =
+    titleValues(screenplay, 'author').length > 0
+      ? titleValues(screenplay, 'author')
+      : titleValues(screenplay, 'authors');
+  const source = titleValues(screenplay, 'source');
+  const contact = titleValues(screenplay, 'contact');
+  const copyright = titleValues(screenplay, 'copyright');
+
+  let y = height * 0.38;
+  document.font('CourierPrimeBold').fontSize(12);
+  document.text(title.join('\n').toUpperCase(), 72, y, { width: width - 144, align: 'center' });
+  y = document.y + LINE_HEIGHT;
+  document
+    .font('CourierPrime')
+    .text(credit.join('\n'), 72, y, { width: width - 144, align: 'center' });
+  y = document.y + LINE_HEIGHT;
+  document.text(authors.join('\n'), 72, y, { width: width - 144, align: 'center' });
+  if (source.length > 0)
+    document.text(source.join('\n'), 72, document.y + LINE_HEIGHT, {
+      width: width - 144,
+      align: 'center',
+    });
+
+  if (contact.length > 0 || copyright.length > 0) {
+    document.text([...contact, ...copyright].join('\n'), 72, height - 132, {
+      width: (width - 144) / 2,
+      align: 'left',
+    });
+  }
+
+  const ignored = new Set([
+    'title',
+    'credit',
+    'author',
+    'authors',
+    'source',
+    'contact',
+    'copyright',
+  ]);
+  const details = [...screenplay.titlePage.fields.entries()].filter(
+    ([key, values]) => !ignored.has(key) && values.length > 0,
+  );
+  if (details.length > 0) {
+    document.text(
+      details.map(([key, values]) => `${key}: ${values.join('\n')}`).join('\n'),
+      width / 2,
+      height - 132,
+      { width: width / 2 - 72, align: 'right' },
+    );
+  }
+}
+
+function position(
+  item: PaginationItem,
+  pageWidth: number,
+): { x: number; width: number; align?: 'right' } {
+  switch (item.kind) {
+    case 'character':
+    case 'continued':
+      return { x: 266.4, width: 38 * CHARACTER_WIDTH };
+    case 'dialogue':
+    case 'lyrics':
+    case 'more':
+      return {
+        x: 180,
+        width: 35 * CHARACTER_WIDTH,
+        ...(item.kind === 'more' ? { align: 'right' as const } : {}),
+      };
+    case 'parenthetical':
+      return { x: 216, width: 26 * CHARACTER_WIDTH };
+    case 'transition':
+      return {
+        x: pageWidth - 72 - 16 * CHARACTER_WIDTH,
+        width: 16 * CHARACTER_WIDTH,
+        align: 'right',
+      };
+    default:
+      return { x: 108, width: 61 * CHARACTER_WIDTH };
+  }
+}
+
+function renderWatermark(document: PDFKit.PDFDocument, text: string): void {
+  if (!text.trim()) return;
+  const { width, height } = document.page;
+  document.save();
+  document.opacity(0.12).font('CourierPrimeBold').fontSize(48);
+  document.rotate(-35, { origin: [width / 2, height / 2] });
+  document.text(text, 72, height / 2 - 30, { width: width - 144, align: 'center' });
+  document.restore();
+}
+
+function renderBodyPage(
+  document: PDFKit.PDFDocument,
+  screenplay: Screenplay,
+  page: ReturnType<typeof paginateScreenplay>['pages'][number],
+  options: PdfExportOptions,
+): void {
+  document.addPage();
+  const pageWidth = document.page.width;
+  renderWatermark(document, options.watermark);
+  document.opacity(1).font('CourierPrime').fontSize(12).fillColor('#111111');
+  document.text(String(page.index + 1), pageWidth - 108, 36, { width: 36, align: 'right' });
+
+  let y = 72;
+  for (const item of page.items) {
+    y += item.leadingLines * LINE_HEIGHT;
+    const layout = position(item, pageWidth);
+    const scene = item.sceneIndex === null ? null : screenplay.scenes[item.sceneIndex];
+
+    if (item.kind === 'scene_heading' && scene && options.sceneNumbers !== 'none') {
+      const number = scene.number;
+      if (options.sceneNumbers === 'left' || options.sceneNumbers === 'both') {
+        document.text(number, 72, y, { width: 30, lineBreak: false });
+      }
+      if (options.sceneNumbers === 'right' || options.sceneNumbers === 'both') {
+        document.text(number, pageWidth - 102, y, { width: 30, align: 'right', lineBreak: false });
+      }
+    }
+
+    const bold =
+      item.kind === 'character' ||
+      item.kind === 'continued' ||
+      (item.kind === 'scene_heading' && options.headingsBold);
+    document.font(
+      bold ? 'CourierPrimeBold' : item.kind === 'note' ? 'CourierPrimeItalic' : 'CourierPrime',
+    );
+    document.fillColor(item.kind === 'note' ? '#666666' : '#111111');
+    for (const line of item.lines) {
+      document.text(line, layout.x, y, {
+        width: layout.width,
+        align: layout.align,
+        lineBreak: false,
+      });
+      y += LINE_HEIGHT;
+    }
+  }
+}
+
+export async function renderScreenplayPdf(
+  source: string,
+  options: PdfExportOptions,
+  resourcesDirectory: string,
+): Promise<RenderedPdf> {
+  const original = parse(source);
+  const screenplay = options.includeNotes ? withNotes(original) : original;
+  const pagination = paginateScreenplay(screenplay, {
+    format: options.format,
+    includeNotes: options.includeNotes,
+    includeSynopses: options.includeSynopses,
+  });
+  const from = Math.min(pagination.pages.length, Math.max(1, options.pageFrom ?? 1));
+  const to = Math.min(
+    pagination.pages.length,
+    Math.max(from, options.pageTo ?? pagination.pages.length),
+  );
+  const pages = pagination.pages.slice(from - 1, to);
+  const size = options.format === 'a4' ? 'A4' : 'LETTER';
+  const document = new PDFDocument({ autoFirstPage: false, size, margin: 0, compress: true });
+  document.registerFont('CourierPrime', fontPath(resourcesDirectory, 'CourierPrime-Regular.ttf'));
+  document.registerFont('CourierPrimeBold', fontPath(resourcesDirectory, 'CourierPrime-Bold.ttf'));
+  document.registerFont(
+    'CourierPrimeItalic',
+    fontPath(resourcesDirectory, 'CourierPrime-Italic.ttf'),
+  );
+
+  const chunks: Buffer[] = [];
+  document.on('data', (chunk: Buffer) => chunks.push(chunk));
+  const complete = new Promise<Buffer>((resolve, reject) => {
+    document.once('end', () => resolve(Buffer.concat(chunks)));
+    document.once('error', reject);
+  });
+
+  if (original.titlePage.fields.size > 0) renderTitlePage(document, original);
+  for (const page of pages) renderBodyPage(document, screenplay, page, options);
+  document.end();
+
+  const bytes = await complete;
+  return {
+    bytes: new Uint8Array(bytes),
+    pageCount: pages.length + (original.titlePage.fields.size > 0 ? 1 : 0),
+  };
+}

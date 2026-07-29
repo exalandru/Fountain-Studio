@@ -26,6 +26,7 @@ export interface PreviewState {
   visible: boolean;
   width: number;
   syncScroll: boolean;
+  activeTab: 'preview' | 'statistics';
 }
 
 export interface AppData {
@@ -47,6 +48,7 @@ export const DEFAULT_APP_DATA: Readonly<AppData> = {
     visible: true,
     width: 480,
     syncScroll: false,
+    activeTab: 'preview',
   },
 };
 
@@ -107,6 +109,9 @@ export function parseAppData(raw: string): AppData | null {
     result.preview.width = clamp(preview['width'], DEFAULT_APP_DATA.preview.width, 320, 760);
     if (typeof preview['syncScroll'] === 'boolean') {
       result.preview.syncScroll = preview['syncScroll'];
+    }
+    if (preview['activeTab'] === 'preview' || preview['activeTab'] === 'statistics') {
+      result.preview.activeTab = preview['activeTab'];
     }
 
     return result;

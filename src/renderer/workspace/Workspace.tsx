@@ -5,6 +5,7 @@ import type { OpenDocument } from '../store/documents.js';
 import { Editor } from '../editor/Editor.js';
 import { Preview } from '../preview/index.js';
 import { Sidebar } from '../sidebar/index.js';
+import { StatsPanel } from '../stats/index.js';
 import { ResizeHandle } from '../ui/ResizeHandle.js';
 
 const EMPTY_COMPLETIONS = { characters: [], locations: [], times: [] };
@@ -36,6 +37,9 @@ interface WorkspaceProps {
   onViewReady: EditorParameters['onViewReady'];
   onResizePreview: (width: number) => void;
   onPreviewSync: (enabled: boolean) => void;
+  onRightPanelTab: (tab: 'preview' | 'statistics') => void;
+  onExportStats: (format: 'csv' | 'json') => void;
+  onMinutesPerPage: (value: number) => void;
   onClosePreview: () => void;
   onShowPreview: () => void;
   onResizeSidebar: (width: number) => void;
@@ -72,6 +76,9 @@ export function Workspace({
   onViewReady,
   onResizePreview,
   onPreviewSync,
+  onRightPanelTab,
+  onExportStats,
+  onMinutesPerPage,
   onClosePreview,
   onShowPreview,
   onResizeSidebar,
@@ -207,18 +214,30 @@ export function Workspace({
                   onChange={onResizePreview}
                 />
                 <div className="workspace-preview" style={{ width: active.appData.preview.width }}>
-                  <Preview
-                    analysis={analysis}
-                    syncScroll={active.appData.preview.syncScroll}
-                    externalOffset={
-                      editorScrollPosition.documentId === active.id
-                        ? editorScrollPosition.offset
-                        : null
-                    }
-                    onScrollOffset={onPreviewScroll}
-                    onSyncScrollChange={onPreviewSync}
-                    onClose={onClosePreview}
-                  />
+                  {active.appData.preview.activeTab === 'statistics' ? (
+                    <StatsPanel
+                      statistics={analysis?.statistics ?? null}
+                      minutesPerPage={settings.minutesPerPage}
+                      onShowPreview={() => onRightPanelTab('preview')}
+                      onExport={onExportStats}
+                      onMinutesPerPage={onMinutesPerPage}
+                      onClose={onClosePreview}
+                    />
+                  ) : (
+                    <Preview
+                      analysis={analysis}
+                      syncScroll={active.appData.preview.syncScroll}
+                      externalOffset={
+                        editorScrollPosition.documentId === active.id
+                          ? editorScrollPosition.offset
+                          : null
+                      }
+                      onScrollOffset={onPreviewScroll}
+                      onSyncScrollChange={onPreviewSync}
+                      onShowStatistics={() => onRightPanelTab('statistics')}
+                      onClose={onClosePreview}
+                    />
+                  )}
                 </div>
               </>
             ) : null}

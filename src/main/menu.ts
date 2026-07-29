@@ -108,6 +108,11 @@ export async function buildMenu(): Promise<void> {
           accelerator: 'CmdOrCtrl+Shift+S',
           click: () => send('file.saveAs'),
         },
+        {
+          label: t('menu.file.exportPdf'),
+          accelerator: 'CmdOrCtrl+Shift+E',
+          click: () => send('file.exportPdf'),
+        },
         { type: 'separator' },
         {
           label: t('menu.file.closeTab'),

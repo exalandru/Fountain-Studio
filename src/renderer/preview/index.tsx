@@ -2,8 +2,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
 import type { ParseResponse } from '@shared/analysis/index.js';
 import type { Element, InlineSpan } from '@shared/fountain/index.js';
-import { paginatePreview } from '@shared/pagination/index.js';
-import type { PreviewPage } from '@shared/pagination/index.js';
+import type { PaginationItem, ScreenplayPage } from '@shared/pagination/index.js';
 import { useTranslator } from '../hooks/useTranslator.js';
 
 const PAPER_WIDTH = 816;
@@ -17,6 +16,7 @@ export interface PreviewProps {
   externalOffset: number | null;
   onScrollOffset: (offset: number) => void;
   onSyncScrollChange: (enabled: boolean) => void;
+  onShowStatistics: () => void;
   onClose: () => void;
 }
 
@@ -94,13 +94,42 @@ function TitlePage({ fields }: { fields: ParseResponse['titlePage'] }) {
   );
 }
 
-function BodyPage({ page, elements }: { page: PreviewPage; elements: ParseResponse['elements'] }) {
+function LayoutItem({
+  item,
+  elements,
+}: {
+  item: PaginationItem;
+  elements: ParseResponse['elements'];
+}) {
+  const element = item.elementIndex === null ? null : elements[item.elementIndex];
+  if (element && item.text === element.text) return <PreviewElement element={element} />;
+
+  return (
+    <div
+      className={`preview-element preview-${item.kind.replace('_', '-')}`}
+      data-source-from={item.range?.from}
+    >
+      {item.lines.join('\n')}
+    </div>
+  );
+}
+
+function BodyPage({
+  page,
+  elements,
+}: {
+  page: ScreenplayPage;
+  elements: ParseResponse['elements'];
+}) {
   return (
     <>
-      {page.elementIndexes.map((elementIndex) => {
-        const element = elements[elementIndex];
-        return element ? <PreviewElement key={element.id} element={element} /> : null;
-      })}
+      {page.items.map((item, index) => (
+        <LayoutItem
+          key={`${item.elementIndex ?? item.kind}-${index}`}
+          item={item}
+          elements={elements}
+        />
+      ))}
       <span className="preview-page-number">{page.index + 1}</span>
     </>
   );
@@ -119,6 +148,7 @@ export const Preview = memo(function Preview({
   externalOffset,
   onScrollOffset,
   onSyncScrollChange,
+  onShowStatistics,
   onClose,
 }: PreviewProps) {
   const { t } = useTranslator();
@@ -128,7 +158,7 @@ export const Preview = memo(function Preview({
   const [scale, setScale] = useState(0.6);
   const [viewport, setViewport] = useState({ top: 0, height: 800 });
 
-  const bodyPages = useMemo(() => paginatePreview(analysis?.elements ?? []), [analysis?.elements]);
+  const bodyPages = useMemo(() => analysis?.pagination.pages ?? [], [analysis?.pagination.pages]);
   const hasTitlePage = (analysis?.titlePage.length ?? 0) > 0;
   const totalPages = bodyPages.length + (hasTitlePage ? 1 : 0);
   const scaledHeight = PAPER_HEIGHT * scale;
@@ -252,6 +282,9 @@ export const Preview = memo(function Preview({
     <section className="preview-pane" ref={paneRef} aria-label={t('preview.title')}>
       <header className="panel-header">
         <span>{t('preview.title')}</span>
+        <button type="button" className="panel-tab-button" onClick={onShowStatistics}>
+          {t('stats.title')}
+        </button>
         <label className="panel-checkbox">
           <input
             type="checkbox"

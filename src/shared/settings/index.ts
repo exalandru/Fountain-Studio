@@ -7,6 +7,10 @@ function clamp(value: number, minimum: number, maximum: number): number {
   return Math.min(maximum, Math.max(minimum, Math.round(value)));
 }
 
+function clampDecimal(value: number, minimum: number, maximum: number): number {
+  return Math.min(maximum, Math.max(minimum, Math.round(value * 10) / 10));
+}
+
 /** Keeps known settings keys, validates their types and bounds numeric values. */
 export function sanitizeSettings(raw: unknown): AppSettings {
   const target: AppSettings = { ...DEFAULT_SETTINGS };
@@ -40,6 +44,12 @@ export function sanitizeSettings(raw: unknown): AppSettings {
   }
   if (typeof settings['backupCount'] === 'number' && Number.isFinite(settings['backupCount'])) {
     target.backupCount = clamp(settings['backupCount'], 0, 20);
+  }
+  if (
+    typeof settings['minutesPerPage'] === 'number' &&
+    Number.isFinite(settings['minutesPerPage'])
+  ) {
+    target.minutesPerPage = clampDecimal(settings['minutesPerPage'], 0.1, 10);
   }
   if (typeof settings['showNotes'] === 'boolean') target.showNotes = settings['showNotes'];
   if (typeof settings['showBoneyard'] === 'boolean') {

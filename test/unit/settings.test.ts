@@ -20,11 +20,13 @@ describe('settings validation', () => {
         editorFontSize: 900,
         autosaveSeconds: -12,
         backupCount: 999,
+        minutesPerPage: 0,
       }),
     ).toMatchObject({
       editorFontSize: 28,
       autosaveSeconds: 0,
       backupCount: 20,
+      minutesPerPage: 0.1,
     });
   });
 
@@ -36,6 +38,7 @@ describe('settings validation', () => {
         editorFontSize: 17,
         autosaveSeconds: 60,
         backupCount: 5,
+        minutesPerPage: 0.7,
         showNotes: false,
         showBoneyard: false,
         showSynopses: false,
@@ -47,6 +50,7 @@ describe('settings validation', () => {
       editorFontSize: 17,
       autosaveSeconds: 60,
       backupCount: 5,
+      minutesPerPage: 0.7,
       showNotes: false,
       showBoneyard: false,
       showSynopses: false,

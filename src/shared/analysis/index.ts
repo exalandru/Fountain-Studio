@@ -1,4 +1,6 @@
 import type { Range, Scene, Screenplay } from '../fountain/index.js';
+import type { PaginationResult } from '../pagination/index.js';
+import type { ScreenplayStatistics } from '../stats/index.js';
 
 /** Message sent to the screenplay-analysis worker. */
 export interface ParseRequest {
@@ -7,6 +9,7 @@ export interface ParseRequest {
   /** Document revision, used to drop out-of-date results. */
   revision: number;
   source: string;
+  minutesPerPage: number;
 }
 
 export interface IndexedOccurrence extends Range {
@@ -79,5 +82,7 @@ export interface ParseResponse {
     occurrences: IndexedOccurrence[];
   }>;
   completions: CompletionIndex;
+  pagination: PaginationResult;
+  statistics: ScreenplayStatistics;
   durationMs: number;
 }

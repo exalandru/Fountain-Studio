@@ -44,6 +44,27 @@ export type SaveOutcome =
   | { status: 'conflict'; path: string; mtimeMs: number }
   | { status: 'error'; message: string };
 
+export type ExportOutcome =
+  | { status: 'exported'; path: string }
+  | { status: 'cancelled' }
+  | { status: 'error'; message: string };
+
+export interface PdfExportOptions {
+  format: 'letter' | 'a4';
+  sceneNumbers: 'none' | 'left' | 'right' | 'both';
+  includeNotes: boolean;
+  includeSynopses: boolean;
+  headingsBold: boolean;
+  watermark: string;
+  pageFrom: number | null;
+  pageTo: number | null;
+}
+
+export interface PdfRenderRequest {
+  source: string;
+  options: PdfExportOptions;
+}
+
 export interface RecentFile {
   path: string;
   name: string;
@@ -58,6 +79,8 @@ export interface AppSettings {
   autosaveSeconds: number;
   /** Number of `.bak` files kept per document. */
   backupCount: number;
+  /** Estimated screenplay minutes represented by one formatted page. */
+  minutesPerPage: number;
   showNotes: boolean;
   showBoneyard: boolean;
   showSynopses: boolean;
@@ -71,6 +94,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   editorFontSize: 15,
   autosaveSeconds: 30,
   backupCount: 3,
+  minutesPerPage: 1,
   showNotes: true,
   showBoneyard: true,
   showSynopses: true,
@@ -98,6 +122,18 @@ export interface IpcRequests {
 
   'file:openPaths': { arg: { paths: string[] }; result: DocumentSnapshot[] };
   'file:save': { arg: SaveRequest; result: SaveOutcome };
+  'file:exportText': {
+    arg: { suggestedName: string; content: string; format: 'csv' | 'json' };
+    result: ExportOutcome;
+  };
+  'pdf:render': {
+    arg: PdfRenderRequest;
+    result: { bytes: ArrayBuffer; pageCount: number };
+  };
+  'pdf:export': {
+    arg: PdfRenderRequest & { suggestedName: string };
+    result: ExportOutcome;
+  };
 
   'settings:get': { arg: void; result: AppSettings };
   'settings:patch': { arg: Partial<AppSettings>; result: AppSettings };
@@ -146,6 +182,7 @@ export type MenuCommand =
   | 'file.open'
   | 'file.save'
   | 'file.saveAs'
+  | 'file.exportPdf'
   | 'file.closeTab'
   | 'edit.find'
   | 'edit.replace'

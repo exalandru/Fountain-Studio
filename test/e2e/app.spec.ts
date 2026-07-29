@@ -214,6 +214,53 @@ test('the live preview and AST navigator follow the opened screenplay', async ()
   await expect(page.locator('.cm-activeLine')).toContainText('MARC');
 });
 
+test('statistics share pagination and export CSV', async () => {
+  await page.getByRole('button', { name: 'Statistics' }).click();
+  const panel = page.locator('.stats-pane');
+  await expect(panel).toBeVisible();
+  await expect(panel).toContainText('1');
+  await expect(panel.locator('svg')).toHaveCount(1);
+
+  const target = join(userData, 'screenplay-statistics.csv');
+  await app.evaluate(async ({ dialog }, filePath) => {
+    dialog.showSaveDialog = async () => ({ canceled: false, filePath });
+  }, target);
+  await page.getByRole('button', { name: 'Export CSV…' }).click();
+  await expect(page.locator('.status-message')).toContainText('screenplay-statistics.csv');
+  await expect
+    .poll(() => readFile(target, 'utf8'))
+    .toContain('record_type,key,name,value,pages,eighths');
+
+  await page.getByRole('button', { name: 'Screenplay preview' }).click();
+  await expect(page.locator('.preview-pane')).toBeVisible();
+});
+
+test('PDF options render an integrated preview and export a real PDF', async () => {
+  const target = join(userData, 'screenplay-export.pdf');
+  await app.evaluate(async ({ dialog, shell }, filePath) => {
+    dialog.showSaveDialog = async () => ({ canceled: false, filePath });
+    shell.showItemInFolder = () => {};
+  }, target);
+
+  await runCommand('file.exportPdf');
+  const dialog = page.getByRole('dialog', { name: 'Export PDF' });
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toHaveAttribute('data-page-count', /[1-9]/);
+  await expect(dialog.locator('canvas')).toBeVisible();
+  await expect(dialog).toContainText('Page 1 of 2');
+  await dialog.getByRole('button', { name: 'Next page' }).click();
+  await expect(dialog).toContainText('Page 2 of 2');
+  const exportButton = dialog.getByRole('button', { name: 'Export…' });
+  await expect(exportButton).toBeEnabled();
+  await exportButton.click();
+
+  await expect(dialog).toBeHidden();
+  await expect(page.locator('.status-message')).toContainText('screenplay-export.pdf');
+  const bytes = await readFile(target);
+  expect(bytes.subarray(0, 5).toString()).toBe('%PDF-');
+  expect(bytes.length).toBeGreaterThan(1_000);
+});
+
 test('the title-page preview renders date, version and other metadata', async () => {
   const editor = page.locator('.cm-content');
   await editor.click();

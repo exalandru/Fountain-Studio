@@ -2,12 +2,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { EditorView } from '@codemirror/view';
 import type { AppData, SidebarTab } from '@shared/appdata/index.js';
 import type { AppSettings } from '@shared/ipc-contract.js';
+import { statisticsToCsv, statisticsToJson } from '@shared/stats/index.js';
 import { useAutosave } from './hooks/useAutosave.js';
 import { useDocumentIO } from './hooks/useDocumentIO.js';
 import { useFileCommands } from './hooks/useFileCommands.js';
 import { useRecovery } from './hooks/useRecovery.js';
 import { useScreenplay } from './hooks/useScreenplay.js';
 import { useTranslator } from './hooks/useTranslator.js';
+import { PdfExportDialog } from './pdf/PdfExportDialog.js';
 import type { NewDocumentStrings } from './store/documents.js';
 import { useDocuments } from './store/documents.js';
 import { Workspace } from './workspace/Workspace.js';
@@ -24,6 +26,7 @@ export function App() {
 
   const [dark, setDark] = useState(() => window.matchMedia('(prefers-color-scheme: dark)').matches);
   const [status, setStatus] = useState<string | null>(null);
+  const [pdfOpen, setPdfOpen] = useState(false);
   const [cursorPosition, setCursorPosition] = useState<{
     documentId: string | null;
     offset: number;
@@ -42,7 +45,12 @@ export function App() {
   const active = documents.find((d) => d.id === activeId) ?? null;
   const anyDirty = documents.some((document) => document.dirty);
   const activeName = active?.name ?? null;
-  const analysis = useScreenplay(active?.id ?? null, active?.content ?? '', active?.revision ?? 0);
+  const analysis = useScreenplay(
+    active?.id ?? null,
+    active?.content ?? '',
+    active?.revision ?? 0,
+    settings.minutesPerPage,
+  );
 
   const effectiveDark = settings.theme === 'dark' || (settings.theme === 'system' && dark);
   const cursorOffset = cursorPosition.documentId === activeId ? cursorPosition.offset : 0;
@@ -84,6 +92,7 @@ export function App() {
     stringsRef,
     setStatus,
   });
+  const openPdfDialog = useCallback(() => setPdfOpen(true), []);
 
   // ── Settings and theme ─────────────────────────────────────────────────────
   useEffect(() => {
@@ -199,6 +208,7 @@ export function App() {
     editorView,
     openDialog,
     openPaths,
+    onExportPdf: openPdfDialog,
     patchSettings,
     save,
     setStatus,
@@ -251,6 +261,36 @@ export function App() {
         preview: { ...data.preview, visible: false },
       })),
     [updateAppData],
+  );
+  const setRightPanelTab = useCallback(
+    (activeTab: 'preview' | 'statistics') =>
+      updateAppData((data) => ({
+        ...data,
+        preview: { ...data.preview, activeTab },
+      })),
+    [updateAppData],
+  );
+  const exportStats = useCallback(
+    async (format: 'csv' | 'json') => {
+      const current = store().active();
+      if (!current || !analysis) return;
+      const content =
+        format === 'csv'
+          ? statisticsToCsv(analysis.statistics)
+          : statisticsToJson(analysis.statistics);
+      const base = current.name.replace(/\.(fountain|txt)$/i, '');
+      const outcome = await window.quantum.invoke('file:exportText', {
+        suggestedName: `${base}-statistics.${format}`,
+        content,
+        format,
+      });
+      if (outcome.status === 'exported') {
+        setStatus(t('status.exported', { path: outcome.path }));
+      } else if (outcome.status === 'error') {
+        setStatus(t('status.exportFailed', { error: outcome.message }));
+      }
+    },
+    [analysis, store, t],
   );
   const resizeSidebar = useCallback(
     (width: number) => updateAppData((data) => ({ ...data, sidebar: { ...data.sidebar, width } })),
@@ -311,37 +351,54 @@ export function App() {
   const setActive = useCallback((id: string) => store().setActive(id), [store]);
 
   return (
-    <Workspace
-      active={active}
-      activeId={activeId}
-      activeSceneId={activeSceneId}
-      analysis={analysis}
-      documents={documents}
-      editorScrollPosition={editorScrollPosition}
-      effectiveDark={effectiveDark}
-      previewScrollPosition={previewScrollPosition}
-      settings={settings}
-      status={status}
-      t={t}
-      onCloseTab={(id) => void closeTab(id)}
-      onNewDocument={newDocument}
-      onSetActive={setActive}
-      onEditorChange={handleEditorChange}
-      onCursorOffset={handleCursorOffset}
-      onEditorScroll={handleEditorScroll}
-      onPreviewScroll={handlePreviewScroll}
-      onViewReady={handleViewReady}
-      onResizePreview={resizePreview}
-      onPreviewSync={setPreviewSync}
-      onClosePreview={closePreview}
-      onShowPreview={showPreview}
-      onResizeSidebar={resizeSidebar}
-      onSidebarTab={setSidebarTab}
-      onSidebarFilter={setSidebarFilter}
-      onSidebarSynopses={setSidebarSynopses}
-      onSelectEditorRange={selectEditorRange}
-      onCloseSidebar={closeSidebar}
-      onShowSidebar={showSidebar}
-    />
+    <>
+      <Workspace
+        active={active}
+        activeId={activeId}
+        activeSceneId={activeSceneId}
+        analysis={analysis}
+        documents={documents}
+        editorScrollPosition={editorScrollPosition}
+        effectiveDark={effectiveDark}
+        previewScrollPosition={previewScrollPosition}
+        settings={settings}
+        status={status}
+        t={t}
+        onCloseTab={(id) => void closeTab(id)}
+        onNewDocument={newDocument}
+        onSetActive={setActive}
+        onEditorChange={handleEditorChange}
+        onCursorOffset={handleCursorOffset}
+        onEditorScroll={handleEditorScroll}
+        onPreviewScroll={handlePreviewScroll}
+        onViewReady={handleViewReady}
+        onResizePreview={resizePreview}
+        onPreviewSync={setPreviewSync}
+        onRightPanelTab={setRightPanelTab}
+        onExportStats={(format) => void exportStats(format)}
+        onMinutesPerPage={(value) => void patchSettings({ minutesPerPage: value })}
+        onClosePreview={closePreview}
+        onShowPreview={showPreview}
+        onResizeSidebar={resizeSidebar}
+        onSidebarTab={setSidebarTab}
+        onSidebarFilter={setSidebarFilter}
+        onSidebarSynopses={setSidebarSynopses}
+        onSelectEditorRange={selectEditorRange}
+        onCloseSidebar={closeSidebar}
+        onShowSidebar={showSidebar}
+      />
+      {pdfOpen && active ? (
+        <PdfExportDialog
+          source={active.content}
+          suggestedName={`${active.name.replace(/\.(fountain|txt)$/i, '')}.pdf`}
+          onExported={(path) => {
+            setStatus(t('status.exported', { path }));
+            setPdfOpen(false);
+          }}
+          onError={(error) => setStatus(t('status.exportFailed', { error }))}
+          onClose={() => setPdfOpen(false)}
+        />
+      ) : null}
+    </>
   );
 }

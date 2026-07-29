@@ -12,6 +12,7 @@ interface FileCommandsOptions {
   editorView: RefObject<EditorView | null>;
   openDialog: () => Promise<void>;
   openPaths: (paths: string[]) => Promise<void>;
+  onExportPdf: () => void;
   patchSettings: (patch: Partial<AppSettings>) => Promise<void>;
   save: (options: { forceDialog: boolean }) => Promise<boolean>;
   setStatus: (message: string) => void;
@@ -25,6 +26,7 @@ export function useFileCommands({
   editorView,
   openDialog,
   openPaths,
+  onExportPdf,
   patchSettings,
   save,
   setStatus,
@@ -39,6 +41,7 @@ export function useFileCommands({
       'file.open': () => void openDialog(),
       'file.save': () => void save({ forceDialog: false }),
       'file.saveAs': () => void save({ forceDialog: true }),
+      'file.exportPdf': onExportPdf,
       'file.closeTab': () => {
         const id = store().activeId;
         if (id) void closeTab(id);
@@ -61,7 +64,18 @@ export function useFileCommands({
     } satisfies Record<MenuCommand, () => void>;
 
     return window.quantum.on('menu:command', ({ command }) => handlers[command]());
-  }, [closeTab, editorView, openDialog, patchSettings, save, setStatus, store, stringsRef, t]);
+  }, [
+    closeTab,
+    editorView,
+    onExportPdf,
+    openDialog,
+    patchSettings,
+    save,
+    setStatus,
+    store,
+    stringsRef,
+    t,
+  ]);
 
   useEffect(() => {
     const onDrop = (event: DragEvent) => {

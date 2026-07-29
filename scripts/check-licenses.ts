@@ -25,10 +25,17 @@ const ALLOWED = new Set([
   'Python-2.0',
   'Unlicense',
   'WTFPL',
+  'Zlib',
 ]);
 
 /** Explicitly rejected licences — any match fails the check outright. */
 const FORBIDDEN = /\b(A?GPL|LGPL|SSPL|BUSL|CDDL|EPL|MPL|CPAL|OSL)\b/i;
+
+/**
+ * Audited manifest corrections for packages that ship a licence file without
+ * declaring it in package.json. Keep these entries exact and documented in PLAN.md.
+ */
+const LICENSE_OVERRIDES = new Map([['png-js@1.1.0', 'MIT']]);
 
 interface Pkg {
   name?: string;
@@ -169,7 +176,8 @@ function collectLocked(root: string, out: Map<string, Entry>): void {
 
     const name = locked.name ?? manifest?.name ?? lockPath.split('/node_modules/').at(-1);
     const version = locked.version ?? manifest?.version;
-    const license = readLicense(locked) === 'UNKNOWN' ? readLicense(manifest ?? {}) : readLicense(locked);
+    const declaredLicense =
+      readLicense(locked) === 'UNKNOWN' ? readLicense(manifest ?? {}) : readLicense(locked);
     if (!name || !version) {
       out.set(`unreadable:${lockPath}`, {
         name: `[incomplete lock entry: ${lockPath}]`,
@@ -180,6 +188,7 @@ function collectLocked(root: string, out: Map<string, Entry>): void {
       });
     } else {
       const key = `${name}@${version}`;
+      const license = LICENSE_OVERRIDES.get(key) ?? declaredLicense;
       if (!out.has(key)) {
         out.set(key, {
           name,
@@ -248,7 +257,10 @@ const notices = [
     return [...grouped.entries()].flatMap(([notice, packageNames]) => [
       `### ${packageNames.join(', ')}`,
       '',
-      ...notice.split('\n').map((line) => `    ${line}`),
+      ...notice.split('\n').map((line) => {
+        const normalized = line.trimEnd().replaceAll('\t', '    ');
+        return normalized ? `    ${normalized}` : '';
+      }),
       '',
     ]);
   })(),

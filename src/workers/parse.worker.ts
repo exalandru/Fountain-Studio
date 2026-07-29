@@ -2,6 +2,7 @@ import type { IndexedOccurrence, ParseRequest, ParseResponse } from '@shared/ana
 import { buildCompletionIndex } from '@shared/analysis/index.js';
 import type { Range, Screenplay } from '@shared/fountain/index.js';
 import { countWords, parse } from '@shared/fountain/index.js';
+import { calculateStatistics } from '@shared/stats/index.js';
 
 /**
  * Full parsing off the UI thread (PLAN.md §3.2).
@@ -35,9 +36,10 @@ function lineRanges(source: string): Range[] {
 }
 
 self.onmessage = (event: MessageEvent<ParseRequest>) => {
-  const { id, revision, source } = event.data;
+  const { id, revision, source, minutesPerPage } = event.data;
   const start = performance.now();
   const screenplay = parse(source);
+  const { pagination, statistics } = calculateStatistics(screenplay, 'letter', minutesPerPage);
   const ranges = lineRanges(source);
   const elementIndexes = new Map(
     screenplay.elements.map((element, index) => [element.id, index] as const),
@@ -78,6 +80,8 @@ self.onmessage = (event: MessageEvent<ParseRequest>) => {
       occurrences: l.lines.map(occurrence),
     })),
     completions: buildCompletionIndex(screenplay),
+    pagination,
+    statistics,
     durationMs: performance.now() - start,
   };
 

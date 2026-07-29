@@ -1,15 +1,17 @@
-import { BrowserWindow, dialog, ipcMain } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron';
 import type { IpcMainInvokeEvent } from 'electron';
-import { basename, isAbsolute } from 'node:path';
+import { basename, isAbsolute, join } from 'node:path';
 import { parseAppData } from '@shared/appdata/index.js';
 import type { DocumentSnapshot, IpcChannel, IpcRequests } from '@shared/ipc-contract.js';
 import type { Translator } from '@shared/i18n/index.js';
 import { clearAutosave, pendingAutosaves, writeAutosave } from './files/autosave.js';
 import { readAppData, writeAppData } from './files/appdata.js';
 import { readDocument, saveDocument } from './files/document.js';
+import { writeFileAtomic } from './files/atomic.js';
 import { buildMenu } from './menu.js';
 import { applySpellCheckerLanguage } from './spellcheck.js';
 import { resolveCloseDecision } from './window-lifecycle.js';
+import { renderScreenplayPdf } from './pdf/render.js';
 import { addRecent, getSettings, getTranslator, patchSettings } from './store.js';
 
 /**
@@ -30,6 +32,36 @@ function validPath(value: unknown): value is string {
 
 function validMtime(value: unknown): value is number | null {
   return value === null || (typeof value === 'number' && Number.isFinite(value) && value >= 0);
+}
+
+function pdfResourcesDirectory(): string {
+  return app.isPackaged
+    ? join(process.resourcesPath, 'app.asar.unpacked', 'resources')
+    : join(import.meta.dirname, '../../resources');
+}
+
+function validPdfOptions(value: unknown): boolean {
+  if (!isRecord(value)) return false;
+  const page = (candidate: unknown) =>
+    candidate === null ||
+    (typeof candidate === 'number' &&
+      Number.isInteger(candidate) &&
+      candidate >= 1 &&
+      candidate <= 100_000);
+  return (
+    (value['format'] === 'letter' || value['format'] === 'a4') &&
+    (value['sceneNumbers'] === 'none' ||
+      value['sceneNumbers'] === 'left' ||
+      value['sceneNumbers'] === 'right' ||
+      value['sceneNumbers'] === 'both') &&
+    typeof value['includeNotes'] === 'boolean' &&
+    typeof value['includeSynopses'] === 'boolean' &&
+    typeof value['headingsBold'] === 'boolean' &&
+    typeof value['watermark'] === 'string' &&
+    value['watermark'].length <= 200 &&
+    page(value['pageFrom']) &&
+    page(value['pageTo'])
+  );
 }
 
 function validateRequest<C extends IpcChannel>(channel: C, value: unknown): IpcRequests[C]['arg'] {
@@ -70,6 +102,33 @@ function validateRequest<C extends IpcChannel>(channel: C, value: unknown): IpcR
         (record['eol'] === 'lf' || record['eol'] === 'crlf') &&
         validMtime(record['expectedMtimeMs']) &&
         (record['refuseExisting'] === undefined || typeof record['refuseExisting'] === 'boolean');
+      break;
+    case 'file:exportText':
+      valid =
+        record !== null &&
+        typeof record['suggestedName'] === 'string' &&
+        record['suggestedName'].length > 0 &&
+        record['suggestedName'].length <= 255 &&
+        typeof record['content'] === 'string' &&
+        record['content'].length <= 10_000_000 &&
+        (record['format'] === 'csv' || record['format'] === 'json');
+      break;
+    case 'pdf:render':
+      valid =
+        record !== null &&
+        typeof record['source'] === 'string' &&
+        record['source'].length <= 100_000_000 &&
+        validPdfOptions(record['options']);
+      break;
+    case 'pdf:export':
+      valid =
+        record !== null &&
+        typeof record['source'] === 'string' &&
+        record['source'].length <= 100_000_000 &&
+        typeof record['suggestedName'] === 'string' &&
+        record['suggestedName'].length > 0 &&
+        record['suggestedName'].length <= 255 &&
+        validPdfOptions(record['options']);
       break;
     case 'settings:patch':
       valid = record !== null;
@@ -237,6 +296,69 @@ export function registerIpcHandlers(): void {
       await buildMenu();
     }
     return outcome;
+  });
+
+  handle('file:exportText', async ({ suggestedName, content, format }, window) => {
+    const options = {
+      defaultPath: suggestedName,
+      filters: [
+        {
+          name: format === 'csv' ? 'CSV' : 'JSON',
+          extensions: [format],
+        },
+      ],
+    };
+    const result = window
+      ? await dialog.showSaveDialog(window, options)
+      : await dialog.showSaveDialog(options);
+    if (result.canceled || !result.filePath) return { status: 'cancelled' };
+
+    try {
+      await writeFileAtomic(result.filePath, content);
+      return { status: 'exported', path: result.filePath };
+    } catch (error) {
+      return {
+        status: 'error',
+        message: error instanceof Error ? error.message : String(error),
+      };
+    }
+  });
+
+  handle('pdf:render', async ({ source, options }) => {
+    const rendered = await renderScreenplayPdf(source, options, pdfResourcesDirectory());
+    const { bytes } = rendered;
+    return {
+      pageCount: rendered.pageCount,
+      bytes: bytes.buffer.slice(
+        bytes.byteOffset,
+        bytes.byteOffset + bytes.byteLength,
+      ) as ArrayBuffer,
+    };
+  });
+
+  handle('pdf:export', async ({ source, options, suggestedName }, window) => {
+    const result = window
+      ? await dialog.showSaveDialog(window, {
+          defaultPath: suggestedName,
+          filters: [{ name: 'PDF', extensions: ['pdf'] }],
+        })
+      : await dialog.showSaveDialog({
+          defaultPath: suggestedName,
+          filters: [{ name: 'PDF', extensions: ['pdf'] }],
+        });
+    if (result.canceled || !result.filePath) return { status: 'cancelled' };
+
+    try {
+      const rendered = await renderScreenplayPdf(source, options, pdfResourcesDirectory());
+      await writeFileAtomic(result.filePath, rendered.bytes);
+      shell.showItemInFolder(result.filePath);
+      return { status: 'exported', path: result.filePath };
+    } catch (error) {
+      return {
+        status: 'error',
+        message: error instanceof Error ? error.message : String(error),
+      };
+    }
   });
 
   handle('settings:get', () => getSettings());

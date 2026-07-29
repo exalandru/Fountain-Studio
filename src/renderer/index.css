@@ -331,6 +331,20 @@ body {
   white-space: nowrap;
 }
 
+.panel-tab-button {
+  padding: 4px 7px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface-raised);
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.panel-tab-button:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
 .panel-placeholder {
   padding: 24px 12px;
   color: var(--text-muted);
@@ -438,6 +452,18 @@ body[data-theme='dark'] .preview-pane {
   margin-left: 10ch;
 }
 
+.preview-more {
+  width: 35ch;
+  margin-left: 10ch;
+  text-align: right;
+}
+
+.preview-continued {
+  width: 38ch;
+  margin-left: 22ch;
+  text-transform: uppercase;
+}
+
 .preview-lyrics {
   font-style: italic;
 }
@@ -520,6 +546,315 @@ body[data-theme='dark'] .preview-pane {
 .preview-title-details dd {
   margin: 0;
   white-space: pre-wrap;
+}
+
+/* ── M3 statistics ───────────────────────────────────────────────────────── */
+
+.stats-pane {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--surface);
+  color: var(--text);
+}
+
+.stats-scroll {
+  flex: 1;
+  min-height: 0;
+  padding: 14px;
+  overflow: auto;
+}
+
+.stats-summary {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+
+.stats-summary > div {
+  display: flex;
+  flex-direction: column;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface-raised);
+}
+
+.stats-summary strong {
+  font-size: 22px;
+  font-variant-numeric: tabular-nums;
+}
+
+.stats-summary span {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.stats-ratio {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 12px;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.stats-ratio input {
+  width: 72px;
+  padding: 5px 7px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--surface-raised);
+  color: var(--text);
+}
+
+.stats-section {
+  margin-top: 18px;
+}
+
+.stats-section h3 {
+  margin: 0 0 8px;
+  font-size: 12px;
+}
+
+.stats-chart-labels {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 5px;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.stats-chart svg {
+  display: block;
+  width: 100%;
+  height: 10px;
+}
+
+.stats-chart-track {
+  fill: color-mix(in srgb, var(--accent) 25%, var(--border));
+}
+
+.stats-chart-primary {
+  fill: var(--accent);
+}
+
+.stats-breakdown {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--border);
+}
+
+.stats-breakdown > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 9px;
+  background: var(--surface-raised);
+}
+
+.stats-breakdown dt {
+  color: var(--text-muted);
+}
+
+.stats-breakdown dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.stats-character-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--border);
+}
+
+.stats-character-list > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 7px 9px;
+  background: var(--surface-raised);
+}
+
+.stats-character-list span {
+  color: var(--text-muted);
+  font-size: 11px;
+  text-align: right;
+}
+
+.stats-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 18px;
+}
+
+.stats-actions button {
+  flex: 1;
+  padding: 7px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--surface-raised);
+  color: var(--text);
+}
+
+.stats-actions button:hover {
+  border-color: var(--accent);
+}
+
+/* ── M3 PDF export ───────────────────────────────────────────────────────── */
+
+.modal-backdrop {
+  position: fixed;
+  z-index: 100;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: #0008;
+}
+
+.pdf-dialog {
+  display: flex;
+  flex-direction: column;
+  width: min(980px, 100%);
+  max-height: 92vh;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  box-shadow: 0 18px 60px #0008;
+}
+
+.pdf-dialog > header,
+.pdf-dialog > footer {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+}
+
+.pdf-dialog > header {
+  border-bottom: 1px solid var(--border);
+}
+
+.pdf-dialog > header h2 {
+  flex: 1;
+  margin: 0;
+  font-size: 15px;
+}
+
+.pdf-dialog > footer {
+  justify-content: flex-end;
+  border-top: 1px solid var(--border);
+}
+
+.pdf-dialog button,
+.pdf-dialog input,
+.pdf-dialog select {
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--surface-raised);
+  color: var(--text);
+}
+
+.pdf-dialog > footer button {
+  min-width: 90px;
+  padding: 7px 12px;
+}
+
+.pdf-dialog > footer button:last-child {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: white;
+}
+
+.pdf-dialog-body {
+  display: grid;
+  grid-template-columns: 260px minmax(360px, 1fr);
+  min-height: 0;
+}
+
+.pdf-options {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  overflow: auto;
+  border-right: 1px solid var(--border);
+}
+
+.pdf-options label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.pdf-options select,
+.pdf-options input[type='text'],
+.pdf-options input[type='number'] {
+  width: 100%;
+  padding: 6px 7px;
+}
+
+.pdf-options .pdf-check {
+  flex-direction: row;
+  align-items: center;
+  color: var(--text);
+}
+
+.pdf-range {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.pdf-preview {
+  position: relative;
+  min-height: 520px;
+  overflow: auto;
+  background: color-mix(in srgb, var(--surface) 70%, #777);
+  text-align: center;
+}
+
+.pdf-preview canvas {
+  display: block;
+  margin: 18px auto;
+  background: white;
+  box-shadow: 0 2px 14px #0006;
+}
+
+.pdf-preview-controls {
+  position: sticky;
+  left: 50%;
+  bottom: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: max-content;
+  padding: 3px 7px;
+  border-radius: 4px;
+  background: #000a;
+  color: white;
+  transform: translateX(-50%);
+}
+
+.pdf-preview-controls button {
+  width: 26px;
+  height: 24px;
+  border-color: #fff5;
+  background: #fff2;
+  color: white;
 }
 
 /* ── AST navigator ───────────────────────────────────────────────────────── */
