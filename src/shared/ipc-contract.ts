@@ -85,6 +85,8 @@ export interface AppSettings {
   showBoneyard: boolean;
   showSynopses: boolean;
   showSections: boolean;
+  /** Show the computed scene number on both sides of headings in editor and preview. */
+  showSceneNumbers: boolean;
   focusMode: boolean;
   typewriterMode: boolean;
   /** Electron supports one active spell-check language on macOS. */
@@ -103,6 +105,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   showBoneyard: true,
   showSynopses: true,
   showSections: true,
+  showSceneNumbers: true,
   focusMode: false,
   typewriterMode: false,
   spellcheckLanguage: 'en-US',
@@ -197,6 +200,7 @@ export type MenuCommand =
   | 'view.toggleBoneyard'
   | 'view.toggleSynopses'
   | 'view.toggleSections'
+  | 'view.toggleSceneNumbers'
   | 'view.increaseFont'
   | 'view.decreaseFont'
   | 'view.toggleTimeline'

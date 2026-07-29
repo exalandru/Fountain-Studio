@@ -51,6 +51,7 @@ describe('companion schema', () => {
     expect(parsed?.sidebar.filter).toHaveLength(200);
     expect(parsed?.preview.width).toBe(760);
     expect(parsed?.sidebar.activeTab).toBe('structure');
+    expect(parsed?.preview.activeTab).toBe('statistics');
     expect(parsed?.timeline.zoom).toBe(2.5);
     expect(parsed?.timeline.colorMode).toBe('timeOfDay');
   });

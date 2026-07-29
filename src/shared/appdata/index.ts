@@ -11,7 +11,7 @@
 
 export const APP_DATA_VERSION = 1 as const;
 
-export type SidebarTab = 'structure' | 'locations' | 'characters';
+export type SidebarTab = 'structure' | 'locations' | 'characters' | 'syntax';
 
 export interface SidebarState {
   visible: boolean;
@@ -56,7 +56,7 @@ export const DEFAULT_APP_DATA: Readonly<AppData> = {
     visible: true,
     width: 480,
     syncScroll: false,
-    activeTab: 'preview',
+    activeTab: 'statistics',
   },
   timeline: {
     visible: true,
@@ -112,7 +112,8 @@ export function parseAppData(raw: string): AppData | null {
     if (
       sidebar['activeTab'] === 'structure' ||
       sidebar['activeTab'] === 'locations' ||
-      sidebar['activeTab'] === 'characters'
+      sidebar['activeTab'] === 'characters' ||
+      sidebar['activeTab'] === 'syntax'
     ) {
       result.sidebar.activeTab = sidebar['activeTab'];
     }

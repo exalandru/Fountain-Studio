@@ -61,6 +61,9 @@ export function sanitizeSettings(raw: unknown): AppSettings {
   if (typeof settings['showSections'] === 'boolean') {
     target.showSections = settings['showSections'];
   }
+  if (typeof settings['showSceneNumbers'] === 'boolean') {
+    target.showSceneNumbers = settings['showSceneNumbers'];
+  }
   if (typeof settings['focusMode'] === 'boolean') target.focusMode = settings['focusMode'];
   if (typeof settings['typewriterMode'] === 'boolean') {
     target.typewriterMode = settings['typewriterMode'];

@@ -21,6 +21,7 @@ export interface VisibilityOptions {
   showBoneyard: boolean;
   showSynopses: boolean;
   showSections: boolean;
+  showSceneNumbers: boolean;
 }
 
 export const setVisibility = StateEffect.define<VisibilityOptions>();
@@ -31,6 +32,7 @@ export const visibilityField = StateField.define<VisibilityOptions>({
     showBoneyard: true,
     showSynopses: true,
     showSections: true,
+    showSceneNumbers: true,
   }),
   update(value, transaction) {
     for (const effect of transaction.effects) {
@@ -69,13 +71,16 @@ const LINE_CLASS: Record<string, string> = {
 };
 
 const lineDecorations = new Map<string, Decoration>();
-function lineDecoration(className: string, spellcheck: boolean): Decoration {
-  const key = `${className}:${spellcheck}`;
+function lineDecoration(className: string, spellcheck: boolean, sceneNumber?: string): Decoration {
+  const key = `${className}:${spellcheck}:${sceneNumber ?? ''}`;
   let decoration = lineDecorations.get(key);
   if (!decoration) {
+    const attributes: Record<string, string> = {};
+    if (!spellcheck) attributes['spellcheck'] = 'false';
+    if (sceneNumber !== undefined) attributes['data-scene-number'] = sceneNumber;
     decoration = Decoration.line({
       class: className,
-      attributes: spellcheck ? undefined : { spellcheck: 'false' },
+      attributes: Object.keys(attributes).length > 0 ? attributes : undefined,
     });
     lineDecorations.set(key, decoration);
   }
@@ -127,6 +132,15 @@ function buildDecorations(view: EditorView): DecorationSet {
   const { lines, annotations } = view.state.field(fountainLexField);
   const visibility = view.state.field(visibilityField);
   const collected: Array<Range<Decoration>> = [];
+  const sceneNumbers = new Map<number, string>();
+  if (visibility.showSceneNumbers) {
+    let ordinal = 0;
+    for (const line of lines) {
+      if (line.kind !== 'scene_heading') continue;
+      ordinal += 1;
+      sceneNumbers.set(line.line, line.sceneNumber ?? String(ordinal));
+    }
+  }
 
   for (const { from, to } of view.visibleRanges) {
     const firstLine = view.state.doc.lineAt(from).number - 1;
@@ -153,6 +167,7 @@ function buildDecorations(view: EditorView): DecorationSet {
           lineDecoration(
             className,
             line.kind !== 'character' && line.kind !== 'scene_heading',
+            line.kind === 'scene_heading' ? sceneNumbers.get(line.line) : undefined,
           ).range(line.from),
         );
       }

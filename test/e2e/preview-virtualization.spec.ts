@@ -65,6 +65,7 @@ test('a feature-length preview stays virtualised and syncs both scroll direction
     }
     expect(widths.timelineScroll).toBeGreaterThan(widths.timelineClient);
 
+    await page.getByRole('button', { name: 'Screenplay preview' }).click();
     const papers = page.locator('.preview-paper');
     expect(await papers.count()).toBeLessThanOrEqual(7);
 

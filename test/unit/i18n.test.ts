@@ -50,6 +50,8 @@ describe('catalogues', () => {
       'status.about',
       'sidebar.structure',
       'sidebar.locationMixed',
+      'sidebar.syntax.action',
+      'sidebar.syntax.transition',
       'stats.action',
       'stats.dialogue',
       'stats.minutes',
@@ -57,6 +59,7 @@ describe('catalogues', () => {
       'timeline.title',
       'timeline.zoom',
       'timeline.intExt',
+      'toolbar.focus',
     ];
     const identical = keys.filter((key) => {
       const a = en[key];

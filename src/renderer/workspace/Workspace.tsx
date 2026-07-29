@@ -31,6 +31,10 @@ interface WorkspaceProps {
   onCloseTab: (id: string) => void;
   onNewDocument: () => void;
   onSetActive: (id: string) => void;
+  onFocusModeChange: (enabled: boolean) => void;
+  onTypewriterModeChange: (enabled: boolean) => void;
+  onSceneNumbersChange: (enabled: boolean) => void;
+  onThemeChange: (theme: AppSettings['theme']) => void;
   onEditorChange: (content: string) => void;
   onCursorOffset: (offset: number) => void;
   onEditorScroll: (offset: number) => void;
@@ -73,6 +77,10 @@ export function Workspace({
   onCloseTab,
   onNewDocument,
   onSetActive,
+  onFocusModeChange,
+  onTypewriterModeChange,
+  onSceneNumbersChange,
+  onThemeChange,
   onEditorChange,
   onCursorOffset,
   onEditorScroll,
@@ -156,7 +164,69 @@ export function Workspace({
         <button type="button" className="tab-new" aria-label={t('tab.new')} onClick={onNewDocument}>
           +
         </button>
+        <div className="topbar-actions" role="toolbar" aria-label={t('toolbar.modes')}>
+          <button
+            type="button"
+            className={`topbar-mode${settings.focusMode ? ' is-active' : ''}`}
+            aria-pressed={settings.focusMode}
+            title={t('toolbar.focusHint')}
+            onClick={() => onFocusModeChange(!settings.focusMode)}
+          >
+            <span aria-hidden="true">◎</span>
+            {t('toolbar.focus')}
+          </button>
+          <button
+            type="button"
+            className={`topbar-mode${settings.typewriterMode ? ' is-active' : ''}`}
+            aria-pressed={settings.typewriterMode}
+            title={t('toolbar.typewriterHint')}
+            onClick={() => onTypewriterModeChange(!settings.typewriterMode)}
+          >
+            <span aria-hidden="true">⌨</span>
+            {t('toolbar.typewriter')}
+          </button>
+          <button
+            type="button"
+            className={`topbar-mode topbar-scene-numbers${
+              settings.showSceneNumbers ? ' is-active' : ''
+            }`}
+            aria-pressed={settings.showSceneNumbers}
+            title={t('menu.view.showSceneNumbers')}
+            onClick={() => onSceneNumbersChange(!settings.showSceneNumbers)}
+          >
+            <span aria-hidden="true">#</span>
+            {t('toolbar.sceneNumbers')}
+          </button>
+          <div className="topbar-theme" role="group" aria-label={t('toolbar.theme')}>
+            <span>{t('toolbar.theme')}</span>
+            {(
+              [
+                ['system', '◐', t('menu.view.themeSystem')],
+                ['light', '☀', t('menu.view.themeLight')],
+                ['dark', '☾', t('menu.view.themeDark')],
+              ] as const
+            ).map(([theme, icon, label]) => (
+              <button
+                type="button"
+                key={theme}
+                className={settings.theme === theme ? 'is-active' : ''}
+                aria-label={label}
+                aria-pressed={settings.theme === theme}
+                title={label}
+                onClick={() => onThemeChange(theme)}
+              >
+                <span aria-hidden="true">{icon}</span>
+              </button>
+            ))}
+          </div>
+        </div>
       </div>
+
+      {settings.focusMode ? (
+        <button type="button" className="focus-mode-exit" onClick={() => onFocusModeChange(false)}>
+          {t('toolbar.exitFocus')}
+        </button>
+      ) : null}
 
       <main
         className="workspace"
@@ -206,6 +276,7 @@ export function Workspace({
                   showBoneyard={settings.showBoneyard}
                   showSynopses={settings.showSynopses}
                   showSections={settings.showSections}
+                  showSceneNumbers={settings.showSceneNumbers}
                   typewriterMode={settings.typewriterMode}
                   completionIndex={analysis?.completions ?? EMPTY_COMPLETIONS}
                   externalScrollOffset={
@@ -247,6 +318,7 @@ export function Workspace({
                       <Preview
                         analysis={analysis}
                         syncScroll={active.appData.preview.syncScroll}
+                        showSceneNumbers={settings.showSceneNumbers}
                         externalOffset={
                           editorScrollPosition.documentId === active.id
                             ? editorScrollPosition.offset

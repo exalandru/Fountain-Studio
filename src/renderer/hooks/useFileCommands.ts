@@ -60,6 +60,8 @@ export function useFileCommands({
           void patchSettings({ showSynopses: !store().settings.showSynopses }),
         'view.toggleSections': () =>
           void patchSettings({ showSections: !store().settings.showSections }),
+        'view.toggleSceneNumbers': () =>
+          void patchSettings({ showSceneNumbers: !store().settings.showSceneNumbers }),
         'view.increaseFont': () =>
           void patchSettings({ editorFontSize: Math.min(28, store().settings.editorFontSize + 1) }),
         'view.decreaseFont': () =>

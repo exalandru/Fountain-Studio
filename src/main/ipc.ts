@@ -373,6 +373,7 @@ export function registerIpcHandlers(): void {
       before.showBoneyard !== next.showBoneyard ||
       before.showSynopses !== next.showSynopses ||
       before.showSections !== next.showSections ||
+      before.showSceneNumbers !== next.showSceneNumbers ||
       before.focusMode !== next.focusMode ||
       before.typewriterMode !== next.typewriterMode ||
       before.theme !== next.theme ||

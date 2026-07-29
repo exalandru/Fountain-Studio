@@ -209,6 +209,12 @@ export async function buildMenu(): Promise<void> {
           click: () => send('view.toggleSections'),
         },
         {
+          label: t('menu.view.showSceneNumbers'),
+          type: 'checkbox',
+          checked: settings.showSceneNumbers,
+          click: () => send('view.toggleSceneNumbers'),
+        },
+        {
           label: t('menu.view.showTimeline'),
           accelerator: 'CmdOrCtrl+Alt+T',
           click: () => send('view.toggleTimeline'),

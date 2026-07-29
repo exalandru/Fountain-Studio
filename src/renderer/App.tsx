@@ -238,6 +238,7 @@ export function App() {
       { id: 'view.toggleTimeline', label: t('menu.view.showTimeline') },
       { id: 'view.toggleFocus', label: t('menu.view.focusMode'), shortcut: '⇧⌘F' },
       { id: 'view.toggleTypewriter', label: t('menu.view.typewriterMode'), shortcut: '⇧⌘T' },
+      { id: 'view.toggleSceneNumbers', label: t('menu.view.showSceneNumbers') },
       { id: 'view.toggleNotes', label: t('menu.view.showNotes') },
       { id: 'view.toggleBoneyard', label: t('menu.view.showBoneyard') },
       { id: 'view.toggleSynopses', label: t('menu.view.showSynopses') },
@@ -407,6 +408,10 @@ export function App() {
         onCloseTab={(id) => void closeTab(id)}
         onNewDocument={newDocument}
         onSetActive={setActive}
+        onFocusModeChange={(enabled) => void patchSettings({ focusMode: enabled })}
+        onTypewriterModeChange={(enabled) => void patchSettings({ typewriterMode: enabled })}
+        onSceneNumbersChange={(enabled) => void patchSettings({ showSceneNumbers: enabled })}
+        onThemeChange={(theme) => void patchSettings({ theme })}
         onEditorChange={handleEditorChange}
         onCursorOffset={handleCursorOffset}
         onEditorScroll={handleEditorScroll}

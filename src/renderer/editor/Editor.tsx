@@ -36,6 +36,7 @@ export interface EditorProps {
   showBoneyard: boolean;
   showSynopses: boolean;
   showSections: boolean;
+  showSceneNumbers: boolean;
   typewriterMode: boolean;
   completionIndex: CompletionIndex;
   onChange: (content: string) => void;
@@ -54,6 +55,7 @@ function EditorComponent({
   showBoneyard,
   showSynopses,
   showSections,
+  showSceneNumbers,
   typewriterMode,
   completionIndex,
   onChange,
@@ -86,6 +88,15 @@ function EditorComponent({
   }, [onScrollOffset]);
   useEffect(() => {
     typewriterRef.current = typewriterMode;
+    if (!typewriterMode) return;
+    cancelAnimationFrame(typewriterFrame.current);
+    typewriterFrame.current = requestAnimationFrame(() => {
+      const current = view.current;
+      if (!current) return;
+      current.dispatch({
+        effects: EditorView.scrollIntoView(current.state.selection.main.head, { y: 'center' }),
+      });
+    });
   }, [typewriterMode]);
 
   useEffect(() => {
@@ -129,7 +140,10 @@ function EditorComponent({
           if (update.docChanged) onChangeRef.current(update.state.doc.toString());
           if (update.docChanged || update.selectionSet) {
             onCursorRef.current?.(update.state.selection.main.head);
-            if (typewriterRef.current) {
+            const pointerSelection = update.transactions.some((transaction) =>
+              transaction.isUserEvent('select.pointer'),
+            );
+            if (typewriterRef.current && update.state.selection.main.empty && !pointerSelection) {
               cancelAnimationFrame(typewriterFrame.current);
               typewriterFrame.current = requestAnimationFrame(() => {
                 const current = view.current;
@@ -169,6 +183,7 @@ function EditorComponent({
 
     return () => {
       cancelAnimationFrame(frame);
+      cancelAnimationFrame(typewriterFrame.current);
       instance.scrollDOM.removeEventListener('scroll', handleScroll);
       onViewReady?.(null);
       instance.destroy();
@@ -193,9 +208,15 @@ function EditorComponent({
 
   useEffect(() => {
     view.current?.dispatch({
-      effects: setVisibility.of({ showNotes, showBoneyard, showSynopses, showSections }),
+      effects: setVisibility.of({
+        showNotes,
+        showBoneyard,
+        showSynopses,
+        showSections,
+        showSceneNumbers,
+      }),
     });
-  }, [showBoneyard, showNotes, showSections, showSynopses]);
+  }, [showBoneyard, showNotes, showSceneNumbers, showSections, showSynopses]);
 
   useEffect(() => {
     const instance = view.current;
@@ -231,6 +252,7 @@ export const Editor = memo(
     previous.showBoneyard === next.showBoneyard &&
     previous.showSynopses === next.showSynopses &&
     previous.showSections === next.showSections &&
+    previous.showSceneNumbers === next.showSceneNumbers &&
     previous.typewriterMode === next.typewriterMode &&
     previous.completionIndex === next.completionIndex &&
     previous.externalScrollOffset === next.externalScrollOffset &&

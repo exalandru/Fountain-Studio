@@ -85,6 +85,8 @@ async function menuLabels(): Promise<string[]> {
 test('the window opens on a blank document, in English', async () => {
   await expect(page.locator('.tab')).toHaveCount(1);
   await expect(page.locator('.tab-name')).toContainText('Untitled');
+  await expect(page.locator('.stats-pane')).toBeVisible();
+  await expect(page.locator('.preview-pane')).toBeHidden();
   // The new-document template carries a pre-filled title page. The Fountain keys stay
   // in English in every locale; only the values are translated.
   await expect(page.locator('.cm-content')).toContainText('Title: Untitled');
@@ -195,6 +197,7 @@ test('an existing .fountain file opens in a new tab', async () => {
 });
 
 test('the live preview and AST navigator follow the opened screenplay', async () => {
+  await page.getByRole('button', { name: 'Screenplay preview' }).click();
   await expect(page.locator('.preview-scene-heading')).toContainText('INT. GARAGE - NIGHT');
   await expect(page.locator('.sidebar-scene-heading')).toContainText('INT. GARAGE - NIGHT');
 
@@ -215,6 +218,56 @@ test('the live preview and AST navigator follow the opened screenplay', async ()
   await expect(marc).toContainText('1 speech');
   await marc.click();
   await expect(page.locator('.cm-activeLine')).toContainText('MARC');
+});
+
+test('scene numbers appear on both sides and can be disabled globally', async () => {
+  const heading = page.locator('.cm-fountain-scene');
+  await expect(heading).toHaveAttribute('data-scene-number', '1');
+  await expect(page.locator('.preview-scene-number-left')).toHaveText('1');
+  await expect(page.locator('.preview-scene-number-right')).toHaveText('1');
+
+  const toggle = page.getByRole('button', { name: 'Scene numbers' });
+  await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+  await toggle.click();
+  await expect(heading).not.toHaveAttribute('data-scene-number');
+  await expect(page.locator('.preview-scene-number')).toHaveCount(0);
+
+  await toggle.click();
+  await expect(heading).toHaveAttribute('data-scene-number', '1');
+});
+
+test('the navigator includes a compact Fountain cheat sheet', async () => {
+  await page.getByRole('tab', { name: 'Cheat sheet' }).click();
+  const memo = page.locator('.sidebar-syntax');
+  await expect(memo).toContainText('Title: My film');
+  await expect(memo).toContainText('INT. KITCHEN - DAY #1#');
+  await expect(memo).toContainText('[[ working note ]]');
+  await page.getByRole('tab', { name: 'Structure' }).click();
+});
+
+test('the top bar exposes writing modes, theme controls and the editor texture', async () => {
+  const typewriter = page.getByRole('button', { name: 'Typewriter' });
+  await typewriter.click();
+  await expect(typewriter).toHaveAttribute('aria-pressed', 'true');
+  await typewriter.click();
+  await expect(typewriter).toHaveAttribute('aria-pressed', 'false');
+
+  await page.getByRole('button', { name: 'Light' }).click();
+  await expect(page.locator('body')).toHaveAttribute('data-theme', 'light');
+  await page.getByRole('button', { name: 'Dark' }).click();
+  await expect(page.locator('body')).toHaveAttribute('data-theme', 'dark');
+  await page.getByRole('button', { name: 'Follow System' }).click();
+
+  const texture = await page
+    .locator('.workspace-editor')
+    .evaluate((element) => getComputedStyle(element, '::after').backgroundImage);
+  expect(texture).not.toBe('none');
+
+  const focus = page.getByRole('button', { name: 'Focus' });
+  await focus.click();
+  await expect(page.locator('.app')).toHaveClass(/focus-mode/);
+  await page.getByRole('button', { name: 'Exit focus' }).click();
+  await expect(page.locator('.app')).not.toHaveClass(/focus-mode/);
 });
 
 test('the timeline navigates, persists its controls and can be collapsed', async () => {
@@ -415,6 +468,42 @@ test('notes, boneyard and synopses have independent editor visibility', async ()
   await expect(page.locator('.cm-fountain-boneyard')).toHaveCount(0);
   await runCommand('view.toggleBoneyard');
   await expect(page.locator('.cm-fountain-boneyard')).toHaveCount(1);
+});
+
+test('typewriter mode does not move the document during a pointer selection', async () => {
+  const source = [
+    'INT. LONG ROOM - DAY',
+    '',
+    ...Array.from({ length: 180 }, (_, index) => `Action line ${index + 1}.`),
+  ].join('\n');
+  const editor = page.locator('.cm-content');
+  await editor.click();
+  await page.keyboard.press('ControlOrMeta+a');
+  await page.keyboard.insertText(source);
+  await page.evaluate(() => window.quantum.invoke('settings:patch', { typewriterMode: true }));
+
+  const scroller = page.locator('.cm-scroller');
+  await scroller.evaluate((element) => {
+    element.scrollTop = 900;
+    element.dispatchEvent(new Event('scroll'));
+  });
+  await expect.poll(() => scroller.evaluate((element) => element.scrollTop)).toBeGreaterThan(800);
+
+  const box = await scroller.boundingBox();
+  expect(box).not.toBeNull();
+  const before = await scroller.evaluate((element) => element.scrollTop);
+  if (box) {
+    await page.mouse.move(box.x + 150, box.y + 90);
+    await page.mouse.down();
+    await page.mouse.move(box.x + 260, box.y + 125, { steps: 5 });
+    await page.mouse.up();
+  }
+  await page.waitForTimeout(50);
+  const after = await scroller.evaluate((element) => element.scrollTop);
+  expect(Math.abs(after - before)).toBeLessThanOrEqual(2);
+  await expect(page.locator('.cm-selectionBackground')).not.toHaveCount(0);
+
+  await page.evaluate(() => window.quantum.invoke('settings:patch', { typewriterMode: false }));
 });
 
 test('switching to French retranslates the interface and the native menu', async () => {

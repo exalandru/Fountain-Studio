@@ -13,6 +13,7 @@ const OVERSCAN = 2;
 export interface PreviewProps {
   analysis: ParseResponse | null;
   syncScroll: boolean;
+  showSceneNumbers: boolean;
   externalOffset: number | null;
   onScrollOffset: (offset: number) => void;
   onSyncScrollChange: (enabled: boolean) => void;
@@ -35,7 +36,20 @@ function inlineContent(spans: InlineSpan[]): ReactNode {
   ));
 }
 
-function PreviewElement({ element }: { element: Element }) {
+function SceneNumbers({ number }: { number: string }) {
+  return (
+    <>
+      <span className="preview-scene-number preview-scene-number-left" aria-hidden="true">
+        {number}
+      </span>
+      <span className="preview-scene-number preview-scene-number-right" aria-hidden="true">
+        {number}
+      </span>
+    </>
+  );
+}
+
+function PreviewElement({ element, sceneNumber }: { element: Element; sceneNumber?: string }) {
   if (element.kind === 'page_break' || element.kind === 'note' || element.kind === 'boneyard') {
     return null;
   }
@@ -46,6 +60,7 @@ function PreviewElement({ element }: { element: Element }) {
       data-element-id={element.id}
       data-source-from={element.range.from}
     >
+      {sceneNumber !== undefined ? <SceneNumbers number={sceneNumber} /> : null}
       {inlineContent(element.inline)}
     </div>
   );
@@ -97,18 +112,23 @@ function TitlePage({ fields }: { fields: ParseResponse['titlePage'] }) {
 function LayoutItem({
   item,
   elements,
+  sceneNumber,
 }: {
   item: PaginationItem;
   elements: ParseResponse['elements'];
+  sceneNumber?: string;
 }) {
   const element = item.elementIndex === null ? null : elements[item.elementIndex];
-  if (element && item.text === element.text) return <PreviewElement element={element} />;
+  if (element && item.text === element.text) {
+    return <PreviewElement element={element} sceneNumber={sceneNumber} />;
+  }
 
   return (
     <div
       className={`preview-element preview-${item.kind.replace('_', '-')}`}
       data-source-from={item.range?.from}
     >
+      {sceneNumber !== undefined ? <SceneNumbers number={sceneNumber} /> : null}
       {item.lines.join('\n')}
     </div>
   );
@@ -117,9 +137,11 @@ function LayoutItem({
 function BodyPage({
   page,
   elements,
+  sceneNumbers,
 }: {
   page: ScreenplayPage;
   elements: ParseResponse['elements'];
+  sceneNumbers: Map<number, string>;
 }) {
   return (
     <>
@@ -128,6 +150,11 @@ function BodyPage({
           key={`${item.elementIndex ?? item.kind}-${index}`}
           item={item}
           elements={elements}
+          sceneNumber={
+            item.kind === 'scene_heading' && item.range
+              ? sceneNumbers.get(item.range.from)
+              : undefined
+          }
         />
       ))}
       <span className="preview-page-number">{page.index + 1}</span>
@@ -145,6 +172,7 @@ function BodyPage({
 export const Preview = memo(function Preview({
   analysis,
   syncScroll,
+  showSceneNumbers,
   externalOffset,
   onScrollOffset,
   onSyncScrollChange,
@@ -159,6 +187,15 @@ export const Preview = memo(function Preview({
   const [viewport, setViewport] = useState({ top: 0, height: 800 });
 
   const bodyPages = useMemo(() => analysis?.pagination.pages ?? [], [analysis?.pagination.pages]);
+  const sceneNumbers = useMemo(
+    () =>
+      new Map(
+        showSceneNumbers
+          ? (analysis?.scenes ?? []).map((scene) => [scene.range.from, scene.number] as const)
+          : [],
+      ),
+    [analysis?.scenes, showSceneNumbers],
+  );
   const hasTitlePage = (analysis?.titlePage.length ?? 0) > 0;
   const totalPages = bodyPages.length + (hasTitlePage ? 1 : 0);
   const scaledHeight = PAPER_HEIGHT * scale;
@@ -271,7 +308,7 @@ export const Preview = memo(function Preview({
         >
           {isTitle && analysis ? <TitlePage fields={analysis.titlePage} /> : null}
           {!isTitle && bodyPage && analysis ? (
-            <BodyPage page={bodyPage} elements={analysis.elements} />
+            <BodyPage page={bodyPage} elements={analysis.elements} sceneNumbers={sceneNumbers} />
           ) : null}
         </div>
       </div>
