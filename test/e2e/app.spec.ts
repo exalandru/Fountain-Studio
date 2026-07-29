@@ -87,6 +87,14 @@ test('the window opens on a blank document, in English', async () => {
   await expect(page.locator('.tab-name')).toContainText('Untitled');
   await expect(page.locator('.stats-pane')).toBeVisible();
   await expect(page.locator('.preview-pane')).toBeHidden();
+  const tab = await page.locator('.tab').last().boundingBox();
+  const add = await page.getByRole('button', { name: 'New screenplay' }).boundingBox();
+  expect(tab).not.toBeNull();
+  expect(add).not.toBeNull();
+  if (tab && add) {
+    expect(add.x).toBeGreaterThanOrEqual(tab.x + tab.width);
+    expect(add.x - (tab.x + tab.width)).toBeLessThan(12);
+  }
   // The new-document template carries a pre-filled title page. The Fountain keys stay
   // in English in every locale; only the values are translated.
   await expect(page.locator('.cm-content')).toContainText('Title: Untitled');
@@ -246,17 +254,55 @@ test('the navigator includes a compact Fountain cheat sheet', async () => {
 });
 
 test('the top bar exposes writing modes, theme controls and the editor texture', async () => {
+  await expect(page.locator('.topbar-group')).toHaveCount(4);
+  const toolbarButtons = page.locator('.toolbar-icon-button');
+  await expect(toolbarButtons).toHaveCount(13);
+  expect(
+    await toolbarButtons.evaluateAll((buttons) =>
+      buttons.every(
+        (button) =>
+          button.querySelector('svg') !== null &&
+          button.textContent?.trim() === '' &&
+          Boolean(button.getAttribute('title')),
+      ),
+    ),
+  ).toBe(true);
+
   const typewriter = page.getByRole('button', { name: 'Typewriter' });
   await typewriter.click();
   await expect(typewriter).toHaveAttribute('aria-pressed', 'true');
   await typewriter.click();
   await expect(typewriter).toHaveAttribute('aria-pressed', 'false');
 
+  for (const name of [
+    'Show Scene Numbers',
+    'Show Sections',
+    'Show Boneyard',
+    'Show Notes',
+    'Show Synopses',
+  ]) {
+    await expect(page.getByRole('button', { name })).toBeVisible();
+  }
+  const sections = page.getByRole('button', { name: 'Show Sections' });
+  await sections.click();
+  await expect(sections).toHaveAttribute('aria-pressed', 'false');
+  await sections.click();
+  await expect(sections).toHaveAttribute('aria-pressed', 'true');
+
   await page.getByRole('button', { name: 'Light' }).click();
   await expect(page.locator('body')).toHaveAttribute('data-theme', 'light');
   await page.getByRole('button', { name: 'Dark' }).click();
   await expect(page.locator('body')).toHaveAttribute('data-theme', 'dark');
   await page.getByRole('button', { name: 'Follow System' }).click();
+
+  await page.getByRole('button', { name: 'Increase Font Size' }).click();
+  await expect
+    .poll(() => page.evaluate(() => window.quantum.invoke('settings:get', undefined)))
+    .toMatchObject({ editorFontSize: 16 });
+  await page.getByRole('button', { name: /Reset editor zoom/ }).click();
+  await expect
+    .poll(() => page.evaluate(() => window.quantum.invoke('settings:get', undefined)))
+    .toMatchObject({ editorFontSize: 15 });
 
   const texture = await page
     .locator('.workspace-editor')

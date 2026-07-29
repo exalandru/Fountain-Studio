@@ -408,10 +408,7 @@ export function App() {
         onCloseTab={(id) => void closeTab(id)}
         onNewDocument={newDocument}
         onSetActive={setActive}
-        onFocusModeChange={(enabled) => void patchSettings({ focusMode: enabled })}
-        onTypewriterModeChange={(enabled) => void patchSettings({ typewriterMode: enabled })}
-        onSceneNumbersChange={(enabled) => void patchSettings({ showSceneNumbers: enabled })}
-        onThemeChange={(theme) => void patchSettings({ theme })}
+        onSettingsChange={(patch) => void patchSettings(patch)}
         onEditorChange={handleEditorChange}
         onCursorOffset={handleCursorOffset}
         onEditorScroll={handleEditorScroll}

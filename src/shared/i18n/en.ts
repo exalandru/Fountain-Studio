@@ -112,6 +112,8 @@ export const en = {
   'palette.search': 'Type a command…',
   'palette.empty': 'No matching command.',
   'toolbar.modes': 'Writing modes and appearance',
+  'toolbar.writingModes': 'Writing modes',
+  'toolbar.displayOptions': 'Display options',
   'toolbar.focus': 'Focus',
   'toolbar.focusHint': 'Hide secondary panels and concentrate on the editor',
   'toolbar.exitFocus': 'Exit focus',
@@ -119,6 +121,8 @@ export const en = {
   'toolbar.typewriterHint': 'Keep the active line centred while typing or using the keyboard',
   'toolbar.sceneNumbers': 'Scene numbers',
   'toolbar.theme': 'Theme',
+  'toolbar.zoom': 'Editor zoom',
+  'toolbar.resetZoom': 'Reset editor zoom ({size} px)',
 
   // ── Status bar ───────────────────────────────────────────────────────────
   'status.scenes': { one: '{count} scene', other: '{count} scenes' },

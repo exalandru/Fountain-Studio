@@ -110,6 +110,8 @@ export const fr: Catalog = {
   'palette.search': 'Saisissez une commande…',
   'palette.empty': 'Aucune commande correspondante.',
   'toolbar.modes': 'Modes d’écriture et apparence',
+  'toolbar.writingModes': 'Modes d’écriture',
+  'toolbar.displayOptions': 'Options d’affichage',
   'toolbar.focus': 'Focus',
   'toolbar.focusHint': 'Masquer les panneaux secondaires pour se concentrer sur l’éditeur',
   'toolbar.exitFocus': 'Quitter le focus',
@@ -118,6 +120,8 @@ export const fr: Catalog = {
     'Garder la ligne active centrée pendant la saisie et les déplacements au clavier',
   'toolbar.sceneNumbers': 'Numéros de scène',
   'toolbar.theme': 'Thème',
+  'toolbar.zoom': 'Zoom de l’éditeur',
+  'toolbar.resetZoom': 'Réinitialiser le zoom de l’éditeur ({size} px)',
 
   // ── Barre d’état ─────────────────────────────────────────────────────────
   'status.scenes': { one: '{count} scène', other: '{count} scènes' },

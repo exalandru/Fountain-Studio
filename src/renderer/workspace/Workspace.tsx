@@ -8,6 +8,7 @@ import { Sidebar } from '../sidebar/index.js';
 import { StatsPanel } from '../stats/index.js';
 import { Timeline } from '../timeline/index.js';
 import { ResizeHandle } from '../ui/ResizeHandle.js';
+import { TopToolbar } from './TopToolbar.js';
 
 const EMPTY_COMPLETIONS = { characters: [], locations: [], times: [] };
 
@@ -31,10 +32,7 @@ interface WorkspaceProps {
   onCloseTab: (id: string) => void;
   onNewDocument: () => void;
   onSetActive: (id: string) => void;
-  onFocusModeChange: (enabled: boolean) => void;
-  onTypewriterModeChange: (enabled: boolean) => void;
-  onSceneNumbersChange: (enabled: boolean) => void;
-  onThemeChange: (theme: AppSettings['theme']) => void;
+  onSettingsChange: (patch: Partial<AppSettings>) => void;
   onEditorChange: (content: string) => void;
   onCursorOffset: (offset: number) => void;
   onEditorScroll: (offset: number) => void;
@@ -77,10 +75,7 @@ export function Workspace({
   onCloseTab,
   onNewDocument,
   onSetActive,
-  onFocusModeChange,
-  onTypewriterModeChange,
-  onSceneNumbersChange,
-  onThemeChange,
+  onSettingsChange,
   onEditorChange,
   onCursorOffset,
   onEditorScroll,
@@ -107,123 +102,81 @@ export function Workspace({
   return (
     <div className={`app${settings.focusMode ? ' focus-mode' : ''}`}>
       <div className="tabbar">
-        <div className="tabs" role="tablist">
-          {documents.map((document) => (
-            <div
-              key={document.id}
-              role="presentation"
-              className={`tab${document.id === activeId ? ' tab-active' : ''}`}
-            >
-              <button
-                type="button"
-                role="tab"
-                aria-controls="workspace-panel"
-                aria-selected={document.id === activeId}
-                tabIndex={document.id === activeId ? 0 : -1}
-                className="tab-select"
-                onClick={() => onSetActive(document.id)}
-                onKeyDown={(event) => {
-                  const currentIndex = documents.findIndex((item) => item.id === document.id);
-                  const nextIndex =
-                    event.key === 'ArrowRight'
-                      ? (currentIndex + 1) % documents.length
-                      : event.key === 'ArrowLeft'
-                        ? (currentIndex - 1 + documents.length) % documents.length
-                        : event.key === 'Home'
-                          ? 0
-                          : event.key === 'End'
-                            ? documents.length - 1
-                            : -1;
-                  const next = documents[nextIndex];
-                  if (nextIndex >= 0 && next) {
-                    event.preventDefault();
-                    onSetActive(next.id);
-                    const tabs = event.currentTarget
-                      .closest('[role="tablist"]')
-                      ?.querySelectorAll<HTMLElement>('[role="tab"]');
-                    tabs?.[nextIndex]?.focus();
-                  }
-                }}
+        <div className="tab-strip">
+          <div className="tabs" role="tablist">
+            {documents.map((document) => (
+              <div
+                key={document.id}
+                role="presentation"
+                className={`tab${document.id === activeId ? ' tab-active' : ''}`}
               >
-                <span className="tab-name">
-                  {document.dirty ? '• ' : ''}
-                  {document.name}
-                </span>
-              </button>
-              <button
-                type="button"
-                className="tab-close"
-                aria-label={t('tab.close', { name: document.name })}
-                onClick={() => onCloseTab(document.id)}
-              >
-                ×
-              </button>
-            </div>
-          ))}
-        </div>
-        <button type="button" className="tab-new" aria-label={t('tab.new')} onClick={onNewDocument}>
-          +
-        </button>
-        <div className="topbar-actions" role="toolbar" aria-label={t('toolbar.modes')}>
-          <button
-            type="button"
-            className={`topbar-mode${settings.focusMode ? ' is-active' : ''}`}
-            aria-pressed={settings.focusMode}
-            title={t('toolbar.focusHint')}
-            onClick={() => onFocusModeChange(!settings.focusMode)}
-          >
-            <span aria-hidden="true">◎</span>
-            {t('toolbar.focus')}
-          </button>
-          <button
-            type="button"
-            className={`topbar-mode${settings.typewriterMode ? ' is-active' : ''}`}
-            aria-pressed={settings.typewriterMode}
-            title={t('toolbar.typewriterHint')}
-            onClick={() => onTypewriterModeChange(!settings.typewriterMode)}
-          >
-            <span aria-hidden="true">⌨</span>
-            {t('toolbar.typewriter')}
-          </button>
-          <button
-            type="button"
-            className={`topbar-mode topbar-scene-numbers${
-              settings.showSceneNumbers ? ' is-active' : ''
-            }`}
-            aria-pressed={settings.showSceneNumbers}
-            title={t('menu.view.showSceneNumbers')}
-            onClick={() => onSceneNumbersChange(!settings.showSceneNumbers)}
-          >
-            <span aria-hidden="true">#</span>
-            {t('toolbar.sceneNumbers')}
-          </button>
-          <div className="topbar-theme" role="group" aria-label={t('toolbar.theme')}>
-            <span>{t('toolbar.theme')}</span>
-            {(
-              [
-                ['system', '◐', t('menu.view.themeSystem')],
-                ['light', '☀', t('menu.view.themeLight')],
-                ['dark', '☾', t('menu.view.themeDark')],
-              ] as const
-            ).map(([theme, icon, label]) => (
-              <button
-                type="button"
-                key={theme}
-                className={settings.theme === theme ? 'is-active' : ''}
-                aria-label={label}
-                aria-pressed={settings.theme === theme}
-                title={label}
-                onClick={() => onThemeChange(theme)}
-              >
-                <span aria-hidden="true">{icon}</span>
-              </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-controls="workspace-panel"
+                  aria-selected={document.id === activeId}
+                  tabIndex={document.id === activeId ? 0 : -1}
+                  className="tab-select"
+                  onClick={() => onSetActive(document.id)}
+                  onKeyDown={(event) => {
+                    const currentIndex = documents.findIndex((item) => item.id === document.id);
+                    const nextIndex =
+                      event.key === 'ArrowRight'
+                        ? (currentIndex + 1) % documents.length
+                        : event.key === 'ArrowLeft'
+                          ? (currentIndex - 1 + documents.length) % documents.length
+                          : event.key === 'Home'
+                            ? 0
+                            : event.key === 'End'
+                              ? documents.length - 1
+                              : -1;
+                    const next = documents[nextIndex];
+                    if (nextIndex >= 0 && next) {
+                      event.preventDefault();
+                      onSetActive(next.id);
+                      const tabs = event.currentTarget
+                        .closest('[role="tablist"]')
+                        ?.querySelectorAll<HTMLElement>('[role="tab"]');
+                      tabs?.[nextIndex]?.focus();
+                    }
+                  }}
+                >
+                  <span className="tab-name">
+                    {document.dirty ? '• ' : ''}
+                    {document.name}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  className="tab-close"
+                  aria-label={t('tab.close', { name: document.name })}
+                  onClick={() => onCloseTab(document.id)}
+                >
+                  ×
+                </button>
+              </div>
             ))}
           </div>
+          <button
+            type="button"
+            className="tab-new"
+            aria-label={t('tab.new')}
+            title={t('tab.new')}
+            onClick={onNewDocument}
+          >
+            +
+          </button>
         </div>
+
+        <TopToolbar settings={settings} t={t} onSettingsChange={onSettingsChange} />
       </div>
 
       {settings.focusMode ? (
-        <button type="button" className="focus-mode-exit" onClick={() => onFocusModeChange(false)}>
+        <button
+          type="button"
+          className="focus-mode-exit"
+          onClick={() => onSettingsChange({ focusMode: false })}
+        >
           {t('toolbar.exitFocus')}
         </button>
       ) : null}
