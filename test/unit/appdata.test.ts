@@ -54,6 +54,27 @@ describe('companion schema', () => {
         ],
       },
     ];
+    data.rewrite = { lastTone: 'cinematic', customStyle: 'Sec et elliptique' };
+    data.inconsistencies = {
+      analyzedAt: 42,
+      items: [
+        {
+          id: 'inconsistency-1',
+          type: 'continuity',
+          severity: 'minor',
+          description: 'Le verre change de main.',
+          references: [
+            {
+              sceneNumber: '2',
+              heading: 'INT. BAR - NUIT',
+              quote: 'Elle tient le verre.',
+            },
+          ],
+          suggestion: 'Conserver la même main.',
+          status: 'resolved',
+        },
+      ],
+    };
 
     expect(parseAppData(serializeAppData(data))).toEqual(data);
   });
@@ -84,6 +105,18 @@ describe('companion schema', () => {
       activeConversationId: null,
       conversations: [],
     });
+  });
+
+  it('migrates removed Brainstorm and left-side memo tabs to the new panel layout', () => {
+    const parsed = parseAppData(
+      JSON.stringify({
+        version: APP_DATA_VERSION,
+        sidebar: { activeTab: 'syntax' },
+        preview: { activeTab: 'brainstorm' },
+      }),
+    );
+    expect(parsed?.sidebar.activeTab).toBe('structure');
+    expect(parsed?.preview.activeTab).toBe('ai');
   });
 
   it('bounds persisted brainstorming conversations and discards attachment content', () => {

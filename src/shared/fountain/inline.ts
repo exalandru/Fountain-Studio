@@ -30,6 +30,49 @@ const RULES: Rule[] = [
 
 export function parseInline(text: string, offset = 0): InlineSpan[] {
   const n = text.length;
+  const { style, isMarker } = analyzeInline(text);
+
+  // Group characters sharing the same style.
+  //
+  // Grouping crosses removed markers: `Note\*` yields a single span "Note*" rather than
+  // two. Deliberate consequence for the offset invariant — `from`/`to` bound the span
+  // within the source, markers included, so `text` may be shorter than
+  // `source.slice(from, to)`. That is what consumers need: text ready to render, plus
+  // bounds to locate the span.
+  const spans: InlineSpan[] = [];
+  let current: InlineSpan | null = null;
+
+  for (let i = 0; i < n; i++) {
+    if (isMarker[i]) continue;
+    const s = style[i] ?? 0;
+
+    if (
+      current &&
+      current.bold === Boolean(s & BOLD) &&
+      current.italic === Boolean(s & ITALIC) &&
+      current.underline === Boolean(s & UNDERLINE)
+    ) {
+      current.text += text[i];
+      current.to = offset + i + 1;
+      continue;
+    }
+
+    current = {
+      text: text[i] ?? '',
+      bold: Boolean(s & BOLD),
+      italic: Boolean(s & ITALIC),
+      underline: Boolean(s & UNDERLINE),
+      from: offset + i,
+      to: offset + i + 1,
+    };
+    spans.push(current);
+  }
+
+  return spans;
+}
+
+function analyzeInline(text: string): { style: Uint8Array; isMarker: Uint8Array } {
+  const n = text.length;
   const style = new Uint8Array(n);
   const isMarker = new Uint8Array(n);
   const escaped = new Uint8Array(n);
@@ -81,43 +124,23 @@ export function parseInline(text: string, offset = 0): InlineSpan[] {
     }
   }
 
-  // Pass 3: group characters sharing the same style.
-  //
-  // Grouping crosses removed markers: `Note\*` yields a single span "Note*" rather than
-  // two. Deliberate consequence for the offset invariant — `from`/`to` bound the span
-  // within the source, markers included, so `text` may be shorter than
-  // `source.slice(from, to)`. That is what consumers need: text ready to render, plus
-  // bounds to locate the span.
-  const spans: InlineSpan[] = [];
-  let current: InlineSpan | null = null;
+  return { style, isMarker };
+}
 
-  for (let i = 0; i < n; i++) {
-    if (isMarker[i]) continue;
-    const s = style[i] ?? 0;
-
-    if (
-      current &&
-      current.bold === Boolean(s & BOLD) &&
-      current.italic === Boolean(s & ITALIC) &&
-      current.underline === Boolean(s & UNDERLINE)
-    ) {
-      current.text += text[i];
-      current.to = offset + i + 1;
-      continue;
+/** Exact source ranges occupied by emphasis delimiters or escape backslashes. */
+export function inlineMarkerRanges(text: string, offset = 0): Array<{ from: number; to: number }> {
+  const { isMarker } = analyzeInline(text);
+  const ranges: Array<{ from: number; to: number }> = [];
+  let start = -1;
+  for (let index = 0; index <= isMarker.length; index++) {
+    if (index < isMarker.length && isMarker[index]) {
+      if (start === -1) start = index;
+    } else if (start !== -1) {
+      ranges.push({ from: offset + start, to: offset + index });
+      start = -1;
     }
-
-    current = {
-      text: text[i] ?? '',
-      bold: Boolean(s & BOLD),
-      italic: Boolean(s & ITALIC),
-      underline: Boolean(s & UNDERLINE),
-      from: offset + i,
-      to: offset + i + 1,
-    };
-    spans.push(current);
   }
-
-  return spans;
+  return ranges;
 }
 
 /**

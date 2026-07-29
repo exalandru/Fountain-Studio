@@ -68,6 +68,9 @@ export function sanitizeSettings(raw: unknown): AppSettings {
   if (typeof settings['typewriterMode'] === 'boolean') {
     target.typewriterMode = settings['typewriterMode'];
   }
+  if (typeof settings['formattedMode'] === 'boolean') {
+    target.formattedMode = settings['formattedMode'];
+  }
   if (settings['spellcheckLanguage'] === 'en-US' || settings['spellcheckLanguage'] === 'fr') {
     target.spellcheckLanguage = settings['spellcheckLanguage'];
   }

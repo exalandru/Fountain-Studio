@@ -215,6 +215,12 @@ export async function buildMenu(): Promise<void> {
           click: () => send('view.toggleSceneNumbers'),
         },
         {
+          label: t('menu.view.formattedMode'),
+          type: 'checkbox',
+          checked: settings.formattedMode,
+          click: () => send('view.toggleFormattedMode'),
+        },
+        {
           label: t('menu.view.showTimeline'),
           accelerator: 'CmdOrCtrl+Alt+T',
           click: () => send('view.toggleTimeline'),
@@ -262,9 +268,21 @@ export async function buildMenu(): Promise<void> {
       label: t('menu.ai'),
       submenu: [
         {
-          label: t('menu.ai.brainstorm'),
-          accelerator: 'CmdOrCtrl+Shift+B',
-          click: () => send('ai.openBrainstorm'),
+          label: t('menu.ai.synonyms'),
+          click: () => send('ai.synonyms'),
+        },
+        {
+          label: t('menu.ai.rewrite'),
+          accelerator: 'CmdOrCtrl+Alt+R',
+          click: () => send('ai.rewrite'),
+        },
+        {
+          label: t('menu.ai.renameCharacter'),
+          click: () => send('ai.renameCharacter'),
+        },
+        {
+          label: t('menu.ai.inconsistencies'),
+          click: () => send('ai.openInconsistencies'),
         },
         { type: 'separator' },
         { label: t('menu.ai.settings'), click: () => send('ai.openSettings') },

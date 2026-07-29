@@ -113,7 +113,7 @@ function renderTitlePage(document: PDFKit.PDFDocument, screenplay: Screenplay): 
 function position(
   item: PaginationItem,
   pageWidth: number,
-): { x: number; width: number; align?: 'right' } {
+): { x: number; width: number; align?: 'center' | 'right' } {
   switch (item.kind) {
     case 'character':
     case 'continued':
@@ -134,8 +134,80 @@ function position(
         width: 16 * CHARACTER_WIDTH,
         align: 'right',
       };
+    case 'centered':
+      return { x: 108, width: 61 * CHARACTER_WIDTH, align: 'center' };
     default:
       return { x: 108, width: 61 * CHARACTER_WIDTH };
+  }
+}
+
+interface InlineStyle {
+  bold: boolean;
+  italic: boolean;
+  underline: boolean;
+}
+
+function fontName(style: InlineStyle): string {
+  if (style.bold && style.italic) return 'CourierPrimeBoldItalic';
+  if (style.bold) return 'CourierPrimeBold';
+  if (style.italic) return 'CourierPrimeItalic';
+  return 'CourierPrime';
+}
+
+function elementStyles(element: Element, forceBold: boolean, forceItalic: boolean): InlineStyle[] {
+  return element.inline.flatMap((span) =>
+    Array.from(span.text, () => ({
+      bold: forceBold || span.bold,
+      italic: forceItalic || span.italic,
+      underline: span.underline,
+    })),
+  );
+}
+
+function renderStyledLine(
+  document: PDFKit.PDFDocument,
+  line: string,
+  styles: InlineStyle[],
+  x: number,
+  y: number,
+  width: number,
+  align?: 'center' | 'right',
+): void {
+  const characters = Array.from(line);
+  const runs: Array<{ text: string; style: InlineStyle }> = [];
+  for (let index = 0; index < characters.length; index++) {
+    const character = characters[index] ?? '';
+    const style = styles[index] ?? { bold: false, italic: false, underline: false };
+    const previous = runs.at(-1);
+    if (
+      previous &&
+      previous.style.bold === style.bold &&
+      previous.style.italic === style.italic &&
+      previous.style.underline === style.underline
+    ) {
+      previous.text += character;
+    } else {
+      runs.push({ text: character, style });
+    }
+  }
+
+  const totalWidth = runs.reduce((total, run) => {
+    document.font(fontName(run.style));
+    return total + document.widthOfString(run.text);
+  }, 0);
+  let runX =
+    align === 'center'
+      ? x + (width - totalWidth) / 2
+      : align === 'right'
+        ? x + width - totalWidth
+        : x;
+  for (const run of runs) {
+    document.font(fontName(run.style));
+    document.text(run.text, runX, y, {
+      lineBreak: false,
+      underline: run.style.underline,
+    });
+    runX += document.widthOfString(run.text);
   }
 }
 
@@ -169,6 +241,7 @@ function renderBodyPage(
 
     if (item.kind === 'scene_heading' && scene && options.sceneNumbers !== 'none') {
       const number = scene.number;
+      document.font('CourierPrimeBold');
       if (options.sceneNumbers === 'left' || options.sceneNumbers === 'both') {
         document.text(number, 72, y, { width: 30, lineBreak: false });
       }
@@ -181,16 +254,30 @@ function renderBodyPage(
       item.kind === 'character' ||
       item.kind === 'continued' ||
       (item.kind === 'scene_heading' && options.headingsBold);
-    document.font(
-      bold ? 'CourierPrimeBold' : item.kind === 'note' ? 'CourierPrimeItalic' : 'CourierPrime',
-    );
     document.fillColor(item.kind === 'note' ? '#666666' : '#111111');
+    const element = item.elementIndex === null ? null : screenplay.elements[item.elementIndex];
+    const plain = element?.inline.map((span) => span.text).join('') ?? item.text;
+    const styles = element
+      ? elementStyles(element, bold, item.kind === 'note')
+      : Array.from(item.text, () => ({
+          bold,
+          italic: item.kind === 'note',
+          underline: false,
+        }));
+    let styleOffset = Math.max(0, plain.indexOf(item.text));
     for (const line of item.lines) {
-      document.text(line, layout.x, y, {
-        width: layout.width,
-        align: layout.align,
-        lineBreak: false,
-      });
+      const lineOffset = plain.indexOf(line, styleOffset);
+      if (lineOffset >= 0) styleOffset = lineOffset;
+      renderStyledLine(
+        document,
+        line,
+        styles.slice(styleOffset, styleOffset + Array.from(line).length),
+        layout.x,
+        y,
+        layout.width,
+        layout.align,
+      );
+      styleOffset += Array.from(line).length;
       y += LINE_HEIGHT;
     }
   }
@@ -221,6 +308,10 @@ export async function renderScreenplayPdf(
   document.registerFont(
     'CourierPrimeItalic',
     fontPath(resourcesDirectory, 'CourierPrime-Italic.ttf'),
+  );
+  document.registerFont(
+    'CourierPrimeBoldItalic',
+    fontPath(resourcesDirectory, 'CourierPrime-BoldItalic.ttf'),
   );
 
   const chunks: Buffer[] = [];

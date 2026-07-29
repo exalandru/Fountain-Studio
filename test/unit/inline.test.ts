@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { parseInline, stripEmphasis } from '../../src/shared/fountain/inline.js';
+import {
+  inlineMarkerRanges,
+  parseInline,
+  stripEmphasis,
+} from '../../src/shared/fountain/inline.js';
 
 /** Reading shortcut: `[text, styles]` where styles ∈ {b, i, u}. */
 function shape(text: string): Array<[string, string]> {
@@ -71,6 +75,15 @@ describe('parseInline — Fountain emphasis', () => {
       ['a', 'i'],
       [' and ', ''],
       ['b', 'i'],
+    ]);
+  });
+
+  it('exposes exact marker ranges for the formatted editor mode', () => {
+    expect(inlineMarkerRanges('A **bold** and _line_', 10)).toEqual([
+      { from: 12, to: 14 },
+      { from: 18, to: 20 },
+      { from: 25, to: 26 },
+      { from: 30, to: 31 },
     ]);
   });
 

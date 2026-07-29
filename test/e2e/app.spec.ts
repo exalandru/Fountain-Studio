@@ -205,7 +205,7 @@ test('an existing .fountain file opens in a new tab', async () => {
 });
 
 test('the live preview and AST navigator follow the opened screenplay', async () => {
-  await page.getByRole('button', { name: 'Screenplay preview' }).click();
+  await page.getByRole('tab', { name: 'Preview' }).click();
   await expect(page.locator('.preview-scene-heading')).toContainText('INT. GARAGE - NIGHT');
   await expect(page.locator('.sidebar-scene-heading')).toContainText('INT. GARAGE - NIGHT');
 
@@ -242,22 +242,32 @@ test('scene numbers appear on both sides and can be disabled globally', async ()
 
   await toggle.click();
   await expect(heading).toHaveAttribute('data-scene-number', '1');
+
+  await runCommand('scene.renumber');
+  await expect(page.locator('.cm-content')).toContainText('INT. GARAGE - NIGHT #1#');
+  await page.keyboard.press('ControlOrMeta+z');
+  await expect(page.locator('.cm-content')).not.toContainText('#1#');
 });
 
-test('the navigator includes a compact Fountain cheat sheet', async () => {
+test('the right sidebar includes a compact Fountain cheat sheet', async () => {
   await page.getByRole('tab', { name: 'Cheat sheet' }).click();
   const memo = page.locator('.sidebar-syntax');
   await expect(memo).toContainText('Title: My film');
   await expect(memo).toContainText('INT. KITCHEN - DAY #1#');
   await expect(memo).toContainText('[[ working note ]]');
-  await page.getByRole('tab', { name: 'Structure' }).click();
+  await page.keyboard.press('ArrowLeft');
+  await expect(page.getByRole('tab', { name: 'AI', exact: true })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+  await page.getByRole('tab', { name: 'Stats' }).click();
 });
 
 test('the top bar exposes writing modes, theme controls and the editor texture', async () => {
   await expect(page.locator('.topbar-group')).toHaveCount(4);
   const toolbarButtons = page.locator('.toolbar-icon-button');
-  await expect(toolbarButtons).toHaveCount(13);
-  await expect(page.locator('.toolbar-tooltip')).toHaveCount(13);
+  await expect(toolbarButtons).toHaveCount(14);
+  await expect(page.locator('.toolbar-tooltip')).toHaveCount(14);
   expect(
     await toolbarButtons.evaluateAll((buttons) =>
       buttons.every(
@@ -339,6 +349,36 @@ test('the top bar exposes writing modes, theme controls and the editor texture',
   await expect(page.locator('.app')).not.toHaveClass(/focus-mode/);
 });
 
+test('formatted mode hides Fountain markers and exposes a floating format bar', async () => {
+  const editor = page.locator('.cm-content');
+  await editor.click();
+  await page.keyboard.press('ControlOrMeta+a');
+  await page.keyboard.type('INT. ROOM - DAY\n\nA **bold** and _underlined_ word.');
+
+  const toggle = page.getByRole('button', { name: 'Hide Fountain Markers' });
+  await toggle.click();
+  const toolbar = page.locator('.workspace-editor > .formatting-toolbar');
+  await expect(toolbar).toBeVisible();
+  await expect(page.locator('.cm-fountain-bold')).toContainText('bold');
+  await expect(page.locator('.cm-fountain-underline')).toContainText('underlined');
+  expect(await editor.innerText()).not.toContain('**');
+  expect(await editor.innerText()).not.toContain('_underlined_');
+
+  await page.locator('.cm-fountain-bold').dblclick();
+  await expect(toolbar.getByRole('button', { name: 'Bold' })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  await page.locator('.cm-line').filter({ hasText: 'word' }).dblclick();
+  await toolbar.getByRole('button', { name: 'Bold' }).click();
+  await toggle.click();
+  await expect(editor).toContainText('**word**');
+  await editor.click();
+  await page.keyboard.press('ControlOrMeta+a');
+  await page.keyboard.type('Title: Opened script\n\nINT. GARAGE - NIGHT\n\nMARC\nAnyone there?\n');
+  await expect(editor).toContainText('INT. GARAGE - NIGHT');
+});
+
 test('the timeline navigates, persists its controls and can be collapsed', async () => {
   const timeline = page.locator('.timeline');
   await expect(timeline).toBeVisible();
@@ -397,7 +437,7 @@ test('the spell-check language is independent from the interface language', asyn
 });
 
 test('statistics share pagination and export CSV', async () => {
-  await page.getByRole('button', { name: 'Statistics' }).click();
+  await page.getByRole('tab', { name: 'Stats' }).click();
   const panel = page.locator('.stats-pane');
   await expect(panel).toBeVisible();
   await expect(panel).toContainText('1');
@@ -413,7 +453,7 @@ test('statistics share pagination and export CSV', async () => {
     .poll(() => readFile(target, 'utf8'))
     .toContain('record_type,key,name,value,pages,eighths');
 
-  await page.getByRole('button', { name: 'Screenplay preview' }).click();
+  await page.getByRole('tab', { name: 'Preview' }).click();
   await expect(page.locator('.preview-pane')).toBeVisible();
 });
 
@@ -428,6 +468,8 @@ test('PDF options render an integrated preview and export a real PDF', async () 
   const dialog = page.getByRole('dialog', { name: 'Export PDF' });
   await expect(dialog).toBeVisible();
   await expect(dialog.getByLabel('Paper format')).toHaveValue('a4');
+  await expect(dialog.getByLabel('Scene numbers')).toHaveValue('both');
+  await expect(dialog.getByLabel('Bold scene headings')).toBeChecked();
   await expect(dialog).toHaveAttribute('data-page-count', /[1-9]/);
   await expect(dialog.locator('canvas')).toBeVisible();
   await expect(dialog).toContainText('Page 1 of 2');
@@ -445,6 +487,7 @@ test('PDF options render an integrated preview and export a real PDF', async () 
 });
 
 test('the title-page preview renders date, version and other metadata', async () => {
+  await page.getByRole('tab', { name: 'Preview' }).click();
   const editor = page.locator('.cm-content');
   await editor.click();
   await page.keyboard.press('ControlOrMeta+a');
@@ -499,6 +542,7 @@ test('scrollbar colours follow the light and dark themes', async () => {
 });
 
 test('panel state is persisted in the screenplay companion file', async () => {
+  await page.getByRole('tab', { name: 'Preview' }).click();
   await page.getByLabel('Sync scroll with editor').check();
   await page.getByRole('tab', { name: 'Structure' }).click();
 
@@ -519,6 +563,7 @@ test('panel state is persisted in the screenplay companion file', async () => {
 });
 
 test('notes, boneyard and synopses have independent editor visibility', async () => {
+  await page.getByRole('tab', { name: 'Preview' }).click();
   const editor = page.locator('.cm-content');
   await editor.click();
   await page.keyboard.press('ControlOrMeta+a');

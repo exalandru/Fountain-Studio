@@ -168,7 +168,7 @@ export const Sidebar = memo(function Sidebar({
       </header>
 
       <div className="sidebar-tabs" role="tablist">
-        {(['structure', 'locations', 'characters', 'syntax'] as const).map((tab, index, tabs) => (
+        {(['structure', 'locations', 'characters'] as const).map((tab, index, tabs) => (
           <button
             type="button"
             role="tab"
@@ -207,27 +207,25 @@ export const Sidebar = memo(function Sidebar({
         ))}
       </div>
 
-      {state.activeTab !== 'syntax' ? (
-        <div className="sidebar-options">
-          <input
-            type="search"
-            aria-label={t('sidebar.filterPlaceholder')}
-            placeholder={t('sidebar.filterPlaceholder')}
-            value={state.filter}
-            onChange={(event) => onFilterChange(event.target.value)}
-          />
-          {state.activeTab === 'structure' ? (
-            <label className="panel-checkbox">
-              <input
-                type="checkbox"
-                checked={state.showSynopses}
-                onChange={(event) => onShowSynopsesChange(event.target.checked)}
-              />
-              {t('sidebar.showSynopses')}
-            </label>
-          ) : null}
-        </div>
-      ) : null}
+      <div className="sidebar-options">
+        <input
+          type="search"
+          aria-label={t('sidebar.filterPlaceholder')}
+          placeholder={t('sidebar.filterPlaceholder')}
+          value={state.filter}
+          onChange={(event) => onFilterChange(event.target.value)}
+        />
+        {state.activeTab === 'structure' ? (
+          <label className="panel-checkbox">
+            <input
+              type="checkbox"
+              checked={state.showSynopses}
+              onChange={(event) => onShowSynopsesChange(event.target.checked)}
+            />
+            {t('sidebar.showSynopses')}
+          </label>
+        ) : null}
+      </div>
 
       <div
         className="sidebar-content"
@@ -235,69 +233,7 @@ export const Sidebar = memo(function Sidebar({
         id={`sidebar-panel-${state.activeTab}`}
         aria-labelledby={`sidebar-tab-${state.activeTab}`}
       >
-        {!analysis && state.activeTab !== 'syntax' ? (
-          <div className="panel-placeholder">{t('sidebar.loading')}</div>
-        ) : null}
-
-        {state.activeTab === 'syntax' ? (
-          <div className="sidebar-syntax">
-            <p>{t('sidebar.syntaxIntro')}</p>
-            <section>
-              <h3>{t('sidebar.syntax.titlePage')}</h3>
-              <pre>
-                <code>{t('sidebar.syntax.exampleTitle')}</code>
-              </pre>
-            </section>
-            <section>
-              <h3>{t('sidebar.syntax.sceneHeading')}</h3>
-              <pre>
-                <code>{t('sidebar.syntax.exampleScene')}</code>
-              </pre>
-            </section>
-            <section>
-              <h3>{t('sidebar.syntax.action')}</h3>
-              <pre>
-                <code>{t('sidebar.syntax.exampleAction')}</code>
-              </pre>
-            </section>
-            <section>
-              <h3>{t('sidebar.syntax.character')}</h3>
-              <pre>
-                <code>{t('sidebar.syntax.exampleDialogue')}</code>
-              </pre>
-            </section>
-            <section>
-              <h3>{t('sidebar.syntax.transition')}</h3>
-              <pre>
-                <code>{t('sidebar.syntax.exampleTransition')}</code>
-              </pre>
-            </section>
-            <section>
-              <h3>{t('sidebar.syntax.structure')}</h3>
-              <pre>
-                <code>{t('sidebar.syntax.exampleStructure')}</code>
-              </pre>
-            </section>
-            <section>
-              <h3>{t('sidebar.syntax.emphasis')}</h3>
-              <pre>
-                <code>{t('sidebar.syntax.exampleEmphasis')}</code>
-              </pre>
-            </section>
-            <section>
-              <h3>{t('sidebar.syntax.notes')}</h3>
-              <pre>
-                <code>{t('sidebar.syntax.exampleNotes')}</code>
-              </pre>
-            </section>
-            <section>
-              <h3>{t('sidebar.syntax.special')}</h3>
-              <pre>
-                <code>{t('sidebar.syntax.exampleSpecial')}</code>
-              </pre>
-            </section>
-          </div>
-        ) : null}
+        {!analysis ? <div className="panel-placeholder">{t('sidebar.loading')}</div> : null}
 
         {analysis && state.activeTab === 'structure' ? (
           structureEmpty ? (

@@ -1,8 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { EditorView } from '@codemirror/view';
-import type { AppData, BrainstormState, SidebarTab, TimelineState } from '@shared/appdata/index.js';
-import type { AiAttachment, AiAttachmentKind } from '@shared/ai/index.js';
-import { approximateTokens } from '@shared/ai/index.js';
+import type {
+  AppData,
+  InconsistencyState,
+  RewriteState,
+  RightPanelTab,
+  SidebarTab,
+  TimelineState,
+} from '@shared/appdata/index.js';
 import type { AppSettings } from '@shared/ipc-contract.js';
 import { statisticsToCsv, statisticsToJson } from '@shared/stats/index.js';
 import { useAutosave } from './hooks/useAutosave.js';
@@ -13,6 +18,10 @@ import { useScreenplay } from './hooks/useScreenplay.js';
 import { useTranslator } from './hooks/useTranslator.js';
 import { PdfExportDialog } from './pdf/PdfExportDialog.js';
 import { AiSettingsDialog } from './ai/AiSettingsDialog.js';
+import { RewriteDialog } from './ai/RewriteDialog.js';
+import type { RewriteSelection } from './ai/RewriteDialog.js';
+import { CharacterNameDialog } from './ai/CharacterNameDialog.js';
+import type { CharacterNameSelection } from './ai/CharacterNameDialog.js';
 import type { NewDocumentStrings } from './store/documents.js';
 import { useDocuments } from './store/documents.js';
 import { CommandPalette } from './ui/CommandPalette.js';
@@ -33,12 +42,20 @@ export function App() {
   const [status, setStatus] = useState<string | null>(null);
   const [pdfOpen, setPdfOpen] = useState(false);
   const [aiSettingsOpen, setAiSettingsOpen] = useState(false);
-  const [aiSettingsRevision, setAiSettingsRevision] = useState(0);
+  const [, setAiSettingsRevision] = useState(0);
+  const [rewriteSelection, setRewriteSelection] = useState<RewriteSelection | null>(null);
+  const [characterNameSelection, setCharacterNameSelection] =
+    useState<CharacterNameSelection | null>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [cursorPosition, setCursorPosition] = useState<{
     documentId: string | null;
     offset: number;
   }>({ documentId: null, offset: 0 });
+  const [editorSelection, setEditorSelection] = useState<{
+    documentId: string | null;
+    from: number;
+    to: number;
+  }>({ documentId: null, from: 0, to: 0 });
   const [editorScrollPosition, setEditorScrollPosition] = useState<{
     documentId: string | null;
     offset: number;
@@ -66,6 +83,25 @@ export function App() {
     analysis?.scenes.find(
       (scene) => cursorOffset >= scene.range.from && cursorOffset <= scene.range.to,
     )?.id ?? null;
+  const formattingActive = useMemo(() => {
+    const range =
+      editorSelection.documentId === activeId
+        ? editorSelection
+        : { documentId: activeId, from: cursorOffset, to: cursorOffset };
+    const spans =
+      analysis?.elements.flatMap((element) =>
+        element.inline.filter((span) =>
+          range.from === range.to
+            ? range.from >= span.from && range.from <= span.to
+            : span.from <= range.from && span.to >= range.to,
+        ),
+      ) ?? [];
+    return {
+      bold: spans.some((span) => span.bold),
+      italic: spans.some((span) => span.italic),
+      underline: spans.some((span) => span.underline),
+    };
+  }, [activeId, analysis?.elements, cursorOffset, editorSelection]);
 
   const updateAppData = useCallback(
     (update: (current: AppData) => AppData) => {
@@ -102,14 +138,86 @@ export function App() {
   });
   const openPdfDialog = useCallback(() => setPdfOpen(true), []);
   const openAiSettings = useCallback(() => setAiSettingsOpen(true), []);
-  const openBrainstorm = useCallback(
+  const openInconsistencies = useCallback(
     () =>
       updateAppData((data) => ({
         ...data,
-        preview: { ...data.preview, visible: true, activeTab: 'brainstorm' },
+        preview: { ...data.preview, visible: true, activeTab: 'ai' },
       })),
     [updateAppData],
   );
+  const openRewrite = useCallback(
+    (initialTool: 'rewrite' | 'synonyms' = 'rewrite') => {
+      const view = editorView.current;
+      const current = store().active();
+      if (!view || !current || !analysis) return;
+      const selection = view.state.selection.main;
+      if (selection.empty) {
+        setStatus(t('rewrite.selectText'));
+        return;
+      }
+      const element = analysis.elements.find(
+        (candidate) =>
+          selection.from >= candidate.range.from && selection.from <= candidate.range.to,
+      );
+      const scene = analysis.scenes.find(
+        (candidate) =>
+          selection.from >= candidate.range.from && selection.from <= candidate.range.to,
+      );
+      const coordinates = view.coordsAtPos(selection.from);
+      setRewriteSelection({
+        from: selection.from,
+        to: selection.to,
+        text: view.state.sliceDoc(selection.from, selection.to),
+        elementKind: element?.kind ?? 'action',
+        speaker: element?.speaker ?? null,
+        sceneHeading: scene?.heading ?? null,
+        sceneContext: scene
+          ? current.content.slice(scene.range.from, scene.range.to)
+          : current.content.slice(
+              Math.max(0, selection.from - 1_000),
+              Math.min(current.content.length, selection.to + 1_000),
+            ),
+        anchor: coordinates ? { x: coordinates.left, y: coordinates.bottom + 8 } : null,
+        initialTool,
+      });
+    },
+    [analysis, store, t],
+  );
+  const openSynonyms = useCallback(() => openRewrite('synonyms'), [openRewrite]);
+  const openRewriteSelection = useCallback(() => openRewrite('rewrite'), [openRewrite]);
+  const openRenameCharacter = useCallback(() => {
+    const view = editorView.current;
+    const current = store().active();
+    if (!view || !current || !analysis) return;
+    const selection = view.state.selection.main;
+    const offset = selection.from;
+    const element = analysis.elements.find(
+      (candidate) =>
+        candidate.kind === 'character' &&
+        offset >= candidate.range.from &&
+        offset <= candidate.range.to,
+    );
+    if (!element?.character) {
+      setStatus(t('characterName.selectCharacter'));
+      return;
+    }
+    const scene = analysis.scenes.find(
+      (candidate) => offset >= candidate.range.from && offset <= candidate.range.to,
+    );
+    const coordinates = view.coordsAtPos(offset);
+    setCharacterNameSelection({
+      name: element.character,
+      existingNames: analysis.characters.map((character) => character.name),
+      sceneContext: scene
+        ? current.content.slice(scene.range.from, scene.range.to)
+        : current.content.slice(
+            Math.max(0, offset - 1_000),
+            Math.min(current.content.length, offset + 1_000),
+          ),
+      anchor: coordinates ? { x: coordinates.left, y: coordinates.bottom + 8 } : null,
+    });
+  }, [analysis, store, t]);
 
   // ── Settings and theme ─────────────────────────────────────────────────────
   useEffect(() => {
@@ -235,7 +343,33 @@ export function App() {
     openPaths,
     onExportPdf: openPdfDialog,
     onOpenAiSettings: openAiSettings,
-    onOpenBrainstorm: openBrainstorm,
+    onOpenInconsistencies: openInconsistencies,
+    onRewrite: openRewriteSelection,
+    onSynonyms: openSynonyms,
+    onRenameCharacter: openRenameCharacter,
+    onRenumberScenes: () => {
+      const view = editorView.current;
+      if (!view || !analysis) return;
+      const changes = analysis.scenes.flatMap((scene, index) => {
+        const heading = analysis.elements.find(
+          (element) =>
+            element.kind === 'scene_heading' &&
+            element.range.from >= scene.range.from &&
+            element.range.from <= scene.range.to,
+        );
+        if (!heading) return [];
+        const source = view.state.sliceDoc(heading.range.from, heading.range.to);
+        const numbered = /\s+#[^#\r\n]+#\s*$/.test(source)
+          ? source.replace(/\s+#[^#\r\n]+#(\s*)$/, ` #${index + 1}#$1`)
+          : `${source.replace(/\s+$/, '')} #${index + 1}#${source.match(/\s+$/)?.[0] ?? ''}`;
+        return numbered === source
+          ? []
+          : [{ from: heading.range.from, to: heading.range.to, insert: numbered }];
+      });
+      if (changes.length > 0) view.dispatch({ changes });
+      view.focus();
+      setStatus(t('status.scenesRenumbered', { count: analysis.scenes.length }));
+    },
     onToggleTimeline: toggleTimeline,
     onCommandPalette: () => setPaletteOpen(true),
     patchSettings,
@@ -259,8 +393,11 @@ export function App() {
       { id: 'view.toggleBoneyard', label: t('menu.view.showBoneyard') },
       { id: 'view.toggleSynopses', label: t('menu.view.showSynopses') },
       { id: 'view.toggleSections', label: t('menu.view.showSections') },
-      { id: 'ai.openBrainstorm', label: t('menu.ai.brainstorm'), shortcut: '⇧⌘B' },
       { id: 'ai.openSettings', label: t('menu.ai.settings') },
+      { id: 'ai.rewrite', label: t('menu.ai.rewrite'), shortcut: '⌥⌘R' },
+      { id: 'ai.renameCharacter', label: t('menu.ai.renameCharacter') },
+      { id: 'ai.openInconsistencies', label: t('menu.ai.inconsistencies') },
+      { id: 'view.toggleFormattedMode', label: t('menu.view.formattedMode') },
     ],
     [t],
   );
@@ -276,6 +413,11 @@ export function App() {
   );
   const handleCursorOffset = useCallback(
     (offset: number) => setCursorPosition({ documentId: store().activeId, offset }),
+    [store],
+  );
+  const handleSelectionRange = useCallback(
+    (range: { from: number; to: number }) =>
+      setEditorSelection({ documentId: store().activeId, ...range }),
     [store],
   );
   const handleEditorScroll = useCallback(
@@ -312,7 +454,7 @@ export function App() {
     [updateAppData],
   );
   const setRightPanelTab = useCallback(
-    (activeTab: 'preview' | 'statistics' | 'brainstorm') =>
+    (activeTab: RightPanelTab) =>
       updateAppData((data) => ({
         ...data,
         preview: { ...data.preview, activeTab },
@@ -406,61 +548,111 @@ export function App() {
   );
   const closeTimeline = useCallback(() => updateTimeline({ visible: false }), [updateTimeline]);
   const showTimeline = useCallback(() => updateTimeline({ visible: true }), [updateTimeline]);
-  const updateBrainstorm = useCallback(
-    (brainstorm: BrainstormState) =>
-      updateAppData((data) => ({
-        ...data,
-        brainstorm,
-      })),
+  const updateRewrite = useCallback(
+    (rewrite: RewriteState) => updateAppData((data) => ({ ...data, rewrite })),
     [updateAppData],
   );
-  const createAiAttachment = useCallback(
-    (kind: AiAttachmentKind): AiAttachment | null => {
-      const current = store().active();
-      if (!current) return null;
-      let label: string;
-      let content: string;
-      if (kind === 'script') {
-        label = t('ai.attachment.script');
-        content = current.content;
-      } else if (kind === 'scene') {
-        const scene = analysis?.scenes.find((candidate) => candidate.id === activeSceneId);
-        if (!scene) return null;
-        label = `${t('ai.attachment.scene')} · ${scene.number} ${scene.heading}`;
-        content = current.content.slice(scene.range.from, scene.range.to);
-      } else if (kind === 'selection') {
-        const selection = editorView.current?.state.selection.main;
-        if (!selection || selection.empty) return null;
-        label = t('ai.attachment.selection');
-        content = editorView.current?.state.sliceDoc(selection.from, selection.to) ?? '';
-      } else {
-        if (!analysis) return null;
-        label = t('ai.attachment.statistics');
-        content = statisticsToJson(analysis.statistics);
-      }
-      return {
-        id: `attachment-${crypto.randomUUID()}`,
-        kind,
-        label,
-        content,
-        approximateTokens: approximateTokens(content),
-      };
-    },
-    [activeSceneId, analysis, store, t],
+  const updateInconsistencies = useCallback(
+    (inconsistencies: InconsistencyState) =>
+      updateAppData((data) => ({ ...data, inconsistencies })),
+    [updateAppData],
   );
-  const insertAiText = useCallback((content: string) => {
+  const getEditorSelection = useCallback(() => {
+    const view = editorView.current;
+    if (!view) return '';
+    const selection = view.state.selection.main;
+    return selection.empty ? '' : view.state.sliceDoc(selection.from, selection.to);
+  }, []);
+  const selectInconsistencyReference = useCallback(
+    (reference: { sceneNumber: string; heading: string }) => {
+      const scene = analysis?.scenes.find(
+        (candidate) =>
+          candidate.number === reference.sceneNumber ||
+          candidate.heading.toLocaleUpperCase() === reference.heading.toLocaleUpperCase(),
+      );
+      if (scene) selectEditorRange(scene.range);
+    },
+    [analysis, selectEditorRange],
+  );
+  const replaceEditorRange = useCallback((from: number, to: number, content: string) => {
     const view = editorView.current;
     if (!view) return;
-    const selection = view.state.selection.main;
     view.dispatch({
-      changes: { from: selection.from, to: selection.to, insert: content },
-      selection: { anchor: selection.from + content.length },
+      changes: { from, to, insert: content },
+      selection: { anchor: from + content.length },
+      scrollIntoView: true,
     });
     view.focus();
   }, []);
-  const insertAiNote = useCallback(
-    (content: string) => insertAiText(`\n[[\n${content}\n]]\n`),
-    [insertAiText],
+  const renameCharacter = useCallback(
+    (nextName: string) => {
+      const view = editorView.current;
+      const currentName = characterNameSelection?.name;
+      if (!view || !analysis || !currentName) return;
+      const changes = analysis.elements.flatMap((element) => {
+        if (element.kind !== 'character' || element.character !== currentName) return [];
+        const source = view.state.sliceDoc(element.range.from, element.range.to);
+        const index = source.toLocaleUpperCase('fr-FR').indexOf(currentName);
+        return index < 0
+          ? []
+          : [
+              {
+                from: element.range.from + index,
+                to: element.range.from + index + currentName.length,
+                insert: nextName,
+              },
+            ];
+      });
+      if (changes.length === 0) return;
+      view.dispatch({ changes });
+      view.focus();
+      setStatus(t('characterName.renamed', { count: changes.length, name: nextName }));
+    },
+    [analysis, characterNameSelection?.name, t],
+  );
+  const formatSelection = useCallback(
+    (marker: '*' | '**' | '_') => {
+      const view = editorView.current;
+      if (!view) return;
+      const selection = view.state.selection.main;
+      if (selection.empty) {
+        setStatus(t('formatting.selectText'));
+        return;
+      }
+      const text = view.state.sliceDoc(selection.from, selection.to);
+      const before = view.state.sliceDoc(
+        Math.max(0, selection.from - marker.length),
+        selection.from,
+      );
+      const after = view.state.sliceDoc(
+        selection.to,
+        Math.min(view.state.doc.length, selection.to + marker.length),
+      );
+      if (before === marker && after === marker) {
+        view.dispatch({
+          changes: [
+            { from: selection.from - marker.length, to: selection.from, insert: '' },
+            { from: selection.to, to: selection.to + marker.length, insert: '' },
+          ],
+          selection: {
+            anchor: selection.from - marker.length,
+            head: selection.to - marker.length,
+          },
+        });
+        view.focus();
+        return;
+      }
+      const insert = `${marker}${text}${marker}`;
+      view.dispatch({
+        changes: { from: selection.from, to: selection.to, insert },
+        selection: {
+          anchor: selection.from + marker.length,
+          head: selection.from + marker.length + text.length,
+        },
+      });
+      view.focus();
+    },
+    [t],
   );
   const newDocument = useCallback(() => store().newDocument(stringsRef.current), [store]);
   const setActive = useCallback((id: string) => store().setActive(id), [store]);
@@ -485,18 +677,18 @@ export function App() {
         onSettingsChange={(patch) => void patchSettings(patch)}
         onEditorChange={handleEditorChange}
         onCursorOffset={handleCursorOffset}
+        onSelectionRange={handleSelectionRange}
         onEditorScroll={handleEditorScroll}
         onPreviewScroll={handlePreviewScroll}
         onViewReady={handleViewReady}
         onResizePreview={resizePreview}
         onPreviewSync={setPreviewSync}
         onRightPanelTab={setRightPanelTab}
-        brainstormSettingsRevision={aiSettingsRevision}
-        onBrainstormState={updateBrainstorm}
-        onCreateAiAttachment={createAiAttachment}
-        onAiInsert={insertAiText}
-        onAiNote={insertAiNote}
-        onOpenAiSettings={openAiSettings}
+        formattingActive={formattingActive}
+        onFormatSelection={formatSelection}
+        onInconsistencyState={updateInconsistencies}
+        getEditorSelection={getEditorSelection}
+        onSelectInconsistencyReference={selectInconsistencyReference}
         onExportStats={(format) => void exportStats(format)}
         onMinutesPerPage={(value) => void patchSettings({ minutesPerPage: value })}
         onClosePreview={closePreview}
@@ -528,6 +720,22 @@ export function App() {
         <AiSettingsDialog
           onSaved={() => setAiSettingsRevision((revision) => revision + 1)}
           onClose={() => setAiSettingsOpen(false)}
+        />
+      ) : null}
+      {rewriteSelection && active ? (
+        <RewriteDialog
+          selection={rewriteSelection}
+          state={active.appData.rewrite}
+          onStateChange={updateRewrite}
+          onReplace={replaceEditorRange}
+          onClose={() => setRewriteSelection(null)}
+        />
+      ) : null}
+      {characterNameSelection ? (
+        <CharacterNameDialog
+          selection={characterNameSelection}
+          onRename={renameCharacter}
+          onClose={() => setCharacterNameSelection(null)}
         />
       ) : null}
       {paletteOpen ? (

@@ -46,6 +46,7 @@ describe('settings validation', () => {
         showSceneNumbers: false,
         focusMode: true,
         typewriterMode: true,
+        formattedMode: true,
         spellcheckLanguage: 'fr',
       }),
     ).toEqual({
@@ -62,6 +63,7 @@ describe('settings validation', () => {
       showSceneNumbers: false,
       focusMode: true,
       typewriterMode: true,
+      formattedMode: true,
       spellcheckLanguage: 'fr',
     });
   });

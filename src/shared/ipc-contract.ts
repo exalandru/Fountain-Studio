@@ -97,6 +97,8 @@ export interface AppSettings {
   showSceneNumbers: boolean;
   focusMode: boolean;
   typewriterMode: boolean;
+  /** Hide Fountain control markers while preserving the plain-text source. */
+  formattedMode: boolean;
   /** Electron supports one active spell-check language on macOS. */
   spellcheckLanguage: 'en-US' | 'fr';
   /** Interface language. English is the fallback for every unknown locale. */
@@ -116,6 +118,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   showSceneNumbers: true,
   focusMode: false,
   typewriterMode: false,
+  formattedMode: false,
   spellcheckLanguage: 'en-US',
   language: 'en',
 };
@@ -234,9 +237,13 @@ export type MenuCommand =
   | 'view.toggleTimeline'
   | 'view.toggleFocus'
   | 'view.toggleTypewriter'
+  | 'view.toggleFormattedMode'
   | 'view.commandPalette'
-  | 'ai.openBrainstorm'
   | 'ai.openSettings'
+  | 'ai.synonyms'
+  | 'ai.rewrite'
+  | 'ai.renameCharacter'
+  | 'ai.openInconsistencies'
   | 'scene.renumber'
   | 'help.about';
 

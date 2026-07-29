@@ -47,13 +47,8 @@ export function estimateElementLines(element: Element): number {
     return total + Math.max(1, Math.ceil(characterLength(line) / width));
   }, 0);
 
-  // Screenplay paragraphs have a blank line before cues, headings and transitions.
-  const leading =
-    element.kind === 'scene_heading' ||
-    element.kind === 'character' ||
-    element.kind === 'transition'
-      ? 1
-      : 0;
+  // Distinct screenplay blocks retain the blank source line that separates them.
+  const leading = ['dialogue', 'parenthetical', 'lyrics'].includes(element.kind) ? 0 : 1;
   return wrapped + leading;
 }
 
@@ -272,12 +267,7 @@ export function paginateScreenplay(
 
     const sceneIndex = sceneByElement.get(element.id) ?? null;
     const lines = wrapElement(element);
-    const leading =
-      element.kind === 'scene_heading' ||
-      element.kind === 'character' ||
-      element.kind === 'transition'
-        ? 1
-        : 0;
+    const leading = ['dialogue', 'parenthetical', 'lyrics'].includes(element.kind) ? 0 : 1;
 
     if (element.kind === 'scene_heading') {
       // A scene heading must retain at least two rendered lines below it.

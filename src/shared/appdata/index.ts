@@ -1,4 +1,10 @@
-import type { AiChatMode, AiConversation, AiConversationMessage } from '../ai/index.js';
+import type {
+  AiChatMode,
+  AiConversation,
+  AiConversationMessage,
+  AiInconsistency,
+  RewriteTone,
+} from '../ai/index.js';
 
 /**
  * Versioned schema for `<screenplay>.fountain.appdata.json`.
@@ -13,7 +19,8 @@ import type { AiChatMode, AiConversation, AiConversationMessage } from '../ai/in
 
 export const APP_DATA_VERSION = 1 as const;
 
-export type SidebarTab = 'structure' | 'locations' | 'characters' | 'syntax';
+export type SidebarTab = 'structure' | 'locations' | 'characters';
+export type RightPanelTab = 'statistics' | 'preview' | 'ai' | 'syntax';
 
 export interface SidebarState {
   visible: boolean;
@@ -28,7 +35,7 @@ export interface PreviewState {
   visible: boolean;
   width: number;
   syncScroll: boolean;
-  activeTab: 'preview' | 'statistics' | 'brainstorm';
+  activeTab: RightPanelTab;
 }
 
 export interface TimelineState {
@@ -43,12 +50,24 @@ export interface BrainstormState {
   conversations: AiConversation[];
 }
 
+export interface RewriteState {
+  lastTone: RewriteTone;
+  customStyle: string;
+}
+
+export interface InconsistencyState {
+  items: AiInconsistency[];
+  analyzedAt: number | null;
+}
+
 export interface AppData {
   version: typeof APP_DATA_VERSION;
   sidebar: SidebarState;
   preview: PreviewState;
   timeline: TimelineState;
   brainstorm: BrainstormState;
+  rewrite: RewriteState;
+  inconsistencies: InconsistencyState;
 }
 
 export const DEFAULT_APP_DATA: Readonly<AppData> = {
@@ -76,6 +95,14 @@ export const DEFAULT_APP_DATA: Readonly<AppData> = {
     activeConversationId: null,
     conversations: [],
   },
+  rewrite: {
+    lastTone: 'neutral',
+    customStyle: '',
+  },
+  inconsistencies: {
+    items: [],
+    analyzedAt: null,
+  },
 };
 
 export function createDefaultAppData(): AppData {
@@ -85,6 +112,8 @@ export function createDefaultAppData(): AppData {
     preview: { ...DEFAULT_APP_DATA.preview },
     timeline: { ...DEFAULT_APP_DATA.timeline },
     brainstorm: { activeConversationId: null, conversations: [] },
+    rewrite: { ...DEFAULT_APP_DATA.rewrite },
+    inconsistencies: { items: [], analyzedAt: null },
   };
 }
 
@@ -173,6 +202,71 @@ function parseConversations(value: unknown): AiConversation[] {
   });
 }
 
+const REWRITE_TONES = new Set<RewriteTone>([
+  'neutral',
+  'concise',
+  'cinematic',
+  'dramatic',
+  'comic',
+  'formal',
+  'colloquial',
+  'custom',
+]);
+
+function parseInconsistencyItems(value: unknown): AiInconsistency[] {
+  if (!Array.isArray(value)) return [];
+  return value.slice(0, 500).flatMap((candidate) => {
+    if (typeof candidate !== 'object' || candidate === null) return [];
+    const item = candidate as Record<string, unknown>;
+    if (
+      typeof item['id'] !== 'string' ||
+      typeof item['description'] !== 'string' ||
+      (item['type'] !== 'continuity' &&
+        item['type'] !== 'chronology' &&
+        item['type'] !== 'character' &&
+        item['type'] !== 'location' &&
+        item['type'] !== 'plot' &&
+        item['type'] !== 'dialogue') ||
+      (item['severity'] !== 'info' && item['severity'] !== 'minor' && item['severity'] !== 'major')
+    ) {
+      return [];
+    }
+    const status =
+      item['status'] === 'ignored' || item['status'] === 'resolved' ? item['status'] : 'open';
+    return [
+      {
+        id: item['id'].slice(0, 100),
+        type: item['type'],
+        severity: item['severity'],
+        description: item['description'].slice(0, 4_000),
+        suggestion:
+          typeof item['suggestion'] === 'string' ? item['suggestion'].slice(0, 4_000) : '',
+        status,
+        references: Array.isArray(item['references'])
+          ? item['references'].slice(0, 20).flatMap((candidateReference) => {
+              if (typeof candidateReference !== 'object' || candidateReference === null) return [];
+              const reference = candidateReference as Record<string, unknown>;
+              if (
+                typeof reference['sceneNumber'] !== 'string' ||
+                typeof reference['heading'] !== 'string' ||
+                typeof reference['quote'] !== 'string'
+              ) {
+                return [];
+              }
+              return [
+                {
+                  sceneNumber: reference['sceneNumber'].slice(0, 40),
+                  heading: reference['heading'].slice(0, 300),
+                  quote: reference['quote'].slice(0, 500),
+                },
+              ];
+            })
+          : [],
+      },
+    ];
+  });
+}
+
 /**
  * Parses, validates and bounds a companion file.
  *
@@ -204,13 +298,20 @@ export function parseAppData(raw: string): AppData | null {
       typeof root['brainstorm'] === 'object' && root['brainstorm'] !== null
         ? (root['brainstorm'] as Record<string, unknown>)
         : {};
+    const rewrite =
+      typeof root['rewrite'] === 'object' && root['rewrite'] !== null
+        ? (root['rewrite'] as Record<string, unknown>)
+        : {};
+    const inconsistencies =
+      typeof root['inconsistencies'] === 'object' && root['inconsistencies'] !== null
+        ? (root['inconsistencies'] as Record<string, unknown>)
+        : {};
 
     if (typeof sidebar['visible'] === 'boolean') result.sidebar.visible = sidebar['visible'];
     if (
       sidebar['activeTab'] === 'structure' ||
       sidebar['activeTab'] === 'locations' ||
-      sidebar['activeTab'] === 'characters' ||
-      sidebar['activeTab'] === 'syntax'
+      sidebar['activeTab'] === 'characters'
     ) {
       result.sidebar.activeTab = sidebar['activeTab'];
     }
@@ -230,9 +331,15 @@ export function parseAppData(raw: string): AppData | null {
     if (
       preview['activeTab'] === 'preview' ||
       preview['activeTab'] === 'statistics' ||
-      preview['activeTab'] === 'brainstorm'
+      preview['activeTab'] === 'ai' ||
+      preview['activeTab'] === 'syntax'
     ) {
       result.preview.activeTab = preview['activeTab'];
+    } else if (
+      preview['activeTab'] === 'brainstorm' ||
+      preview['activeTab'] === 'inconsistencies'
+    ) {
+      result.preview.activeTab = 'ai';
     }
     if (typeof timeline['visible'] === 'boolean') result.timeline.visible = timeline['visible'];
     if (typeof timeline['uniformWidth'] === 'boolean') {
@@ -253,6 +360,19 @@ export function parseAppData(raw: string): AppData | null {
       )
     ) {
       result.brainstorm.activeConversationId = brainstorm['activeConversationId'];
+    }
+    if (REWRITE_TONES.has(rewrite['lastTone'] as RewriteTone)) {
+      result.rewrite.lastTone = rewrite['lastTone'] as RewriteTone;
+    }
+    if (typeof rewrite['customStyle'] === 'string') {
+      result.rewrite.customStyle = rewrite['customStyle'].slice(0, 500);
+    }
+    result.inconsistencies.items = parseInconsistencyItems(inconsistencies['items']);
+    if (
+      typeof inconsistencies['analyzedAt'] === 'number' &&
+      Number.isFinite(inconsistencies['analyzedAt'])
+    ) {
+      result.inconsistencies.analyzedAt = inconsistencies['analyzedAt'];
     }
 
     return result;

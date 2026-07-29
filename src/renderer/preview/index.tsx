@@ -18,9 +18,6 @@ export interface PreviewProps {
   externalOffset: number | null;
   onScrollOffset: (offset: number) => void;
   onSyncScrollChange: (enabled: boolean) => void;
-  onShowStatistics: () => void;
-  onShowBrainstorm: () => void;
-  onClose: () => void;
 }
 
 function inlineContent(spans: InlineSpan[]): ReactNode {
@@ -51,7 +48,15 @@ function SceneNumbers({ number }: { number: string }) {
   );
 }
 
-function PreviewElement({ element, sceneNumber }: { element: Element; sceneNumber?: string }) {
+function PreviewElement({
+  element,
+  sceneNumber,
+  leadingLines = 0,
+}: {
+  element: Element;
+  sceneNumber?: string;
+  leadingLines?: number;
+}) {
   if (element.kind === 'page_break' || element.kind === 'note' || element.kind === 'boneyard') {
     return null;
   }
@@ -61,6 +66,7 @@ function PreviewElement({ element, sceneNumber }: { element: Element; sceneNumbe
       className={`preview-element preview-${element.kind.replace('_', '-')}`}
       data-element-id={element.id}
       data-source-from={element.range.from}
+      style={{ marginTop: `${leadingLines * 16}px` }}
     >
       {sceneNumber !== undefined ? <SceneNumbers number={sceneNumber} /> : null}
       {inlineContent(element.inline)}
@@ -122,13 +128,20 @@ function LayoutItem({
 }) {
   const element = item.elementIndex === null ? null : elements[item.elementIndex];
   if (element && item.text === element.text) {
-    return <PreviewElement element={element} sceneNumber={sceneNumber} />;
+    return (
+      <PreviewElement
+        element={element}
+        sceneNumber={sceneNumber}
+        leadingLines={item.leadingLines}
+      />
+    );
   }
 
   return (
     <div
       className={`preview-element preview-${item.kind.replace('_', '-')}`}
       data-source-from={item.range?.from}
+      style={{ marginTop: `${item.leadingLines * 16}px` }}
     >
       {sceneNumber !== undefined ? <SceneNumbers number={sceneNumber} /> : null}
       {item.lines.join('\n')}
@@ -178,9 +191,6 @@ export const Preview = memo(function Preview({
   externalOffset,
   onScrollOffset,
   onSyncScrollChange,
-  onShowStatistics,
-  onShowBrainstorm,
-  onClose,
 }: PreviewProps) {
   const { t } = useTranslator();
   const paneRef = useRef<HTMLElement | null>(null);
@@ -320,14 +330,7 @@ export const Preview = memo(function Preview({
 
   return (
     <section className="preview-pane" ref={paneRef} aria-label={t('preview.title')}>
-      <header className="panel-header">
-        <span>{t('preview.title')}</span>
-        <button type="button" className="panel-tab-button" onClick={onShowBrainstorm}>
-          {t('ai.chat.title')}
-        </button>
-        <button type="button" className="panel-tab-button" onClick={onShowStatistics}>
-          {t('stats.title')}
-        </button>
+      <div className="preview-options">
         <label className="panel-checkbox">
           <input
             type="checkbox"
@@ -336,15 +339,7 @@ export const Preview = memo(function Preview({
           />
           {t('preview.syncScroll')}
         </label>
-        <button
-          type="button"
-          className="panel-close"
-          aria-label={t('preview.close')}
-          onClick={onClose}
-        >
-          ×
-        </button>
-      </header>
+      </div>
       <div className="preview-scroll" ref={scrollRef} onScroll={handleScroll}>
         {!analysis ? (
           <div className="panel-placeholder">{t('preview.loading')}</div>

@@ -14,7 +14,11 @@ interface FileCommandsOptions {
   openPaths: (paths: string[]) => Promise<void>;
   onExportPdf: () => void;
   onOpenAiSettings: () => void;
-  onOpenBrainstorm: () => void;
+  onOpenInconsistencies: () => void;
+  onRewrite: () => void;
+  onSynonyms: () => void;
+  onRenameCharacter: () => void;
+  onRenumberScenes: () => void;
   onToggleTimeline: () => void;
   onCommandPalette: () => void;
   patchSettings: (patch: Partial<AppSettings>) => Promise<void>;
@@ -32,7 +36,11 @@ export function useFileCommands({
   openPaths,
   onExportPdf,
   onOpenAiSettings,
-  onOpenBrainstorm,
+  onOpenInconsistencies,
+  onRewrite,
+  onSynonyms,
+  onRenameCharacter,
+  onRenumberScenes,
   onToggleTimeline,
   onCommandPalette,
   patchSettings,
@@ -74,10 +82,15 @@ export function useFileCommands({
         'view.toggleFocus': () => void patchSettings({ focusMode: !store().settings.focusMode }),
         'view.toggleTypewriter': () =>
           void patchSettings({ typewriterMode: !store().settings.typewriterMode }),
+        'view.toggleFormattedMode': () =>
+          void patchSettings({ formattedMode: !store().settings.formattedMode }),
         'view.commandPalette': onCommandPalette,
-        'ai.openBrainstorm': onOpenBrainstorm,
         'ai.openSettings': onOpenAiSettings,
-        'scene.renumber': () => setStatus(t('status.renumberPlanned')),
+        'ai.synonyms': onSynonyms,
+        'ai.rewrite': onRewrite,
+        'ai.renameCharacter': onRenameCharacter,
+        'ai.openInconsistencies': onOpenInconsistencies,
+        'scene.renumber': onRenumberScenes,
         'help.about': () => setStatus(t('status.about', { app: t('app.name'), version: '0.1.0' })),
       } satisfies Record<MenuCommand, () => void>;
 
@@ -89,7 +102,11 @@ export function useFileCommands({
       onCommandPalette,
       onExportPdf,
       onOpenAiSettings,
-      onOpenBrainstorm,
+      onOpenInconsistencies,
+      onRewrite,
+      onSynonyms,
+      onRenameCharacter,
+      onRenumberScenes,
       onToggleTimeline,
       openDialog,
       patchSettings,

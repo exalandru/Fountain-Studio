@@ -15,7 +15,7 @@ import {
 } from '@codemirror/view';
 import { fountainCompletion } from './autocomplete.js';
 import { fountainFolding } from './folding.js';
-import { fountainHighlight, setVisibility } from './fountain-highlight.js';
+import { fountainHighlight, fountainLexField, setVisibility } from './fountain-highlight.js';
 import { darkTheme, lightTheme } from './theme.js';
 
 /**
@@ -38,9 +38,11 @@ export interface EditorProps {
   showSections: boolean;
   showSceneNumbers: boolean;
   typewriterMode: boolean;
+  formattedMode: boolean;
   completionIndex: CompletionIndex;
   onChange: (content: string) => void;
   onCursorOffset?: (offset: number) => void;
+  onSelectionRange?: (range: { from: number; to: number }) => void;
   onScrollOffset?: (offset: number) => void;
   externalScrollOffset?: number | null;
   onViewReady?: (view: EditorView | null) => void;
@@ -57,9 +59,11 @@ function EditorComponent({
   showSections,
   showSceneNumbers,
   typewriterMode,
+  formattedMode,
   completionIndex,
   onChange,
   onCursorOffset,
+  onSelectionRange,
   onScrollOffset,
   externalScrollOffset,
   onViewReady,
@@ -73,6 +77,7 @@ function EditorComponent({
   // the editor only emits a change after user interaction, well after effects have run.
   const onChangeRef = useRef(onChange);
   const onCursorRef = useRef(onCursorOffset);
+  const onSelectionRef = useRef(onSelectionRange);
   const onScrollRef = useRef(onScrollOffset);
   const suppressScroll = useRef(false);
   const typewriterRef = useRef(typewriterMode);
@@ -83,6 +88,9 @@ function EditorComponent({
   useEffect(() => {
     onCursorRef.current = onCursorOffset;
   }, [onCursorOffset]);
+  useEffect(() => {
+    onSelectionRef.current = onSelectionRange;
+  }, [onSelectionRange]);
   useEffect(() => {
     onScrollRef.current = onScrollOffset;
   }, [onScrollOffset]);
@@ -132,6 +140,44 @@ function EditorComponent({
           autocorrect: 'off',
           autocapitalize: 'off',
         }),
+        EditorView.domEventHandlers({
+          contextmenu(event, currentView) {
+            const position = currentView.posAtCoords({ x: event.clientX, y: event.clientY });
+            if (position === null) return false;
+            const line = currentView.state.doc.lineAt(position);
+            const analysed = currentView.state.field(fountainLexField).lines[line.number - 1];
+            if (analysed?.kind === 'character' && analysed.character) {
+              const index = analysed.raw
+                .toLocaleUpperCase('fr-FR')
+                .indexOf(analysed.character.toLocaleUpperCase('fr-FR'));
+              if (index >= 0) {
+                currentView.dispatch({
+                  selection: {
+                    anchor: analysed.from + index,
+                    head: analysed.from + index + analysed.character.length,
+                  },
+                });
+              }
+              return false;
+            }
+
+            const selection = currentView.state.selection.main;
+            if (position >= selection.from && position <= selection.to && !selection.empty) {
+              return false;
+            }
+            const wordCharacter = /[\p{L}\p{N}_'’-]/u;
+            let from = position;
+            let to = position;
+            while (
+              from > line.from &&
+              wordCharacter.test(currentView.state.sliceDoc(from - 1, from))
+            )
+              from--;
+            while (to < line.to && wordCharacter.test(currentView.state.sliceDoc(to, to + 1))) to++;
+            if (to > from) currentView.dispatch({ selection: { anchor: from, head: to } });
+            return false;
+          },
+        }),
         fountainHighlight(),
         fountainFolding(),
         completionCompartment.current.of(fountainCompletion(completionIndex)),
@@ -140,6 +186,10 @@ function EditorComponent({
           if (update.docChanged) onChangeRef.current(update.state.doc.toString());
           if (update.docChanged || update.selectionSet) {
             onCursorRef.current?.(update.state.selection.main.head);
+            onSelectionRef.current?.({
+              from: update.state.selection.main.from,
+              to: update.state.selection.main.to,
+            });
             const pointerSelection = update.transactions.some((transaction) =>
               transaction.isUserEvent('select.pointer'),
             );
@@ -164,6 +214,10 @@ function EditorComponent({
     view.current = instance;
     onViewReady?.(instance);
     onCursorRef.current?.(instance.state.selection.main.head);
+    onSelectionRef.current?.({
+      from: instance.state.selection.main.from,
+      to: instance.state.selection.main.to,
+    });
 
     let frame = 0;
     const handleScroll = () => {
@@ -214,9 +268,10 @@ function EditorComponent({
         showSynopses,
         showSections,
         showSceneNumbers,
+        formattedMode,
       }),
     });
-  }, [showBoneyard, showNotes, showSceneNumbers, showSections, showSynopses]);
+  }, [formattedMode, showBoneyard, showNotes, showSceneNumbers, showSections, showSynopses]);
 
   useEffect(() => {
     const instance = view.current;
@@ -254,6 +309,7 @@ export const Editor = memo(
     previous.showSections === next.showSections &&
     previous.showSceneNumbers === next.showSceneNumbers &&
     previous.typewriterMode === next.typewriterMode &&
+    previous.formattedMode === next.formattedMode &&
     previous.completionIndex === next.completionIndex &&
     previous.externalScrollOffset === next.externalScrollOffset &&
     previous.onChange === next.onChange &&

@@ -13,6 +13,7 @@ type ToolbarIconName =
   | 'comments'
   | 'notes'
   | 'synopses'
+  | 'formatted'
   | 'system'
   | 'light'
   | 'dark'
@@ -72,6 +73,14 @@ function ToolbarIcon({ name }: { name: ToolbarIconName }) {
         <>
           <path d="M5 4h14v16H5z" />
           <path d="M8 8h8M8 12h8M8 16h5" />
+        </>
+      );
+      break;
+    case 'formatted':
+      path = (
+        <>
+          <path d="M5 4h14M8 4v16M5 20h6" />
+          <path d="M14 10h6M17 7v6" />
         </>
       );
       break;
@@ -221,6 +230,12 @@ export function TopToolbar({ settings, t, onSettingsChange }: TopToolbarProps) {
           label={t('menu.view.showSynopses')}
           active={settings.showSynopses}
           onClick={() => onSettingsChange({ showSynopses: !settings.showSynopses })}
+        />
+        <ToolbarButton
+          icon="formatted"
+          label={t('menu.view.formattedMode')}
+          active={settings.formattedMode}
+          onClick={() => onSettingsChange({ formattedMode: !settings.formattedMode })}
         />
       </div>
 

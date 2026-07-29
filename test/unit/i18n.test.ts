@@ -52,6 +52,7 @@ describe('catalogues', () => {
       'sidebar.locationMixed',
       'sidebar.syntax.action',
       'sidebar.syntax.transition',
+      'rightPanel.statistics',
       'stats.action',
       'stats.dialogue',
       'stats.minutes',

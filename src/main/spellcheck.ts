@@ -27,6 +27,13 @@ export function installSpellcheckContextMenu(window: BrowserWindow): void {
     void (async () => {
       const { t } = await getTranslator();
       const suggestions = params.dictionarySuggestions.slice(0, 6);
+      const selected = params.selectionText.trim();
+      const singleWord = /^[\p{L}\p{N}_'’-]+$/u.test(selected);
+      const characterLike =
+        selected.length > 0 &&
+        selected.length <= 120 &&
+        /\p{L}/u.test(selected) &&
+        selected === selected.toLocaleUpperCase('fr-FR');
       const template: MenuItemConstructorOptions[] = [];
 
       if (params.misspelledWord) {
@@ -52,6 +59,22 @@ export function installSpellcheckContextMenu(window: BrowserWindow): void {
       }
 
       template.push(
+        {
+          label: t('menu.ai.synonyms'),
+          enabled: singleWord,
+          click: () => window.webContents.send('menu:command', { command: 'ai.synonyms' }),
+        },
+        {
+          label: t('menu.ai.rewrite'),
+          enabled: selected.length > 0 && !singleWord,
+          click: () => window.webContents.send('menu:command', { command: 'ai.rewrite' }),
+        },
+        {
+          label: t('menu.ai.renameCharacter'),
+          enabled: characterLike,
+          click: () => window.webContents.send('menu:command', { command: 'ai.renameCharacter' }),
+        },
+        { type: 'separator' },
         { role: 'undo', label: t('menu.edit.undo'), enabled: params.editFlags.canUndo },
         { role: 'redo', label: t('menu.edit.redo'), enabled: params.editFlags.canRedo },
         { type: 'separator' },

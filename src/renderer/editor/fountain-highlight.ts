@@ -3,7 +3,7 @@ import type { EditorState, Extension, Range } from '@codemirror/state';
 import { Decoration, EditorView, ViewPlugin } from '@codemirror/view';
 import type { DecorationSet, ViewUpdate } from '@codemirror/view';
 import type { EditorAnalysis, LexedLine } from '@shared/fountain/index.js';
-import { analyzeForEditor, parseInline } from '@shared/fountain/index.js';
+import { analyzeForEditor, inlineMarkerRanges, parseInline } from '@shared/fountain/index.js';
 
 /**
  * Fountain syntax highlighting.
@@ -22,6 +22,7 @@ export interface VisibilityOptions {
   showSynopses: boolean;
   showSections: boolean;
   showSceneNumbers: boolean;
+  formattedMode: boolean;
 }
 
 export const setVisibility = StateEffect.define<VisibilityOptions>();
@@ -33,6 +34,7 @@ export const visibilityField = StateField.define<VisibilityOptions>({
     showSynopses: true,
     showSections: true,
     showSceneNumbers: true,
+    formattedMode: false,
   }),
   update(value, transaction) {
     for (const effect of transaction.effects) {
@@ -100,6 +102,7 @@ const NOTE = Decoration.mark({ class: 'cm-fountain-note' });
 const BONEYARD = Decoration.mark({ class: 'cm-fountain-boneyard' });
 const HIDDEN = Decoration.replace({});
 const HIDDEN_LINE = Decoration.replace({ block: true });
+const HIDDEN_SYNTAX = Decoration.replace({});
 
 function buildHiddenLines(state: EditorState): DecorationSet {
   const { lines } = state.field(fountainLexField);
@@ -182,6 +185,7 @@ function buildDecorations(view: EditorView): DecorationSet {
       ) {
         collectEmphasis(view.state, line, collected);
       }
+      if (visibility.formattedMode) collectHiddenSyntax(line, collected);
     }
   }
 
@@ -238,6 +242,41 @@ function collectEmphasis(state: EditorState, line: LexedLine, out: Array<Range<D
                   ? ITALIC
                   : UNDERLINE;
     out.push(decoration.range(span.from, span.to));
+  }
+}
+
+function collectHiddenSyntax(line: LexedLine, out: Array<Range<Decoration>>): void {
+  const leading = line.raw.search(/\S/);
+  if (leading < 0) return;
+  const trimmed = line.raw.trim();
+  const start = line.from + leading;
+  const hide = (from: number, to: number) => {
+    if (to > from) out.push(HIDDEN_SYNTAX.range(from, to));
+  };
+
+  if (line.kind === 'section') {
+    hide(start, start + (line.depth ?? 1));
+  } else if (line.kind === 'synopsis' || line.forced) {
+    hide(start, start + 1);
+    if (line.kind === 'centered' && trimmed.endsWith('<')) {
+      const end = line.from + line.raw.trimEnd().length;
+      hide(end - 1, end);
+    }
+  }
+
+  if (line.kind === 'character' && line.dual) {
+    const dual = line.raw.lastIndexOf('^');
+    if (dual >= 0) hide(line.from + dual, line.from + dual + 1);
+  }
+  if (line.kind === 'scene_heading') {
+    const sceneNumber = /(?:\s*)#[^#\n]+#\s*$/.exec(line.raw);
+    if (sceneNumber) hide(line.from + sceneNumber.index, line.to);
+  }
+
+  const textAt = line.raw.indexOf(line.text);
+  if (textAt < 0) return;
+  for (const range of inlineMarkerRanges(line.text, line.from + textAt)) {
+    hide(range.from, range.to);
   }
 }
 

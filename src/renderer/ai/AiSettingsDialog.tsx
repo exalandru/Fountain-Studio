@@ -1,10 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { AiConfig, AiConfigView, AiConnectionProfile, AiKeyUpdate } from '@shared/ai/index.js';
-import {
-  DEFAULT_AI_PROFILE,
-  DEFAULT_BRAINSTORMING_PROMPT,
-  sanitizeAiConfig,
-} from '@shared/ai/index.js';
+import { DEFAULT_AI_PROFILE, sanitizeAiConfig } from '@shared/ai/index.js';
 import { useTranslator } from '../hooks/useTranslator.js';
 
 interface AiSettingsDialogProps {
@@ -71,7 +67,7 @@ export function AiSettingsDialog({ onClose, onSaved }: AiSettingsDialogProps) {
           }
         : current,
     );
-    setModels([]);
+    if (key === 'baseUrl') setModels([]);
     setFeedback(null);
   };
 
@@ -243,20 +239,26 @@ export function AiSettingsDialog({ onClose, onSaved }: AiSettingsDialogProps) {
                   onChange={(event) => patchProfile('baseUrl', event.target.value)}
                 />
               </label>
-              <label>
-                <span>{t('ai.settings.model')}</span>
-                <input
-                  list="ai-models"
-                  value={activeProfile.model}
-                  maxLength={200}
-                  onChange={(event) => patchProfile('model', event.target.value)}
-                />
-                <datalist id="ai-models">
-                  {models.map((model) => (
-                    <option key={model} value={model} />
-                  ))}
-                </datalist>
-              </label>
+              <fieldset className="ai-model-field">
+                <legend>{t('ai.settings.model')}</legend>
+                {models.length > 0 ? (
+                  <div className="ai-model-picker">
+                    {models.map((model) => (
+                      <label key={model}>
+                        <input
+                          type="radio"
+                          name="ai-model"
+                          checked={activeProfile.model === model}
+                          onChange={() => patchProfile('model', model)}
+                        />
+                        <span>{model}</span>
+                      </label>
+                    ))}
+                  </div>
+                ) : (
+                  <output>{activeProfile.model || t('ai.settings.noModel')}</output>
+                )}
+              </fieldset>
               <label>
                 <span>
                   {t('ai.settings.apiKey')}
@@ -337,25 +339,6 @@ export function AiSettingsDialog({ onClose, onSaved }: AiSettingsDialogProps) {
                 />
                 <span>{t('ai.settings.disableReasoning')}</span>
               </label>
-              <label>
-                <span>{t('ai.settings.systemPrompt')}</span>
-                <textarea
-                  rows={8}
-                  maxLength={20_000}
-                  value={config.brainstormingPrompt}
-                  onChange={(event) =>
-                    setConfig({ ...config, brainstormingPrompt: event.target.value })
-                  }
-                />
-              </label>
-              <button
-                type="button"
-                onClick={() =>
-                  setConfig({ ...config, brainstormingPrompt: DEFAULT_BRAINSTORMING_PROMPT })
-                }
-              >
-                {t('ai.settings.resetPrompt')}
-              </button>
             </details>
 
             {!view.secureStorageAvailable ? (

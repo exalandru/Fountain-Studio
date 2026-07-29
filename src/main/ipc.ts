@@ -237,6 +237,14 @@ function validateRequest<C extends IpcChannel>(channel: C, value: unknown): IpcR
         typeof record['systemPrompt'] === 'string' &&
         record['systemPrompt'].length > 0 &&
         record['systemPrompt'].length <= 20_000 &&
+        (record['temperature'] === undefined ||
+          (typeof record['temperature'] === 'number' &&
+            Number.isFinite(record['temperature']) &&
+            record['temperature'] >= 0 &&
+            record['temperature'] <= 2)) &&
+        (record['reasoning'] === undefined ||
+          record['reasoning'] === 'profile' ||
+          record['reasoning'] === 'disabled') &&
         validAiMessages(record['messages']);
       break;
     case 'ai:chat:cancel':

@@ -16,7 +16,7 @@ export type {
 } from './ast.js';
 export { TIMES_OF_DAY, TITLE_PAGE_KEYS } from './ast.js';
 
-export { parseInline, stripEmphasis } from './inline.js';
+export { inlineMarkerRanges, parseInline, stripEmphasis } from './inline.js';
 export { maskAnnotations } from './mask.js';
 export type { MaskResult } from './mask.js';
 export { isUpperCase, lexDocument, splitCharacter, splitLines } from './lexer.js';

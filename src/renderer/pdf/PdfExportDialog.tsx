@@ -9,10 +9,10 @@ if (!GlobalWorkerOptions.workerPort) GlobalWorkerOptions.workerPort = new PdfJsW
 
 const DEFAULT_OPTIONS: PdfExportOptions = {
   format: 'a4',
-  sceneNumbers: 'none',
+  sceneNumbers: 'both',
   includeNotes: false,
   includeSynopses: false,
-  headingsBold: false,
+  headingsBold: true,
   watermark: '',
   pageFrom: null,
   pageTo: null,

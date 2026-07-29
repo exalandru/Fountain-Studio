@@ -5,6 +5,7 @@ import { getAiApiKey, resolveAiProfile } from './settings.js';
 
 const requests = new Map<string, AbortController>();
 const reasoningCompatibility = new Map<string, boolean>();
+const nonReasoningCompatibility = new Map<string, boolean>();
 
 class HttpError extends Error {
   constructor(
@@ -247,14 +248,25 @@ async function chatResponse(
   request: AiChatRequest,
   controller: AbortController,
   reasoning: boolean,
+  disableReasoning: boolean,
 ): Promise<Response> {
   const body: Record<string, unknown> = {
     model: profile.model,
-    messages: [{ role: 'system', content: request.systemPrompt }, ...request.messages],
-    temperature: modeTemperature(request.mode),
+    messages: [
+      {
+        role: 'system',
+        content: disableReasoning ? `${request.systemPrompt}\n/no_think` : request.systemPrompt,
+      },
+      ...request.messages,
+    ],
+    temperature: request.temperature ?? modeTemperature(request.mode),
     max_tokens: profile.maxTokens,
     stream: true,
   };
+  if (disableReasoning) {
+    body['reasoning_effort'] = 'none';
+    body['chat_template_kwargs'] = { enable_thinking: false };
+  }
   if (reasoning) body['reasoning_effort'] = 'high';
   return fetchWithTimeout(
     endpoint(profile.baseUrl, '/v1/chat/completions'),
@@ -274,12 +286,34 @@ export function startAiChat(window: BrowserWindow, request: AiChatRequest): void
       const profile = await resolveAiProfile(request.profileId);
       const apiKey = await getAiApiKey(profile.id);
       const compatibility = reasoningCompatibility.get(profile.baseUrl);
-      let useReasoning = profile.reasoningEnabled && compatibility !== false;
-      let response = await chatResponse(profile, apiKey, request, controller, useReasoning);
+      let useReasoning =
+        request.reasoning !== 'disabled' && profile.reasoningEnabled && compatibility !== false;
+      let disableReasoning =
+        request.reasoning === 'disabled' &&
+        nonReasoningCompatibility.get(profile.baseUrl) !== false;
+      let response = await chatResponse(
+        profile,
+        apiKey,
+        request,
+        controller,
+        useReasoning,
+        disableReasoning,
+      );
       if (response.status === 400 && useReasoning) {
         reasoningCompatibility.set(profile.baseUrl, false);
         useReasoning = false;
-        response = await chatResponse(profile, apiKey, request, controller, false);
+        response = await chatResponse(
+          profile,
+          apiKey,
+          request,
+          controller,
+          false,
+          disableReasoning,
+        );
+      } else if (response.status === 400 && disableReasoning) {
+        nonReasoningCompatibility.set(profile.baseUrl, false);
+        disableReasoning = false;
+        response = await chatResponse(profile, apiKey, request, controller, false, false);
       }
       if (!response.ok) await responseError(response);
 

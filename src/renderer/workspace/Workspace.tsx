@@ -1,13 +1,13 @@
 import type { AppSettings } from '@shared/ipc-contract.js';
 import type { ParseResponse } from '@shared/analysis/index.js';
-import type { BrainstormState } from '@shared/appdata/index.js';
-import type { AiAttachment, AiAttachmentKind } from '@shared/ai/index.js';
+import type { InconsistencyState, RightPanelTab } from '@shared/appdata/index.js';
 import type { Translator } from '@shared/i18n/index.js';
-import { BrainstormPanel } from '../ai/BrainstormPanel.js';
+import { InconsistencyPanel } from '../ai/InconsistencyPanel.js';
 import type { OpenDocument } from '../store/documents.js';
 import { Editor } from '../editor/Editor.js';
 import { Preview } from '../preview/index.js';
 import { Sidebar } from '../sidebar/index.js';
+import { SyntaxMemo } from '../sidebar/SyntaxMemo.js';
 import { StatsPanel } from '../stats/index.js';
 import { Timeline } from '../timeline/index.js';
 import { ResizeHandle } from '../ui/ResizeHandle.js';
@@ -38,18 +38,18 @@ interface WorkspaceProps {
   onSettingsChange: (patch: Partial<AppSettings>) => void;
   onEditorChange: (content: string) => void;
   onCursorOffset: (offset: number) => void;
+  onSelectionRange: (range: { from: number; to: number }) => void;
   onEditorScroll: (offset: number) => void;
   onPreviewScroll: (offset: number) => void;
   onViewReady: EditorParameters['onViewReady'];
   onResizePreview: (width: number) => void;
   onPreviewSync: (enabled: boolean) => void;
-  onRightPanelTab: (tab: 'preview' | 'statistics' | 'brainstorm') => void;
-  brainstormSettingsRevision: number;
-  onBrainstormState: (state: BrainstormState) => void;
-  onCreateAiAttachment: (kind: AiAttachmentKind) => AiAttachment | null;
-  onAiInsert: (content: string) => void;
-  onAiNote: (content: string) => void;
-  onOpenAiSettings: () => void;
+  onRightPanelTab: (tab: RightPanelTab) => void;
+  formattingActive: { bold: boolean; italic: boolean; underline: boolean };
+  onFormatSelection: (marker: '*' | '**' | '_') => void;
+  onInconsistencyState: (state: InconsistencyState) => void;
+  getEditorSelection: () => string;
+  onSelectInconsistencyReference: (reference: { sceneNumber: string; heading: string }) => void;
   onExportStats: (format: 'csv' | 'json') => void;
   onMinutesPerPage: (value: number) => void;
   onClosePreview: () => void;
@@ -87,18 +87,18 @@ export function Workspace({
   onSettingsChange,
   onEditorChange,
   onCursorOffset,
+  onSelectionRange,
   onEditorScroll,
   onPreviewScroll,
   onViewReady,
   onResizePreview,
   onPreviewSync,
   onRightPanelTab,
-  brainstormSettingsRevision,
-  onBrainstormState,
-  onCreateAiAttachment,
-  onAiInsert,
-  onAiNote,
-  onOpenAiSettings,
+  formattingActive,
+  onFormatSelection,
+  onInconsistencyState,
+  getEditorSelection,
+  onSelectInconsistencyReference,
   onExportStats,
   onMinutesPerPage,
   onClosePreview,
@@ -246,6 +246,7 @@ export function Workspace({
                   showSections={settings.showSections}
                   showSceneNumbers={settings.showSceneNumbers}
                   typewriterMode={settings.typewriterMode}
+                  formattedMode={settings.formattedMode}
                   completionIndex={analysis?.completions ?? EMPTY_COMPLETIONS}
                   externalScrollOffset={
                     active.appData.preview.syncScroll &&
@@ -255,9 +256,48 @@ export function Workspace({
                   }
                   onChange={onEditorChange}
                   onCursorOffset={onCursorOffset}
+                  onSelectionRange={onSelectionRange}
                   onScrollOffset={onEditorScroll}
                   onViewReady={onViewReady}
                 />
+                {settings.formattedMode ? (
+                  <div
+                    className="formatting-toolbar"
+                    role="toolbar"
+                    aria-label={t('formatting.title')}
+                  >
+                    <button
+                      type="button"
+                      className={formattingActive.bold ? 'is-active' : ''}
+                      aria-pressed={formattingActive.bold}
+                      aria-label={t('formatting.bold')}
+                      title={t('formatting.bold')}
+                      onClick={() => onFormatSelection('**')}
+                    >
+                      <strong>B</strong>
+                    </button>
+                    <button
+                      type="button"
+                      className={formattingActive.italic ? 'is-active' : ''}
+                      aria-pressed={formattingActive.italic}
+                      aria-label={t('formatting.italic')}
+                      title={t('formatting.italic')}
+                      onClick={() => onFormatSelection('*')}
+                    >
+                      <em>I</em>
+                    </button>
+                    <button
+                      type="button"
+                      className={formattingActive.underline ? 'is-active' : ''}
+                      aria-pressed={formattingActive.underline}
+                      aria-label={t('formatting.underline')}
+                      title={t('formatting.underline')}
+                      onClick={() => onFormatSelection('_')}
+                    >
+                      <u>U</u>
+                    </button>
+                  </div>
+                ) : null}
               </div>
 
               {active.appData.preview.visible ? (
@@ -273,47 +313,104 @@ export function Workspace({
                     className="workspace-preview"
                     style={{ width: active.appData.preview.width }}
                   >
-                    {active.appData.preview.activeTab === 'brainstorm' ? (
-                      <BrainstormPanel
-                        state={active.appData.brainstorm}
-                        settingsRevision={brainstormSettingsRevision}
-                        t={t}
-                        createAttachment={onCreateAiAttachment}
-                        onStateChange={onBrainstormState}
-                        onInsert={onAiInsert}
-                        onNote={onAiNote}
-                        onShowPreview={() => onRightPanelTab('preview')}
-                        onShowStatistics={() => onRightPanelTab('statistics')}
-                        onOpenSettings={onOpenAiSettings}
-                        onClose={onClosePreview}
-                      />
-                    ) : active.appData.preview.activeTab === 'statistics' ? (
-                      <StatsPanel
-                        statistics={analysis?.statistics ?? null}
-                        minutesPerPage={settings.minutesPerPage}
-                        onShowPreview={() => onRightPanelTab('preview')}
-                        onShowBrainstorm={() => onRightPanelTab('brainstorm')}
-                        onExport={onExportStats}
-                        onMinutesPerPage={onMinutesPerPage}
-                        onClose={onClosePreview}
-                      />
-                    ) : (
-                      <Preview
-                        analysis={analysis}
-                        syncScroll={active.appData.preview.syncScroll}
-                        showSceneNumbers={settings.showSceneNumbers}
-                        externalOffset={
-                          editorScrollPosition.documentId === active.id
-                            ? editorScrollPosition.offset
-                            : null
-                        }
-                        onScrollOffset={onPreviewScroll}
-                        onSyncScrollChange={onPreviewSync}
-                        onShowStatistics={() => onRightPanelTab('statistics')}
-                        onShowBrainstorm={() => onRightPanelTab('brainstorm')}
-                        onClose={onClosePreview}
-                      />
-                    )}
+                    <aside className="right-sidebar" aria-label={t('rightPanel.title')}>
+                      <header className="right-panel-header">
+                        <div className="right-panel-tabs" role="tablist">
+                          {(['statistics', 'preview', 'ai', 'syntax'] as const).map(
+                            (tab, index, tabs) => (
+                              <button
+                                type="button"
+                                role="tab"
+                                id={`right-panel-tab-${tab}`}
+                                aria-controls="right-panel-content"
+                                aria-selected={active.appData.preview.activeTab === tab}
+                                tabIndex={active.appData.preview.activeTab === tab ? 0 : -1}
+                                className={`right-panel-tab${
+                                  active.appData.preview.activeTab === tab ? ' active' : ''
+                                }`}
+                                key={tab}
+                                onClick={() => onRightPanelTab(tab)}
+                                onKeyDown={(event) => {
+                                  const nextIndex =
+                                    event.key === 'ArrowRight'
+                                      ? (index + 1) % tabs.length
+                                      : event.key === 'ArrowLeft'
+                                        ? (index - 1 + tabs.length) % tabs.length
+                                        : event.key === 'Home'
+                                          ? 0
+                                          : event.key === 'End'
+                                            ? tabs.length - 1
+                                            : -1;
+                                  const next = tabs[nextIndex];
+                                  if (nextIndex >= 0 && next) {
+                                    event.preventDefault();
+                                    onRightPanelTab(next);
+                                    const buttons =
+                                      event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>(
+                                        '[role="tab"]',
+                                      );
+                                    buttons?.[nextIndex]?.focus();
+                                  }
+                                }}
+                              >
+                                {t(`rightPanel.${tab}`)}
+                              </button>
+                            ),
+                          )}
+                        </div>
+                        <button
+                          type="button"
+                          className="panel-close"
+                          aria-label={t('preview.close')}
+                          onClick={onClosePreview}
+                        >
+                          ×
+                        </button>
+                      </header>
+                      <div
+                        className="right-panel-content"
+                        role="tabpanel"
+                        id="right-panel-content"
+                        aria-labelledby={`right-panel-tab-${active.appData.preview.activeTab}`}
+                      >
+                        {active.appData.preview.activeTab === 'ai' ? (
+                          <InconsistencyPanel
+                            screenplay={active.content}
+                            analysis={analysis}
+                            activeSceneId={activeSceneId}
+                            state={active.appData.inconsistencies}
+                            t={t}
+                            getSelection={getEditorSelection}
+                            onStateChange={onInconsistencyState}
+                            onSelectReference={onSelectInconsistencyReference}
+                          />
+                        ) : active.appData.preview.activeTab === 'statistics' ? (
+                          <StatsPanel
+                            statistics={analysis?.statistics ?? null}
+                            minutesPerPage={settings.minutesPerPage}
+                            onExport={onExportStats}
+                            onMinutesPerPage={onMinutesPerPage}
+                          />
+                        ) : active.appData.preview.activeTab === 'syntax' ? (
+                          <div className="right-panel-memo">
+                            <SyntaxMemo />
+                          </div>
+                        ) : (
+                          <Preview
+                            analysis={analysis}
+                            syncScroll={active.appData.preview.syncScroll}
+                            showSceneNumbers={settings.showSceneNumbers}
+                            externalOffset={
+                              editorScrollPosition.documentId === active.id
+                                ? editorScrollPosition.offset
+                                : null
+                            }
+                            onScrollOffset={onPreviewScroll}
+                            onSyncScrollChange={onPreviewSync}
+                          />
+                        )}
+                      </div>
+                    </aside>
                   </div>
                 </>
               ) : null}

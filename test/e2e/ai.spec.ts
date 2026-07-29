@@ -67,6 +67,109 @@ const server = createServer((request, response) => {
       typeof (lastMessage as { content?: unknown }).content === 'string'
         ? (lastMessage as { content: string }).content
         : '';
+    if (lastContent.includes('Propose jusqu’à dix synonymes')) {
+      response.writeHead(200, { 'content-type': 'text/event-stream' });
+      response.write(
+        `data: ${JSON.stringify({
+          choices: [
+            {
+              delta: {
+                content: JSON.stringify({
+                  suggestions: [
+                    'SECRET',
+                    'MYSTERY',
+                    'HIDDEN',
+                    'PRIVATE',
+                    'COVERT',
+                    'UNKNOWN',
+                    'CLASSIFIED',
+                    'VEILED',
+                    'CONCEALED',
+                    'ARCANE',
+                  ],
+                }),
+              },
+            },
+          ],
+        })}\n\n`,
+      );
+      response.end('data: [DONE]\n\n');
+      return;
+    }
+    if (lastContent.includes('noms alternatifs pour le personnage')) {
+      response.writeHead(200, { 'content-type': 'text/event-stream' });
+      response.write(
+        `data: ${JSON.stringify({
+          choices: [
+            {
+              delta: {
+                content: JSON.stringify({
+                  suggestions: ['EVELYN STONE', 'MAYA VALE', 'NORA BLAKE'],
+                }),
+              },
+            },
+          ],
+        })}\n\n`,
+      );
+      response.end('data: [DONE]\n\n');
+      return;
+    }
+    if (lastContent.includes('Reformule le passage sélectionné')) {
+      response.writeHead(200, {
+        'content-type': 'text/event-stream',
+        'cache-control': 'no-cache',
+      });
+      response.write(
+        `data: ${JSON.stringify({
+          choices: [
+            {
+              delta: {
+                content: JSON.stringify({
+                  variants: ['VARIANT ONE', 'VARIANT TWO', 'VARIANT THREE'],
+                }),
+              },
+            },
+          ],
+        })}\n\n`,
+      );
+      response.end('data: [DONE]\n\n');
+      return;
+    }
+    if (lastContent.includes('Analyse les incohérences')) {
+      response.writeHead(200, {
+        'content-type': 'text/event-stream',
+        'cache-control': 'no-cache',
+      });
+      response.write(
+        `data: ${JSON.stringify({
+          choices: [
+            {
+              delta: {
+                content: JSON.stringify({
+                  items: [
+                    {
+                      type: 'continuity',
+                      severity: 'minor',
+                      description: 'The object changes hands.',
+                      references: [
+                        {
+                          sceneNumber: '1',
+                          heading: 'INT. LAB - NIGHT',
+                          quote: 'SECRET_SCENE_M5',
+                        },
+                      ],
+                      suggestion: 'Keep it in the same hand.',
+                    },
+                  ],
+                }),
+              },
+            },
+          ],
+        })}\n\n`,
+      );
+      response.end('data: [DONE]\n\n');
+      return;
+    }
     if (lastContent.includes('reasoning stream')) {
       response.writeHead(200, {
         'content-type': 'text/event-stream',
@@ -136,7 +239,7 @@ test.beforeAll(async () => {
   screenplay = join(userData, 'ai-story.fountain');
   await writeFile(
     screenplay,
-    'Title: AI story\n\nINT. LAB - NIGHT\n\nSECRET_SCENE_M5 stays off the network by default.\n',
+    'Title: AI story\n\nINT. LAB - NIGHT\n\nALICE\nSECRET_SCENE_M5 stays off the network by default.\n',
     'utf8',
   );
 
@@ -175,11 +278,11 @@ test('configures, tests and falls back on an OpenAI-compatible endpoint securely
   const dialog = page.locator('.ai-settings-dialog');
   await expect(dialog).toBeVisible();
   await dialog.getByLabel('Base URL').fill(baseUrl);
-  await dialog.getByLabel('Model').fill('test-model');
   await dialog.getByLabel('API key').fill('SECRET_API_KEY_M5');
 
   await dialog.getByRole('button', { name: 'List models' }).click();
   await expect(dialog.locator('.ai-feedback')).toContainText('2 models found');
+  await dialog.getByRole('radio', { name: 'test-model' }).check();
   await dialog.getByRole('button', { name: 'Test connection' }).click();
   await expect(dialog.locator('.ai-feedback')).toContainText('Connection successful');
   const connectionTests = requests.filter(
@@ -201,89 +304,93 @@ test('configures, tests and falls back on an OpenAI-compatible endpoint securely
   );
 });
 
-test('streams chat, remembers the reasoning fallback and only sends explicit attachments', async () => {
+test('removes the generic brainstorming mode from the application menu', async () => {
+  const labels = await app.evaluate(({ Menu }) => {
+    const ai = Menu.getApplicationMenu()?.items.find((item) => item.label === 'AI');
+    return ai?.submenu?.items.map((item) => item.label) ?? [];
+  });
+  expect(labels).not.toContain('Brainstorm…');
+});
+
+test('offers fast synonyms, renames a character and persists an inconsistency report', async () => {
   requests = [];
-  await runCommand('ai.openBrainstorm');
-  const panel = page.locator('.brainstorm-pane');
+  const editor = page.locator('.cm-content');
+  await page
+    .locator('.cm-line')
+    .filter({ hasText: 'SECRET_SCENE_M5' })
+    .dblclick({ position: { x: 170, y: 8 } });
+  expect((await page.evaluate(() => window.getSelection()?.toString() ?? '')).trim()).not.toContain(
+    ' ',
+  );
+  await runCommand('ai.synonyms');
+
+  const rewrite = page.locator('.rewrite-popover');
+  await expect(rewrite).toBeVisible();
+  await expect(rewrite.locator('.rewrite-variant')).toHaveCount(10);
+  const synonymRequest = requests.find(({ body }) =>
+    JSON.stringify(body?.['messages']).includes('Propose jusqu’à dix synonymes'),
+  );
+  expect(synonymRequest?.body?.['reasoning_effort']).toBe('none');
+  expect(synonymRequest?.body?.['chat_template_kwargs']).toEqual({ enable_thinking: false });
+  await rewrite.getByText('MYSTERY').click();
+  await expect(editor).toContainText('MYSTERY');
+  await page.keyboard.press('ControlOrMeta+z');
+  await expect(editor).toContainText('SECRET_SCENE_M5');
+
+  await page.locator('.cm-line').filter({ hasText: 'SECRET_SCENE_M5' }).click({ clickCount: 3 });
+  await runCommand('ai.rewrite');
+  await expect(rewrite.locator('.rewrite-variant')).toHaveCount(3);
+  const rewriteRequest = requests.find(({ body }) =>
+    JSON.stringify(body?.['messages']).includes('Reformule le passage sélectionné'),
+  );
+  expect(rewriteRequest?.body?.['chat_template_kwargs']).toEqual({ enable_thinking: false });
+  expect(rewriteRequest?.body?.['reasoning_effort']).toBe('none');
+  await rewrite.getByRole('button', { name: 'Close rewriting' }).click();
+
+  await page.locator('.cm-line').filter({ hasText: 'ALICE' }).click();
+  await runCommand('ai.renameCharacter');
+  const rename = page.locator('.character-name-popover');
+  await expect(rename).toBeVisible();
+  await rename.getByLabel('New name').fill('Eve');
+  await rename.getByRole('button', { name: 'Rename everywhere' }).click();
+  await expect(editor).toContainText('EVE');
+  await page.keyboard.press('ControlOrMeta+z');
+  await expect(editor).toContainText('ALICE');
+
+  await page.locator('.cm-line').filter({ hasText: 'ALICE' }).click();
+  await runCommand('ai.renameCharacter');
+  await rename.getByRole('button', { name: 'Suggest alternative names' }).click();
+  await expect(rename.getByText('EVELYN STONE')).toBeVisible();
+  const nameRequest = requests.find(({ body }) =>
+    JSON.stringify(body?.['messages']).includes('noms alternatifs pour le personnage'),
+  );
+  expect(nameRequest?.body?.['chat_template_kwargs']).toEqual({ enable_thinking: false });
+  expect(nameRequest?.body?.['reasoning_effort']).toBe('none');
+  await rename.getByText('EVELYN STONE').click();
+  await expect(editor).toContainText('EVELYN STONE');
+
+  await runCommand('ai.openInconsistencies');
+  const panel = page.locator('.consistency-pane');
   await expect(panel).toBeVisible();
+  await panel.getByRole('button', { name: 'Analyse' }).click();
+  await expect(panel.locator('.consistency-item')).toContainText('The object changes hands.');
+  await panel.locator('.consistency-item select').selectOption('resolved');
+  await expect(panel.locator('.consistency-item select')).toHaveValue('resolved');
 
-  const composer = panel.getByPlaceholder('Ask about structure, a character, a scene…');
-  await composer.fill('First question without context');
-  await panel.getByRole('button', { name: 'Send' }).click();
-  await expect(panel.locator('.ai-message-assistant').last()).toContainText(
-    'No screenplay content was received.',
-  );
+  await panel.locator('.consistency-reference').click();
+  await expect(page.locator('.cm-activeLine')).toContainText('INT. LAB - NIGHT');
 
-  const firstChats = requests.filter(
-    ({ path, body }) => path === '/v1/chat/completions' && body?.['stream'] === true,
-  );
-  expect(firstChats).toHaveLength(1);
-  expect(firstChats[0]?.body?.['reasoning_effort']).toBeUndefined();
-  expect(JSON.stringify(firstChats)).not.toContain('SECRET_SCENE_M5');
-
-  await panel.getByRole('button', { name: '+ Full screenplay' }).click();
-  await expect(panel.locator('.ai-attachment-chips')).toContainText('Full screenplay');
-  await composer.fill('Second question with the attachment');
-  await panel.getByRole('button', { name: 'Send' }).click();
-  await expect(panel.locator('.ai-message-assistant').last()).toContainText(
-    'The screenplay was explicitly received.',
-  );
-
-  const lastChat = requests
-    .filter(({ path, body }) => path === '/v1/chat/completions' && body?.['stream'] === true)
-    .at(-1);
-  expect(JSON.stringify(lastChat?.body?.['messages'])).toContain('SECRET_SCENE_M5');
-  expect(lastChat?.body?.['reasoning_effort']).toBeUndefined();
-
-  const companion = `${screenplay}.appdata.json`;
   await expect
     .poll(async () => {
+      const companion = `${screenplay}.appdata.json`;
       try {
-        return JSON.parse(await readFile(companion, 'utf8')) as unknown;
+        const data = JSON.parse(await readFile(companion, 'utf8')) as {
+          inconsistencies?: { items?: Array<{ status?: string }> };
+        };
+        return data.inconsistencies?.items?.[0]?.status;
       } catch {
         return null;
       }
     })
-    .toMatchObject({
-      brainstorm: {
-        conversations: [
-          {
-            messages: expect.arrayContaining([
-              expect.objectContaining({
-                role: 'user',
-                attachments: [
-                  expect.objectContaining({ kind: 'script', label: 'Full screenplay' }),
-                ],
-              }),
-            ]),
-          },
-        ],
-      },
-    });
-  expect(await readFile(companion, 'utf8')).not.toContain('SECRET_SCENE_M5');
-
-  await panel.getByRole('button', { name: 'Add as note' }).last().click();
-  await expect(page.locator('.cm-content')).toContainText(
-    'The screenplay was explicitly received.',
-  );
-
-  await composer.fill('reasoning stream');
-  await panel.getByRole('button', { name: 'Send' }).click();
-  await expect(panel.locator('.ai-message-assistant').last()).toContainText(
-    'The model is reasoning…',
-  );
-  await expect(panel.locator('.ai-message-assistant').last()).toContainText('Visible answer');
-
-  await composer.fill('reasoning only');
-  await panel.getByRole('button', { name: 'Send' }).click();
-  await expect(panel.locator('.ai-message-assistant').last()).toContainText(
-    'finished reasoning without a final answer',
-  );
-
-  await composer.fill('slow stream');
-  await panel.getByRole('button', { name: 'Send' }).click();
-  await expect(panel.locator('.ai-message-assistant').last()).toContainText('Partial answer');
-  await panel.getByRole('button', { name: 'Stop' }).click();
-  await expect(panel.getByRole('button', { name: 'Send' })).toBeVisible();
-  await expect(panel.locator('.ai-message-assistant').last()).toContainText('Partial answer');
+    .toBe('resolved');
 });

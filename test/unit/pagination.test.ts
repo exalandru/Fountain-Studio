@@ -28,9 +28,9 @@ ${'word '.repeat(20)}
     const screenplay = parse(paragraphs);
     const pages = paginatePreview(screenplay.elements);
 
-    expect(pages).toHaveLength(2);
+    expect(pages).toHaveLength(3);
     expect(pages[0]?.estimatedLines).toBe(PREVIEW_LINES_PER_PAGE);
-    expect(pages[1]?.elementIndexes).toHaveLength(5);
+    expect(pages[2]?.elementIndexes).toHaveLength(5);
   });
 
   it('honours forced page breaks', () => {
@@ -128,7 +128,9 @@ describe('production screenplay pagination', () => {
 
   it('fits more lines on A4 than Letter', () => {
     const screenplay = parse(
-      Array.from({ length: PAGE_LINES.a4 }, (_, index) => `Action ${index}.`).join('\n\n'),
+      Array.from({ length: Math.floor(PAGE_LINES.a4 / 2) }, (_, index) => `Action ${index}.`).join(
+        '\n\n',
+      ),
     );
 
     expect(paginateScreenplay(screenplay, { format: 'a4' }).pages).toHaveLength(1);

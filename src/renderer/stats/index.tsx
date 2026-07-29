@@ -5,11 +5,8 @@ import { useTranslator } from '../hooks/useTranslator.js';
 interface StatsPanelProps {
   statistics: ScreenplayStatistics | null;
   minutesPerPage: number;
-  onShowPreview: () => void;
-  onShowBrainstorm: () => void;
   onExport: (format: 'csv' | 'json') => void;
   onMinutesPerPage: (value: number) => void;
-  onClose: () => void;
 }
 
 function SplitBar({
@@ -49,33 +46,13 @@ function SplitBar({
 export const StatsPanel = memo(function StatsPanel({
   statistics,
   minutesPerPage,
-  onShowPreview,
-  onShowBrainstorm,
   onExport,
   onMinutesPerPage,
-  onClose,
 }: StatsPanelProps) {
   const { t } = useTranslator();
 
   return (
     <section className="stats-pane" aria-label={t('stats.title')}>
-      <header className="panel-header">
-        <span>{t('stats.title')}</span>
-        <button type="button" className="panel-tab-button" onClick={onShowBrainstorm}>
-          {t('ai.chat.title')}
-        </button>
-        <button type="button" className="panel-tab-button" onClick={onShowPreview}>
-          {t('preview.title')}
-        </button>
-        <button
-          type="button"
-          className="panel-close"
-          aria-label={t('stats.close')}
-          onClick={onClose}
-        >
-          ×
-        </button>
-      </header>
       {!statistics ? (
         <div className="panel-placeholder">{t('stats.loading')}</div>
       ) : (
