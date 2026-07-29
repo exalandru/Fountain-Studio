@@ -52,13 +52,28 @@ export const fr: Catalog = {
   'menu.view.showBoneyard': 'Afficher les commentaires masqués',
   'menu.view.showSynopses': 'Afficher les synopsis',
   'menu.view.showSections': 'Afficher les sections',
+  'menu.view.showTimeline': 'Afficher la timeline',
   'menu.view.increaseFont': 'Agrandir la police',
   'menu.view.decreaseFont': 'Réduire la police',
+  'menu.view.focusMode': 'Mode focus',
+  'menu.view.typewriterMode': 'Mode machine à écrire',
+  'menu.view.theme': 'Thème',
+  'menu.view.themeSystem': 'Suivre le système',
+  'menu.view.themeLight': 'Clair',
+  'menu.view.themeDark': 'Sombre',
+  'menu.view.commandPalette': 'Palette de commandes…',
   'menu.view.fullscreen': 'Plein écran',
   'menu.view.devTools': 'Outils de développement',
 
   // ── Menu : Langue ────────────────────────────────────────────────────────
   'menu.language': 'Langue',
+
+  // ── Correcteur orthographique ────────────────────────────────────────────
+  'spell.language': 'Langue du correcteur',
+  'spell.english': 'Anglais',
+  'spell.french': 'Français',
+  'spell.noSuggestions': 'Aucune suggestion',
+  'spell.addGlobal': 'Ajouter « {word} » au dictionnaire global',
 
   // ── Menu : Fenêtre et Aide ───────────────────────────────────────────────
   'menu.window': 'Fenêtre',
@@ -90,6 +105,9 @@ export const fr: Catalog = {
   'workspace.empty': 'Aucun document ouvert',
   'document.untitled': 'Sans titre',
   'document.recovered': 'Document récupéré',
+  'palette.title': 'Palette de commandes',
+  'palette.search': 'Saisissez une commande…',
+  'palette.empty': 'Aucune commande correspondante.',
 
   // ── Barre d’état ─────────────────────────────────────────────────────────
   'status.scenes': { one: '{count} scène', other: '{count} scènes' },
@@ -146,6 +164,18 @@ export const fr: Catalog = {
   'preview.show': 'Afficher l’aperçu',
   'preview.resize': 'Redimensionner l’aperçu',
 
+  // ── Timeline ─────────────────────────────────────────────────────────────
+  'timeline.title': 'Timeline',
+  'timeline.close': 'Fermer la timeline',
+  'timeline.show': 'Afficher la timeline',
+  'timeline.empty': 'Ajoutez des headings de scène pour construire la timeline.',
+  'timeline.colors': 'Couleurs',
+  'timeline.intExt': 'INT / EXT',
+  'timeline.dayNight': 'Jour / Nuit',
+  'timeline.uniform': 'Largeur uniforme',
+  'timeline.zoom': 'Zoom',
+  'timeline.other': 'Autre',
+
   // ── Statistiques ─────────────────────────────────────────────────────────
   'stats.title': 'Statistiques',
   'stats.close': 'Fermer les statistiques',
@@ -184,6 +214,7 @@ export const fr: Catalog = {
   'pdf.pageTo': 'À la page',
   'pdf.export': 'Exporter…',
   'pdf.cancel': 'Annuler',
+  'pdf.close': 'Fermer l’export PDF',
   'pdf.rendering': 'Génération du PDF…',
   'pdf.renderFailed': 'Impossible de générer le PDF.',
   'pdf.previousPage': 'Page précédente',

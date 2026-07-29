@@ -41,6 +41,16 @@ export async function buildMenu(): Promise<void> {
   const settings = await getSettings();
   const recent = await listRecent();
   const appName = app.name;
+  const applyGlobalSettings = async (patch: Partial<typeof settings>) => {
+    const next = await patchSettings(patch);
+    await buildMenu();
+    if (next.spellcheckLanguage !== settings.spellcheckLanguage) {
+      applySpellCheckerLanguage(next.spellcheckLanguage);
+    }
+    for (const window of BrowserWindow.getAllWindows()) {
+      window.webContents.send('app:settingsChanged', { settings: next });
+    }
+  };
 
   const recentItems: MenuItemConstructorOptions[] =
     recent.length === 0
@@ -65,15 +75,36 @@ export async function buildMenu(): Promise<void> {
     type: 'radio' as const,
     checked: settings.language === locale,
     click: () => {
-      void patchSettings({ language: locale }).then(async (next) => {
-        // Rebuild first so the menu is already translated when the renderer repaints.
-        await buildMenu();
-        applySpellCheckerLanguage(next.language);
-        for (const window of BrowserWindow.getAllWindows()) {
-          window.webContents.send('app:settingsChanged', { settings: next });
-        }
-      });
+      void applyGlobalSettings({ language: locale });
     },
+  }));
+
+  const spellcheckItems: MenuItemConstructorOptions[] = [
+    {
+      label: t('spell.english'),
+      type: 'radio',
+      checked: settings.spellcheckLanguage === 'en-US',
+      click: () => void applyGlobalSettings({ spellcheckLanguage: 'en-US' }),
+    },
+    {
+      label: t('spell.french'),
+      type: 'radio',
+      checked: settings.spellcheckLanguage === 'fr',
+      click: () => void applyGlobalSettings({ spellcheckLanguage: 'fr' }),
+    },
+  ];
+
+  const themeItems: MenuItemConstructorOptions[] = (
+    [
+      ['system', t('menu.view.themeSystem')],
+      ['light', t('menu.view.themeLight')],
+      ['dark', t('menu.view.themeDark')],
+    ] as const
+  ).map(([theme, label]) => ({
+    label,
+    type: 'radio',
+    checked: settings.theme === theme,
+    click: () => void applyGlobalSettings({ theme }),
   }));
 
   const template: MenuItemConstructorOptions[] = [
@@ -146,6 +177,8 @@ export async function buildMenu(): Promise<void> {
         },
         { type: 'separator' },
         { label: t('menu.edit.renumberScenes'), click: () => send('scene.renumber') },
+        { type: 'separator' },
+        { label: t('spell.language'), submenu: spellcheckItems },
       ],
     },
     {
@@ -175,6 +208,11 @@ export async function buildMenu(): Promise<void> {
           checked: settings.showSections,
           click: () => send('view.toggleSections'),
         },
+        {
+          label: t('menu.view.showTimeline'),
+          accelerator: 'CmdOrCtrl+Alt+T',
+          click: () => send('view.toggleTimeline'),
+        },
         { type: 'separator' },
         {
           label: t('menu.view.increaseFont'),
@@ -185,6 +223,27 @@ export async function buildMenu(): Promise<void> {
           label: t('menu.view.decreaseFont'),
           accelerator: 'CmdOrCtrl+-',
           click: () => send('view.decreaseFont'),
+        },
+        { type: 'separator' },
+        {
+          label: t('menu.view.focusMode'),
+          type: 'checkbox',
+          checked: settings.focusMode,
+          accelerator: 'CmdOrCtrl+Shift+F',
+          click: () => send('view.toggleFocus'),
+        },
+        {
+          label: t('menu.view.typewriterMode'),
+          type: 'checkbox',
+          checked: settings.typewriterMode,
+          accelerator: 'CmdOrCtrl+Shift+T',
+          click: () => send('view.toggleTypewriter'),
+        },
+        { label: t('menu.view.theme'), submenu: themeItems },
+        {
+          label: t('menu.view.commandPalette'),
+          accelerator: 'CmdOrCtrl+Shift+P',
+          click: () => send('view.commandPalette'),
         },
         { type: 'separator' },
         { label: t('menu.language'), submenu: languageItems },

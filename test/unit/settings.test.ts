@@ -43,6 +43,9 @@ describe('settings validation', () => {
         showBoneyard: false,
         showSynopses: false,
         showSections: false,
+        focusMode: true,
+        typewriterMode: true,
+        spellcheckLanguage: 'fr',
       }),
     ).toEqual({
       theme: 'dark',
@@ -55,6 +58,9 @@ describe('settings validation', () => {
       showBoneyard: false,
       showSynopses: false,
       showSections: false,
+      focusMode: true,
+      typewriterMode: true,
+      spellcheckLanguage: 'fr',
     });
   });
 });

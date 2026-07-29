@@ -29,10 +29,18 @@ export interface PreviewState {
   activeTab: 'preview' | 'statistics';
 }
 
+export interface TimelineState {
+  visible: boolean;
+  uniformWidth: boolean;
+  colorMode: 'intExt' | 'timeOfDay';
+  zoom: number;
+}
+
 export interface AppData {
   version: typeof APP_DATA_VERSION;
   sidebar: SidebarState;
   preview: PreviewState;
+  timeline: TimelineState;
 }
 
 export const DEFAULT_APP_DATA: Readonly<AppData> = {
@@ -50,6 +58,12 @@ export const DEFAULT_APP_DATA: Readonly<AppData> = {
     syncScroll: false,
     activeTab: 'preview',
   },
+  timeline: {
+    visible: true,
+    uniformWidth: false,
+    colorMode: 'intExt',
+    zoom: 1,
+  },
 };
 
 export function createDefaultAppData(): AppData {
@@ -57,6 +71,7 @@ export function createDefaultAppData(): AppData {
     version: APP_DATA_VERSION,
     sidebar: { ...DEFAULT_APP_DATA.sidebar },
     preview: { ...DEFAULT_APP_DATA.preview },
+    timeline: { ...DEFAULT_APP_DATA.timeline },
   };
 }
 
@@ -88,6 +103,10 @@ export function parseAppData(raw: string): AppData | null {
       typeof root['preview'] === 'object' && root['preview'] !== null
         ? (root['preview'] as Record<string, unknown>)
         : {};
+    const timeline =
+      typeof root['timeline'] === 'object' && root['timeline'] !== null
+        ? (root['timeline'] as Record<string, unknown>)
+        : {};
 
     if (typeof sidebar['visible'] === 'boolean') result.sidebar.visible = sidebar['visible'];
     if (
@@ -112,6 +131,17 @@ export function parseAppData(raw: string): AppData | null {
     }
     if (preview['activeTab'] === 'preview' || preview['activeTab'] === 'statistics') {
       result.preview.activeTab = preview['activeTab'];
+    }
+    if (typeof timeline['visible'] === 'boolean') result.timeline.visible = timeline['visible'];
+    if (typeof timeline['uniformWidth'] === 'boolean') {
+      result.timeline.uniformWidth = timeline['uniformWidth'];
+    }
+    if (timeline['colorMode'] === 'intExt' || timeline['colorMode'] === 'timeOfDay') {
+      result.timeline.colorMode = timeline['colorMode'];
+    }
+    if (typeof timeline['zoom'] === 'number' && Number.isFinite(timeline['zoom'])) {
+      result.timeline.zoom =
+        clamp(timeline['zoom'] * 100, DEFAULT_APP_DATA.timeline.zoom * 100, 50, 250) / 100;
     }
 
     return result;

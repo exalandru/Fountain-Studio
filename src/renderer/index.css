@@ -39,6 +39,7 @@
   --text: #1a1a19;
   --text-muted: #6b6b66;
   --accent: #1b4d7a;
+  --accent-contrast: #fff;
   --warning: #a3541b;
   --scrollbar-track: #e7e4df;
   --scrollbar-thumb: #aaa59d;
@@ -53,6 +54,7 @@ body[data-theme='dark'] {
   --text: #e8e6e3;
   --text-muted: #9a9a94;
   --accent: #7fb2e5;
+  --accent-contrast: #101214;
   --warning: #e0a26b;
   --scrollbar-track: #171719;
   --scrollbar-thumb: #4c4c51;
@@ -104,10 +106,45 @@ body {
   overflow: hidden;
 }
 
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+  }
+}
+
 .app {
   display: grid;
   grid-template-rows: auto 1fr auto;
   height: 100%;
+}
+
+.app.focus-mode .tabbar,
+.app.focus-mode .workspace-sidebar,
+.app.focus-mode .workspace-preview,
+.app.focus-mode .resize-handle,
+.app.focus-mode .panel-launchers,
+.app.focus-mode .timeline-launcher,
+.app.focus-mode .timeline,
+.app.focus-mode .statusbar {
+  display: none;
+}
+
+.app.focus-mode {
+  grid-template-rows: 1fr;
+}
+
+.app.focus-mode .workspace-editor {
+  max-width: 920px;
+  margin: 0 auto;
+  border-right: 1px solid var(--border);
+  border-left: 1px solid var(--border);
 }
 
 /* ── Tabs ────────────────────────────────────────────────────────────────── */
@@ -124,11 +161,19 @@ body {
   border-bottom: 1px solid var(--border);
   -webkit-app-region: drag;
   user-select: none;
+  overflow: hidden;
+}
+
+.tabs {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  min-width: 0;
   overflow-x: auto;
   scrollbar-width: none;
 }
 
-.tabbar::-webkit-scrollbar {
+.tabs::-webkit-scrollbar {
   display: none;
 }
 
@@ -138,12 +183,25 @@ body {
   gap: 6px;
   min-width: 0;
   max-width: 220px;
-  padding: 6px 8px 6px 12px;
+  padding: 0;
   border: 1px solid transparent;
   border-bottom: none;
   border-radius: 7px 7px 0 0;
   color: var(--text-muted);
   cursor: default;
+  -webkit-app-region: no-drag;
+}
+
+.tab-select {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  padding: 6px 4px 6px 12px;
+  overflow: hidden;
+  border: none;
+  background: transparent;
+  color: inherit;
+  text-align: left;
   -webkit-app-region: no-drag;
 }
 
@@ -179,6 +237,10 @@ body {
   -webkit-app-region: no-drag;
 }
 
+.tab-close {
+  margin-right: 6px;
+}
+
 .tab-close:hover,
 .tab-new:hover {
   background: color-mix(in srgb, var(--text) 12%, transparent);
@@ -193,8 +255,16 @@ body {
 /* ── Workspace ───────────────────────────────────────────────────────────── */
 
 .workspace {
+  height: 100%;
   min-height: 0;
   background: var(--surface-raised);
+}
+
+.workspace-document {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
 }
 
 .editor-host,
@@ -247,7 +317,8 @@ body {
 .workspace-layout {
   position: relative;
   display: flex;
-  height: 100%;
+  flex: 1;
+  min-height: 0;
   min-width: 0;
 }
 
@@ -365,6 +436,23 @@ body {
 
 .panel-launchers-right {
   right: 10px;
+}
+
+.timeline-launcher {
+  position: absolute;
+  z-index: 6;
+  bottom: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.timeline-launcher button {
+  padding: 5px 9px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--surface);
+  color: var(--text-muted);
+  box-shadow: 0 1px 3px #0002;
 }
 
 .panel-launchers button {
@@ -774,7 +862,12 @@ body[data-theme='dark'] .preview-pane {
 .pdf-dialog > footer button:last-child {
   border-color: var(--accent);
   background: var(--accent);
-  color: white;
+  color: var(--accent-contrast);
+}
+
+.pdf-dialog button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 .pdf-dialog-body {
@@ -855,6 +948,209 @@ body[data-theme='dark'] .preview-pane {
   border-color: #fff5;
   background: #fff2;
   color: white;
+}
+
+/* ── M4 command palette ──────────────────────────────────────────────────── */
+
+.command-palette {
+  width: min(560px, 100%);
+  max-height: min(520px, 80vh);
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  box-shadow: 0 18px 60px #0009;
+}
+
+.command-palette > input {
+  width: 100%;
+  padding: 13px 15px;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  outline: none;
+  background: var(--surface-raised);
+  color: var(--text);
+  font-size: 15px;
+}
+
+.command-list {
+  max-height: 420px;
+  padding: 6px;
+  overflow-y: auto;
+}
+
+.command-list button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 9px 10px;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+}
+
+.command-list button.selected {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+.command-list kbd {
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: 11px;
+}
+
+.command-empty {
+  padding: 20px 10px;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+/* ── M4 timeline ─────────────────────────────────────────────────────────── */
+
+.timeline {
+  position: relative;
+  flex: 0 0 108px;
+  min-width: 0;
+  overflow: hidden;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.timeline-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 34px;
+  padding: 4px 8px 4px 12px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.timeline-toolbar > strong {
+  color: var(--text);
+  font-size: 12px;
+}
+
+.timeline-toolbar label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+
+.timeline-toolbar select {
+  padding: 2px 5px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface-raised);
+  color: var(--text);
+}
+
+.timeline-zoom {
+  margin-left: auto;
+}
+
+.timeline-zoom input {
+  width: 90px;
+}
+
+.timeline-track {
+  display: flex;
+  align-items: stretch;
+  gap: 3px;
+  height: 52px;
+  padding: 5px 8px;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.timeline-scene {
+  position: relative;
+  flex: none;
+  min-width: 36px;
+  padding: 13px 5px 3px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, currentColor 30%, var(--border));
+  border-radius: 4px;
+  color: #202020;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.timeline-scene > strong {
+  margin-right: 5px;
+}
+
+.timeline-scene > span:last-child {
+  overflow: hidden;
+  font-size: 10px;
+  text-overflow: ellipsis;
+}
+
+.timeline-section {
+  position: absolute;
+  top: 1px;
+  right: 4px;
+  left: 4px;
+  overflow: hidden;
+  opacity: 0.72;
+  font-size: 8px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+}
+
+.timeline-interior {
+  background: #a9d1f2;
+}
+
+.timeline-exterior {
+  background: #acdcae;
+}
+
+.timeline-mixed {
+  background: #c8b9ea;
+}
+
+.timeline-day {
+  background: #f2d98f;
+}
+
+.timeline-night {
+  background: #9caeda;
+}
+
+.timeline-other {
+  background: #c9c7c2;
+}
+
+.timeline-active {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.timeline-legend {
+  position: absolute;
+  right: 8px;
+  bottom: 2px;
+  display: flex;
+  gap: 5px;
+  font-size: 8px;
+}
+
+.timeline-legend span {
+  padding: 1px 4px;
+  border-radius: 3px;
+  color: #202020;
+}
+
+.timeline-empty {
+  padding: 12px;
+  color: var(--text-muted);
 }
 
 /* ── AST navigator ───────────────────────────────────────────────────────── */

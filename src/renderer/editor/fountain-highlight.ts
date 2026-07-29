@@ -69,11 +69,15 @@ const LINE_CLASS: Record<string, string> = {
 };
 
 const lineDecorations = new Map<string, Decoration>();
-function lineDecoration(className: string): Decoration {
-  let decoration = lineDecorations.get(className);
+function lineDecoration(className: string, spellcheck: boolean): Decoration {
+  const key = `${className}:${spellcheck}`;
+  let decoration = lineDecorations.get(key);
   if (!decoration) {
-    decoration = Decoration.line({ class: className });
-    lineDecorations.set(className, decoration);
+    decoration = Decoration.line({
+      class: className,
+      attributes: spellcheck ? undefined : { spellcheck: 'false' },
+    });
+    lineDecorations.set(key, decoration);
   }
   return decoration;
 }
@@ -144,7 +148,14 @@ function buildDecorations(view: EditorView): DecorationSet {
       }
 
       const className = LINE_CLASS[line.kind];
-      if (className) collected.push(lineDecoration(className).range(line.from));
+      if (className) {
+        collected.push(
+          lineDecoration(
+            className,
+            line.kind !== 'character' && line.kind !== 'scene_heading',
+          ).range(line.from),
+        );
+      }
 
       // Emphasis only means something on elements that are actually rendered.
       if (

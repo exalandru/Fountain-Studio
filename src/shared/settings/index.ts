@@ -61,6 +61,13 @@ export function sanitizeSettings(raw: unknown): AppSettings {
   if (typeof settings['showSections'] === 'boolean') {
     target.showSections = settings['showSections'];
   }
+  if (typeof settings['focusMode'] === 'boolean') target.focusMode = settings['focusMode'];
+  if (typeof settings['typewriterMode'] === 'boolean') {
+    target.typewriterMode = settings['typewriterMode'];
+  }
+  if (settings['spellcheckLanguage'] === 'en-US' || settings['spellcheckLanguage'] === 'fr') {
+    target.spellcheckLanguage = settings['spellcheckLanguage'];
+  }
 
   return target;
 }

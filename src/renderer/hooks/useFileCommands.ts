@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useCallback, useEffect } from 'react';
 import type { RefObject } from 'react';
 import { openSearchPanel } from '@codemirror/search';
 import type { EditorView } from '@codemirror/view';
@@ -13,6 +13,8 @@ interface FileCommandsOptions {
   openDialog: () => Promise<void>;
   openPaths: (paths: string[]) => Promise<void>;
   onExportPdf: () => void;
+  onToggleTimeline: () => void;
+  onCommandPalette: () => void;
   patchSettings: (patch: Partial<AppSettings>) => Promise<void>;
   save: (options: { forceDialog: boolean }) => Promise<boolean>;
   setStatus: (message: string) => void;
@@ -27,55 +29,72 @@ export function useFileCommands({
   openDialog,
   openPaths,
   onExportPdf,
+  onToggleTimeline,
+  onCommandPalette,
   patchSettings,
   save,
   setStatus,
   stringsRef,
   t,
-}: FileCommandsOptions): void {
+}: FileCommandsOptions): (command: MenuCommand) => void {
   const store = useDocuments.getState;
 
-  useEffect(() => {
-    const handlers = {
-      'file.new': () => stringsRef.current && store().newDocument(stringsRef.current),
-      'file.open': () => void openDialog(),
-      'file.save': () => void save({ forceDialog: false }),
-      'file.saveAs': () => void save({ forceDialog: true }),
-      'file.exportPdf': onExportPdf,
-      'file.closeTab': () => {
-        const id = store().activeId;
-        if (id) void closeTab(id);
-      },
-      'edit.find': () => editorView.current && openSearchPanel(editorView.current),
-      'edit.replace': () => editorView.current && openSearchPanel(editorView.current),
-      'view.toggleNotes': () => void patchSettings({ showNotes: !store().settings.showNotes }),
-      'view.toggleBoneyard': () =>
-        void patchSettings({ showBoneyard: !store().settings.showBoneyard }),
-      'view.toggleSynopses': () =>
-        void patchSettings({ showSynopses: !store().settings.showSynopses }),
-      'view.toggleSections': () =>
-        void patchSettings({ showSections: !store().settings.showSections }),
-      'view.increaseFont': () =>
-        void patchSettings({ editorFontSize: Math.min(28, store().settings.editorFontSize + 1) }),
-      'view.decreaseFont': () =>
-        void patchSettings({ editorFontSize: Math.max(10, store().settings.editorFontSize - 1) }),
-      'scene.renumber': () => setStatus(t('status.renumberPlanned')),
-      'help.about': () => setStatus(t('status.about', { app: t('app.name'), version: '0.1.0' })),
-    } satisfies Record<MenuCommand, () => void>;
+  const executeCommand = useCallback(
+    (command: MenuCommand) => {
+      const handlers = {
+        'file.new': () => stringsRef.current && store().newDocument(stringsRef.current),
+        'file.open': () => void openDialog(),
+        'file.save': () => void save({ forceDialog: false }),
+        'file.saveAs': () => void save({ forceDialog: true }),
+        'file.exportPdf': onExportPdf,
+        'file.closeTab': () => {
+          const id = store().activeId;
+          if (id) void closeTab(id);
+        },
+        'edit.find': () => editorView.current && openSearchPanel(editorView.current),
+        'edit.replace': () => editorView.current && openSearchPanel(editorView.current),
+        'view.toggleNotes': () => void patchSettings({ showNotes: !store().settings.showNotes }),
+        'view.toggleBoneyard': () =>
+          void patchSettings({ showBoneyard: !store().settings.showBoneyard }),
+        'view.toggleSynopses': () =>
+          void patchSettings({ showSynopses: !store().settings.showSynopses }),
+        'view.toggleSections': () =>
+          void patchSettings({ showSections: !store().settings.showSections }),
+        'view.increaseFont': () =>
+          void patchSettings({ editorFontSize: Math.min(28, store().settings.editorFontSize + 1) }),
+        'view.decreaseFont': () =>
+          void patchSettings({ editorFontSize: Math.max(10, store().settings.editorFontSize - 1) }),
+        'view.toggleTimeline': onToggleTimeline,
+        'view.toggleFocus': () => void patchSettings({ focusMode: !store().settings.focusMode }),
+        'view.toggleTypewriter': () =>
+          void patchSettings({ typewriterMode: !store().settings.typewriterMode }),
+        'view.commandPalette': onCommandPalette,
+        'scene.renumber': () => setStatus(t('status.renumberPlanned')),
+        'help.about': () => setStatus(t('status.about', { app: t('app.name'), version: '0.1.0' })),
+      } satisfies Record<MenuCommand, () => void>;
 
-    return window.quantum.on('menu:command', ({ command }) => handlers[command]());
-  }, [
-    closeTab,
-    editorView,
-    onExportPdf,
-    openDialog,
-    patchSettings,
-    save,
-    setStatus,
-    store,
-    stringsRef,
-    t,
-  ]);
+      handlers[command]();
+    },
+    [
+      closeTab,
+      editorView,
+      onCommandPalette,
+      onExportPdf,
+      onToggleTimeline,
+      openDialog,
+      patchSettings,
+      save,
+      setStatus,
+      store,
+      stringsRef,
+      t,
+    ],
+  );
+
+  useEffect(
+    () => window.quantum.on('menu:command', ({ command }) => executeCommand(command)),
+    [executeCommand],
+  );
 
   useEffect(() => {
     const onDrop = (event: DragEvent) => {
@@ -103,4 +122,6 @@ export function useFileCommands({
       window.removeEventListener('dragover', onDragOver);
     };
   }, [openPaths, setStatus, t]);
+
+  return executeCommand;
 }

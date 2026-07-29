@@ -2,7 +2,7 @@ import { join } from 'node:path';
 import { app, BrowserWindow, nativeTheme, session, shell } from 'electron';
 import { buildMenu } from './menu.js';
 import { openPaths, registerIpcHandlers } from './ipc.js';
-import { applySpellCheckerLanguage } from './spellcheck.js';
+import { applySpellCheckerLanguage, installSpellcheckContextMenu } from './spellcheck.js';
 import { getSettings } from './store.js';
 import { installCloseGuard, markApplicationQuitting } from './window-lifecycle.js';
 
@@ -64,6 +64,7 @@ async function createWindow(): Promise<BrowserWindow> {
     if (url !== window.webContents.getURL()) event.preventDefault();
   });
   window.webContents.on('will-attach-webview', (event) => event.preventDefault());
+  installSpellcheckContextMenu(window);
   installCloseGuard(window);
 
   if (process.env['ELECTRON_RENDERER_URL']) {
@@ -72,7 +73,7 @@ async function createWindow(): Promise<BrowserWindow> {
     await window.loadFile(join(import.meta.dirname, '../renderer/index.html'));
   }
 
-  applySpellCheckerLanguage(settings.language);
+  applySpellCheckerLanguage(settings.spellcheckLanguage);
 
   return window;
 }

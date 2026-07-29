@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { EditorView } from '@codemirror/view';
-import type { AppData, SidebarTab } from '@shared/appdata/index.js';
+import type { AppData, SidebarTab, TimelineState } from '@shared/appdata/index.js';
 import type { AppSettings } from '@shared/ipc-contract.js';
 import { statisticsToCsv, statisticsToJson } from '@shared/stats/index.js';
 import { useAutosave } from './hooks/useAutosave.js';
@@ -12,6 +12,8 @@ import { useTranslator } from './hooks/useTranslator.js';
 import { PdfExportDialog } from './pdf/PdfExportDialog.js';
 import type { NewDocumentStrings } from './store/documents.js';
 import { useDocuments } from './store/documents.js';
+import { CommandPalette } from './ui/CommandPalette.js';
+import type { PaletteCommand } from './ui/CommandPalette.js';
 import { Workspace } from './workspace/Workspace.js';
 
 /**
@@ -27,6 +29,7 @@ export function App() {
   const [dark, setDark] = useState(() => window.matchMedia('(prefers-color-scheme: dark)').matches);
   const [status, setStatus] = useState<string | null>(null);
   const [pdfOpen, setPdfOpen] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
   const [cursorPosition, setCursorPosition] = useState<{
     documentId: string | null;
     offset: number;
@@ -203,18 +206,45 @@ export function App() {
     setStatus,
     t,
   });
-  useFileCommands({
+  const toggleTimeline = useCallback(
+    () =>
+      updateAppData((data) => ({
+        ...data,
+        timeline: { ...data.timeline, visible: !data.timeline.visible },
+      })),
+    [updateAppData],
+  );
+  const executeCommand = useFileCommands({
     closeTab,
     editorView,
     openDialog,
     openPaths,
     onExportPdf: openPdfDialog,
+    onToggleTimeline: toggleTimeline,
+    onCommandPalette: () => setPaletteOpen(true),
     patchSettings,
     save,
     setStatus,
     stringsRef,
     t,
   });
+  const paletteCommands = useMemo<PaletteCommand[]>(
+    () => [
+      { id: 'file.new', label: t('menu.file.new'), shortcut: '⌘N' },
+      { id: 'file.open', label: t('menu.file.open'), shortcut: '⌘O' },
+      { id: 'file.save', label: t('menu.file.save'), shortcut: '⌘S' },
+      { id: 'file.exportPdf', label: t('menu.file.exportPdf'), shortcut: '⇧⌘E' },
+      { id: 'edit.find', label: t('menu.edit.find'), shortcut: '⌘F' },
+      { id: 'view.toggleTimeline', label: t('menu.view.showTimeline') },
+      { id: 'view.toggleFocus', label: t('menu.view.focusMode'), shortcut: '⇧⌘F' },
+      { id: 'view.toggleTypewriter', label: t('menu.view.typewriterMode'), shortcut: '⇧⌘T' },
+      { id: 'view.toggleNotes', label: t('menu.view.showNotes') },
+      { id: 'view.toggleBoneyard', label: t('menu.view.showBoneyard') },
+      { id: 'view.toggleSynopses', label: t('menu.view.showSynopses') },
+      { id: 'view.toggleSections', label: t('menu.view.showSections') },
+    ],
+    [t],
+  );
 
   // Stable UI callbacks keep the memoised preview/sidebar from rendering on every
   // keystroke while their worker analysis is unchanged.
@@ -347,6 +377,16 @@ export function App() {
       })),
     [updateAppData],
   );
+  const updateTimeline = useCallback(
+    (patch: Partial<TimelineState>) =>
+      updateAppData((data) => ({
+        ...data,
+        timeline: { ...data.timeline, ...patch },
+      })),
+    [updateAppData],
+  );
+  const closeTimeline = useCallback(() => updateTimeline({ visible: false }), [updateTimeline]);
+  const showTimeline = useCallback(() => updateTimeline({ visible: true }), [updateTimeline]);
   const newDocument = useCallback(() => store().newDocument(stringsRef.current), [store]);
   const setActive = useCallback((id: string) => store().setActive(id), [store]);
 
@@ -386,6 +426,9 @@ export function App() {
         onSelectEditorRange={selectEditorRange}
         onCloseSidebar={closeSidebar}
         onShowSidebar={showSidebar}
+        onTimelineState={updateTimeline}
+        onCloseTimeline={closeTimeline}
+        onShowTimeline={showTimeline}
       />
       {pdfOpen && active ? (
         <PdfExportDialog
@@ -397,6 +440,13 @@ export function App() {
           }}
           onError={(error) => setStatus(t('status.exportFailed', { error }))}
           onClose={() => setPdfOpen(false)}
+        />
+      ) : null}
+      {paletteOpen ? (
+        <CommandPalette
+          commands={paletteCommands}
+          onRun={executeCommand}
+          onClose={() => setPaletteOpen(false)}
         />
       ) : null}
     </>

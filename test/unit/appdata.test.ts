@@ -26,6 +26,8 @@ describe('companion schema', () => {
     const data = createDefaultAppData();
     data.preview.syncScroll = true;
     data.sidebar.activeTab = 'characters';
+    data.timeline.colorMode = 'timeOfDay';
+    data.timeline.zoom = 1.7;
 
     expect(parseAppData(serializeAppData(data))).toEqual(data);
   });
@@ -41,6 +43,7 @@ describe('companion schema', () => {
         version: APP_DATA_VERSION,
         sidebar: { width: -100, filter: 'x'.repeat(300) },
         preview: { width: 10000 },
+        timeline: { zoom: 99, colorMode: 'timeOfDay' },
       }),
     );
 
@@ -48,6 +51,8 @@ describe('companion schema', () => {
     expect(parsed?.sidebar.filter).toHaveLength(200);
     expect(parsed?.preview.width).toBe(760);
     expect(parsed?.sidebar.activeTab).toBe('structure');
+    expect(parsed?.timeline.zoom).toBe(2.5);
+    expect(parsed?.timeline.colorMode).toBe('timeOfDay');
   });
 });
 

@@ -54,13 +54,28 @@ export const en = {
   'menu.view.showBoneyard': 'Show Boneyard',
   'menu.view.showSynopses': 'Show Synopses',
   'menu.view.showSections': 'Show Sections',
+  'menu.view.showTimeline': 'Show Timeline',
   'menu.view.increaseFont': 'Increase Font Size',
   'menu.view.decreaseFont': 'Decrease Font Size',
+  'menu.view.focusMode': 'Focus Mode',
+  'menu.view.typewriterMode': 'Typewriter Mode',
+  'menu.view.theme': 'Theme',
+  'menu.view.themeSystem': 'Follow System',
+  'menu.view.themeLight': 'Light',
+  'menu.view.themeDark': 'Dark',
+  'menu.view.commandPalette': 'Command Palette…',
   'menu.view.fullscreen': 'Toggle Full Screen',
   'menu.view.devTools': 'Developer Tools',
 
   // ── Menu: Language ───────────────────────────────────────────────────────
   'menu.language': 'Language',
+
+  // ── Spell checker ────────────────────────────────────────────────────────
+  'spell.language': 'Spell-check Language',
+  'spell.english': 'English',
+  'spell.french': 'French',
+  'spell.noSuggestions': 'No suggestions',
+  'spell.addGlobal': 'Add “{word}” to Global Dictionary',
 
   // ── Menu: Window and Help ────────────────────────────────────────────────
   'menu.window': 'Window',
@@ -92,6 +107,9 @@ export const en = {
   'workspace.empty': 'No document open',
   'document.untitled': 'Untitled',
   'document.recovered': 'Recovered document',
+  'palette.title': 'Command Palette',
+  'palette.search': 'Type a command…',
+  'palette.empty': 'No matching command.',
 
   // ── Status bar ───────────────────────────────────────────────────────────
   'status.scenes': { one: '{count} scene', other: '{count} scenes' },
@@ -149,6 +167,18 @@ export const en = {
   'preview.show': 'Show preview',
   'preview.resize': 'Resize preview',
 
+  // ── Timeline ─────────────────────────────────────────────────────────────
+  'timeline.title': 'Timeline',
+  'timeline.close': 'Close timeline',
+  'timeline.show': 'Show timeline',
+  'timeline.empty': 'Add scene headings to build the timeline.',
+  'timeline.colors': 'Colours',
+  'timeline.intExt': 'INT / EXT',
+  'timeline.dayNight': 'Day / Night',
+  'timeline.uniform': 'Uniform width',
+  'timeline.zoom': 'Zoom',
+  'timeline.other': 'Other',
+
   // ── Statistics ───────────────────────────────────────────────────────────
   'stats.title': 'Statistics',
   'stats.close': 'Close statistics',
@@ -187,6 +217,7 @@ export const en = {
   'pdf.pageTo': 'To page',
   'pdf.export': 'Export…',
   'pdf.cancel': 'Cancel',
+  'pdf.close': 'Close PDF export',
   'pdf.rendering': 'Rendering PDF…',
   'pdf.renderFailed': 'Could not render the PDF.',
   'pdf.previousPage': 'Previous page',

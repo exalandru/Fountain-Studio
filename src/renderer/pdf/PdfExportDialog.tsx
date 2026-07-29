@@ -35,6 +35,7 @@ export function PdfExportDialog({
   onClose,
 }: PdfExportDialogProps) {
   const { t } = useTranslator();
+  const dialogRef = useRef<HTMLElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [options, setOptions] = useState<PdfExportOptions>(DEFAULT_OPTIONS);
   const [pdfDocument, setPdfDocument] = useState<PDFDocumentProxy | null>(null);
@@ -43,6 +44,11 @@ export function PdfExportDialog({
   const [rendering, setRendering] = useState(true);
   const [renderError, setRenderError] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
+
+  useEffect(() => {
+    const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    return () => previous?.focus();
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -140,15 +146,40 @@ export function PdfExportDialog({
   return (
     <div className="modal-backdrop" role="presentation">
       <section
+        ref={dialogRef}
         className="pdf-dialog"
         role="dialog"
         aria-modal="true"
         aria-label={t('pdf.title')}
         data-page-count={pageCount}
+        onKeyDown={(event) => {
+          if (event.key === 'Escape') onClose();
+          if (event.key === 'Tab') {
+            const focusable =
+              dialogRef.current?.querySelectorAll<HTMLElement>(
+                'button:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+              ) ?? [];
+            const first = focusable[0];
+            const last = focusable[focusable.length - 1];
+            if (event.shiftKey && document.activeElement === first && last) {
+              event.preventDefault();
+              last.focus();
+            } else if (!event.shiftKey && document.activeElement === last && first) {
+              event.preventDefault();
+              first.focus();
+            }
+          }
+        }}
       >
         <header>
           <h2>{t('pdf.title')}</h2>
-          <button type="button" className="panel-close" onClick={onClose}>
+          <button
+            type="button"
+            className="panel-close"
+            aria-label={t('pdf.close')}
+            autoFocus
+            onClick={onClose}
+          >
             ×
           </button>
         </header>

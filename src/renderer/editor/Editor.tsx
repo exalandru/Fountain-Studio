@@ -36,6 +36,7 @@ export interface EditorProps {
   showBoneyard: boolean;
   showSynopses: boolean;
   showSections: boolean;
+  typewriterMode: boolean;
   completionIndex: CompletionIndex;
   onChange: (content: string) => void;
   onCursorOffset?: (offset: number) => void;
@@ -53,6 +54,7 @@ function EditorComponent({
   showBoneyard,
   showSynopses,
   showSections,
+  typewriterMode,
   completionIndex,
   onChange,
   onCursorOffset,
@@ -71,6 +73,8 @@ function EditorComponent({
   const onCursorRef = useRef(onCursorOffset);
   const onScrollRef = useRef(onScrollOffset);
   const suppressScroll = useRef(false);
+  const typewriterRef = useRef(typewriterMode);
+  const typewriterFrame = useRef(0);
   useEffect(() => {
     onChangeRef.current = onChange;
   }, [onChange]);
@@ -80,6 +84,9 @@ function EditorComponent({
   useEffect(() => {
     onScrollRef.current = onScrollOffset;
   }, [onScrollOffset]);
+  useEffect(() => {
+    typewriterRef.current = typewriterMode;
+  }, [typewriterMode]);
 
   useEffect(() => {
     if (!host.current) return;
@@ -122,6 +129,18 @@ function EditorComponent({
           if (update.docChanged) onChangeRef.current(update.state.doc.toString());
           if (update.docChanged || update.selectionSet) {
             onCursorRef.current?.(update.state.selection.main.head);
+            if (typewriterRef.current) {
+              cancelAnimationFrame(typewriterFrame.current);
+              typewriterFrame.current = requestAnimationFrame(() => {
+                const current = view.current;
+                if (!current) return;
+                current.dispatch({
+                  effects: EditorView.scrollIntoView(current.state.selection.main.head, {
+                    y: 'center',
+                  }),
+                });
+              });
+            }
           }
         }),
       ],
@@ -139,6 +158,7 @@ function EditorComponent({
         return;
       }
       cancelAnimationFrame(frame);
+      cancelAnimationFrame(typewriterFrame.current);
       frame = requestAnimationFrame(() => {
         const block = instance.lineBlockAtHeight(instance.scrollDOM.scrollTop);
         onScrollRef.current?.(block.from);
@@ -211,6 +231,7 @@ export const Editor = memo(
     previous.showBoneyard === next.showBoneyard &&
     previous.showSynopses === next.showSynopses &&
     previous.showSections === next.showSections &&
+    previous.typewriterMode === next.typewriterMode &&
     previous.completionIndex === next.completionIndex &&
     previous.externalScrollOffset === next.externalScrollOffset &&
     previous.onChange === next.onChange &&

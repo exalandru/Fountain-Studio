@@ -103,6 +103,7 @@ test('title-page keys autocomplete beyond the first line', async () => {
   await page.keyboard.press('Control+Space');
 
   await expect(page.locator('.cm-tooltip-autocomplete')).toContainText('Version:');
+  await page.keyboard.press('Escape');
 });
 
 test('highlighting distinguishes Fountain element kinds', async () => {
@@ -116,6 +117,8 @@ test('highlighting distinguishes Fountain element kinds', async () => {
   await expect(page.locator('.cm-fountain-character')).toHaveCount(1);
   await expect(page.locator('.cm-fountain-dialogue')).toHaveCount(1);
   await expect(page.locator('.cm-fountain-action')).toHaveCount(1);
+  await expect(page.locator('.cm-fountain-scene')).toHaveAttribute('spellcheck', 'false');
+  await expect(page.locator('.cm-fountain-character')).toHaveAttribute('spellcheck', 'false');
 });
 
 test('the status bar reflects the worker analysis, with correct singulars', async () => {
@@ -202,16 +205,73 @@ test('the live preview and AST navigator follow the opened screenplay', async ()
   expect(editor?.x).toBeLessThan(preview?.x ?? 0);
 
   await page.getByRole('tab', { name: 'Locations' }).click();
-  const garage = page.getByRole('button', { name: /GARAGE/ });
+  const garage = page.locator('.sidebar').getByRole('button', { name: /GARAGE/ });
   await expect(garage).toContainText('1 occurrence');
   await garage.click();
   await expect(page.locator('.cm-activeLine')).toContainText('INT. GARAGE - NIGHT');
 
   await page.getByRole('tab', { name: 'Characters' }).click();
-  const marc = page.getByRole('button', { name: /MARC/ });
+  const marc = page.locator('.sidebar').getByRole('button', { name: /MARC/ });
   await expect(marc).toContainText('1 speech');
   await marc.click();
   await expect(page.locator('.cm-activeLine')).toContainText('MARC');
+});
+
+test('the timeline navigates, persists its controls and can be collapsed', async () => {
+  const timeline = page.locator('.timeline');
+  await expect(timeline).toBeVisible();
+  await timeline.getByRole('button', { name: /INT. GARAGE - NIGHT/ }).click();
+  await expect(page.locator('.cm-activeLine')).toContainText('INT. GARAGE - NIGHT');
+
+  await timeline.getByLabel('Colours').selectOption('timeOfDay');
+  await timeline.getByLabel('Uniform width').check();
+  await timeline.getByLabel('Zoom').fill('1.5');
+
+  const companion = join(userData, 'opened.fountain.appdata.json');
+  await expect
+    .poll(async () => {
+      try {
+        return JSON.parse(await readFile(companion, 'utf8')) as unknown;
+      } catch {
+        return null;
+      }
+    })
+    .toMatchObject({
+      timeline: { colorMode: 'timeOfDay', uniformWidth: true, zoom: 1.5 },
+    });
+
+  await timeline.getByRole('button', { name: 'Close timeline' }).click();
+  await expect(timeline).toBeHidden();
+  await page.getByRole('button', { name: 'Show timeline' }).click();
+  await expect(timeline).toBeVisible();
+});
+
+test('the command palette runs focus mode and typewriter settings', async () => {
+  await runCommand('view.commandPalette');
+  const palette = page.getByRole('dialog', { name: 'Command Palette' });
+  await expect(palette).toBeVisible();
+  await palette.getByRole('searchbox').fill('focus');
+  await palette.getByRole('option', { name: /Focus Mode/ }).click();
+  await expect(page.locator('.app')).toHaveClass(/focus-mode/);
+
+  await runCommand('view.toggleFocus');
+  await expect(page.locator('.app')).not.toHaveClass(/focus-mode/);
+  await runCommand('view.toggleTypewriter');
+  await expect
+    .poll(() => page.evaluate(() => window.quantum.invoke('settings:get', undefined)))
+    .toMatchObject({ typewriterMode: true });
+  await runCommand('view.toggleTypewriter');
+});
+
+test('the spell-check language is independent from the interface language', async () => {
+  const french = await page.evaluate(() =>
+    window.quantum.invoke('settings:patch', { spellcheckLanguage: 'fr' }),
+  );
+  expect(french).toMatchObject({ language: 'en', spellcheckLanguage: 'fr' });
+
+  await page.evaluate(() =>
+    window.quantum.invoke('settings:patch', { spellcheckLanguage: 'en-US' }),
+  );
 });
 
 test('statistics share pagination and export CSV', async () => {

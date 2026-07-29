@@ -54,6 +54,9 @@ describe('catalogues', () => {
       'stats.dialogue',
       'stats.minutes',
       'stats.pages',
+      'timeline.title',
+      'timeline.zoom',
+      'timeline.intExt',
     ];
     const identical = keys.filter((key) => {
       const a = en[key];

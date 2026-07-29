@@ -37,9 +37,37 @@ jobs:
 
       - run: npm run build
 
-      # Validate electron-builder's current-platform configuration without producing
-      # installers or signing artifacts.
-      - run: npm run package:dir
+      # Produce the real M4 distribution formats on their native platforms.
+      - name: Package macOS (DMG + ZIP)
+        if: matrix.os == 'macos-latest'
+        run: npm run build:mac
+        env:
+          CSC_LINK: ${{ secrets.MACOS_CERTIFICATE }}
+          CSC_KEY_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+
+      - name: Package Windows (NSIS)
+        if: matrix.os == 'windows-latest'
+        run: npm run build:win
+
+      - name: Package Linux (AppImage + DEB)
+        if: matrix.os == 'ubuntu-latest'
+        run: npm run build:linux
+
+      - name: Distribution artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: quantum-draft-${{ matrix.os }}
+          path: |
+            dist/*.dmg
+            dist/*.zip
+            dist/*.exe
+            dist/*.AppImage
+            dist/*.deb
+          if-no-files-found: error
+          retention-days: 14
 
       # End-to-end tests require a display server on Linux.
       - name: E2E tests (Linux)

@@ -372,12 +372,16 @@ export function registerIpcHandlers(): void {
       before.showNotes !== next.showNotes ||
       before.showBoneyard !== next.showBoneyard ||
       before.showSynopses !== next.showSynopses ||
-      before.showSections !== next.showSections
+      before.showSections !== next.showSections ||
+      before.focusMode !== next.focusMode ||
+      before.typewriterMode !== next.typewriterMode ||
+      before.theme !== next.theme ||
+      before.spellcheckLanguage !== next.spellcheckLanguage
     ) {
       await buildMenu();
     }
-    if (before.language !== next.language) {
-      applySpellCheckerLanguage(next.language);
+    if (before.spellcheckLanguage !== next.spellcheckLanguage) {
+      applySpellCheckerLanguage(next.spellcheckLanguage);
     }
 
     // Settings are global: every window is notified, the caller included. That makes

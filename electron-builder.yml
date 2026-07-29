@@ -3,6 +3,9 @@ productName: Quantum Draft
 directories:
   buildResources: build
   output: dist
+asar: true
+compression: maximum
+artifactName: '${productName}-${version}-${os}-${arch}.${ext}'
 files:
   - out/**
   - resources/**
@@ -24,6 +27,7 @@ mac:
   hardenedRuntime: true
   entitlements: build/entitlements.mac.plist
   entitlementsInherit: build/entitlements.mac.plist
+  gatekeeperAssess: false
 win:
   icon: build/icon.png
   target:
@@ -34,3 +38,4 @@ linux:
     - AppImage
     - deb
   category: Office
+  synopsis: Éditeur de scénarios Fountain

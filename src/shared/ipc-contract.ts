@@ -85,6 +85,10 @@ export interface AppSettings {
   showBoneyard: boolean;
   showSynopses: boolean;
   showSections: boolean;
+  focusMode: boolean;
+  typewriterMode: boolean;
+  /** Electron supports one active spell-check language on macOS. */
+  spellcheckLanguage: 'en-US' | 'fr';
   /** Interface language. English is the fallback for every unknown locale. */
   language: Locale;
 }
@@ -99,6 +103,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
   showBoneyard: true,
   showSynopses: true,
   showSections: true,
+  focusMode: false,
+  typewriterMode: false,
+  spellcheckLanguage: 'en-US',
   language: 'en',
 };
 
@@ -192,6 +199,10 @@ export type MenuCommand =
   | 'view.toggleSections'
   | 'view.increaseFont'
   | 'view.decreaseFont'
+  | 'view.toggleTimeline'
+  | 'view.toggleFocus'
+  | 'view.toggleTypewriter'
+  | 'view.commandPalette'
   | 'scene.renumber'
   | 'help.about';
 
