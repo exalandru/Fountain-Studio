@@ -206,7 +206,7 @@ export function paginateScreenplay(
   screenplay: Pick<Screenplay, 'elements' | 'scenes'>,
   options: PaginationOptions = {},
 ): PaginationResult {
-  const format = options.format ?? 'letter';
+  const format = options.format ?? 'a4';
   const linesPerPage = PAGE_LINES[format];
   const pages: ScreenplayPage[] = [];
   let items: PaginationItem[] = [];

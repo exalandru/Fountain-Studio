@@ -257,18 +257,41 @@ test('the top bar exposes writing modes, theme controls and the editor texture',
   await expect(page.locator('.topbar-group')).toHaveCount(4);
   const toolbarButtons = page.locator('.toolbar-icon-button');
   await expect(toolbarButtons).toHaveCount(13);
+  await expect(page.locator('.toolbar-tooltip')).toHaveCount(13);
   expect(
     await toolbarButtons.evaluateAll((buttons) =>
       buttons.every(
         (button) =>
           button.querySelector('svg') !== null &&
           button.textContent?.trim() === '' &&
-          Boolean(button.getAttribute('title')),
+          button.getAttribute('title') === null &&
+          Boolean(button.getAttribute('aria-describedby')),
       ),
     ),
   ).toBe(true);
+  const groupGaps = await page.locator('.topbar-group').evaluateAll((groups) =>
+    groups.slice(1).map((group, index) => {
+      const previous = groups[index]?.getBoundingClientRect();
+      const current = group.getBoundingClientRect();
+      return previous ? current.left - previous.right : 0;
+    }),
+  );
+  expect(groupGaps.every((gap) => gap >= 10)).toBe(true);
 
   const typewriter = page.getByRole('button', { name: 'Typewriter' });
+  const tooltipId = await typewriter.getAttribute('aria-describedby');
+  expect(tooltipId).not.toBeNull();
+  const typewriterTooltip = page.locator(`[id="${tooltipId}"]`);
+  await typewriter.hover();
+  await expect(typewriterTooltip).toBeVisible({ timeout: 300 });
+  await expect(typewriterTooltip).toContainText('Keep the active line centred');
+  expect(
+    await typewriter.evaluate((button) => ({
+      border: getComputedStyle(button).borderTopWidth,
+      title: button.getAttribute('title'),
+    })),
+  ).toEqual({ border: '0px', title: null });
+
   await typewriter.click();
   await expect(typewriter).toHaveAttribute('aria-pressed', 'true');
   await typewriter.click();
@@ -404,6 +427,7 @@ test('PDF options render an integrated preview and export a real PDF', async () 
   await runCommand('file.exportPdf');
   const dialog = page.getByRole('dialog', { name: 'Export PDF' });
   await expect(dialog).toBeVisible();
+  await expect(dialog.getByLabel('Paper format')).toHaveValue('a4');
   await expect(dialog).toHaveAttribute('data-page-count', /[1-9]/);
   await expect(dialog.locator('canvas')).toBeVisible();
   await expect(dialog).toContainText('Page 1 of 2');

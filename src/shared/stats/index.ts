@@ -73,7 +73,7 @@ function round(value: number, precision = 1): number {
 /** Calculates every M3 metric from the same production pagination used by PDF. */
 export function calculateStatistics(
   screenplay: Screenplay,
-  format: PageFormat = 'letter',
+  format: PageFormat = 'a4',
   minutesPerPage = 1,
 ): StatisticsResult {
   const pagination = paginateScreenplay(screenplay, { format });

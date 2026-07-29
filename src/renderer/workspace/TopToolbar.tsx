@@ -1,3 +1,4 @@
+import { useId } from 'react';
 import type { ReactNode } from 'react';
 import type { AppSettings } from '@shared/ipc-contract.js';
 import type { Translator } from '@shared/i18n/index.js';
@@ -141,18 +142,25 @@ function ToolbarButton({
   disabled?: boolean;
   onClick: () => void;
 }) {
+  const tooltipId = useId();
+
   return (
-    <button
-      type="button"
-      className={`toolbar-icon-button${active ? ' is-active' : ''}`}
-      aria-label={label}
-      aria-pressed={active === undefined ? undefined : active}
-      title={tooltip ?? label}
-      disabled={disabled}
-      onClick={onClick}
-    >
-      <ToolbarIcon name={icon} />
-    </button>
+    <span className="toolbar-button-wrap">
+      <button
+        type="button"
+        className={`toolbar-icon-button${active ? ' is-active' : ''}`}
+        aria-label={label}
+        aria-describedby={tooltipId}
+        aria-pressed={active === undefined ? undefined : active}
+        disabled={disabled}
+        onClick={onClick}
+      >
+        <ToolbarIcon name={icon} />
+      </button>
+      <span className="toolbar-tooltip" id={tooltipId} role="tooltip">
+        {tooltip ?? label}
+      </span>
+    </span>
   );
 }
 

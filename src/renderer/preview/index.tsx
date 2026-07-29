@@ -5,8 +5,9 @@ import type { Element, InlineSpan } from '@shared/fountain/index.js';
 import type { PaginationItem, ScreenplayPage } from '@shared/pagination/index.js';
 import { useTranslator } from '../hooks/useTranslator.js';
 
-const PAPER_WIDTH = 816;
-const PAPER_HEIGHT = 1056;
+/** A4 at 96 CSS pixels per inch, rounded to whole pixels. */
+const PAPER_WIDTH = 794;
+const PAPER_HEIGHT = 1123;
 const PAGE_GAP = 20;
 const OVERSCAN = 2;
 

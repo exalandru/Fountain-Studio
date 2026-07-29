@@ -8,7 +8,7 @@ import { useTranslator } from '../hooks/useTranslator.js';
 if (!GlobalWorkerOptions.workerPort) GlobalWorkerOptions.workerPort = new PdfJsWorker();
 
 const DEFAULT_OPTIONS: PdfExportOptions = {
-  format: 'letter',
+  format: 'a4',
   sceneNumbers: 'none',
   includeNotes: false,
   includeSynopses: false,

@@ -23,6 +23,7 @@ Wait!
 describe('screenplay statistics', () => {
   it('shares its page count with production pagination', () => {
     const result = calculateStatistics(screenplay);
+    expect(result.pagination.format).toBe('a4');
     expect(result.statistics.pageCount).toBe(result.pagination.pages.length);
     expect(result.statistics.sceneCount).toBe(2);
     expect(result.statistics.characterCount).toBe(2);

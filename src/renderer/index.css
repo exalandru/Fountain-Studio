@@ -156,6 +156,8 @@ body {
 /* ── Tabs ────────────────────────────────────────────────────────────────── */
 
 .tabbar {
+  position: relative;
+  z-index: 20;
   display: flex;
   align-items: flex-end;
   gap: 2px;
@@ -167,7 +169,7 @@ body {
   border-bottom: 1px solid var(--border);
   -webkit-app-region: drag;
   user-select: none;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .tab-strip {
@@ -273,7 +275,7 @@ body {
   flex: none;
   align-self: center;
   align-items: center;
-  gap: 3px;
+  gap: 11px;
   margin-left: auto;
   padding-left: 8px;
   -webkit-app-region: no-drag;
@@ -282,14 +284,15 @@ body {
 .topbar-group {
   display: flex;
   align-items: center;
-  gap: 1px;
-  padding-left: 5px;
-  border-left: 1px solid var(--border);
+  gap: 2px;
+  padding: 2px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--surface-raised) 62%, transparent);
 }
 
-.topbar-group:first-child {
-  padding-left: 0;
-  border-left: none;
+.toolbar-button-wrap {
+  position: relative;
+  display: inline-flex;
 }
 
 .toolbar-icon-button {
@@ -299,7 +302,7 @@ body {
   width: 31px;
   height: 30px;
   padding: 0;
-  border: 1px solid transparent;
+  border: none;
   border-radius: 6px;
   background: transparent;
   color: var(--text-muted);
@@ -316,20 +319,86 @@ body {
 }
 
 .toolbar-icon-button:hover {
-  border-color: var(--border);
-  background: color-mix(in srgb, var(--surface-raised) 75%, transparent);
+  background: color-mix(in srgb, var(--text) 9%, transparent);
   color: var(--text);
 }
 
 .toolbar-icon-button.is-active {
-  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
-  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  color: var(--accent);
+}
+
+.toolbar-icon-button:focus-visible {
+  outline: none;
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
   color: var(--accent);
 }
 
 .toolbar-icon-button:disabled {
   opacity: 0.28;
   pointer-events: none;
+}
+
+.toolbar-tooltip {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 8px);
+  left: 50%;
+  width: max-content;
+  max-width: 260px;
+  padding: 6px 8px;
+  visibility: hidden;
+  border-radius: 6px;
+  transform: translateX(-50%) translateY(-2px);
+  background: color-mix(in srgb, var(--text) 94%, transparent);
+  box-shadow: 0 5px 16px #0003;
+  color: var(--surface-raised);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.3;
+  opacity: 0;
+  pointer-events: none;
+  text-align: center;
+  white-space: normal;
+  transition:
+    opacity 80ms ease-out,
+    transform 80ms ease-out,
+    visibility 0s linear 80ms;
+}
+
+.toolbar-tooltip::before {
+  position: absolute;
+  top: -4px;
+  left: calc(50% - 4px);
+  width: 8px;
+  height: 8px;
+  transform: rotate(45deg);
+  background: inherit;
+  content: '';
+}
+
+.toolbar-button-wrap:hover .toolbar-tooltip,
+.toolbar-button-wrap:focus-within .toolbar-tooltip {
+  visibility: visible;
+  transform: translateX(-50%) translateY(0);
+  opacity: 1;
+  transition-delay: 0s;
+}
+
+.topbar-group:last-child .toolbar-button-wrap:last-child .toolbar-tooltip {
+  right: 0;
+  left: auto;
+  transform: translateY(-2px);
+}
+
+.topbar-group:last-child .toolbar-button-wrap:last-child:hover .toolbar-tooltip,
+.topbar-group:last-child .toolbar-button-wrap:last-child:focus-within .toolbar-tooltip {
+  transform: translateY(0);
+}
+
+.topbar-group:last-child .toolbar-button-wrap:last-child .toolbar-tooltip::before {
+  right: 11px;
+  left: auto;
 }
 
 .focus-mode-exit {
@@ -632,9 +701,9 @@ body[data-theme='dark'] .preview-pane {
   position: absolute;
   top: 0;
   left: 50%;
-  width: 816px;
-  height: 1056px;
-  padding: 96px 96px 96px 144px;
+  width: 794px;
+  height: 1123px;
+  padding: 96px 64px 96px 144px;
   overflow: hidden;
   transform: translateX(-50%) scale(var(--preview-scale));
   transform-origin: top center;

@@ -39,7 +39,7 @@ self.onmessage = (event: MessageEvent<ParseRequest>) => {
   const { id, revision, source, minutesPerPage } = event.data;
   const start = performance.now();
   const screenplay = parse(source);
-  const { pagination, statistics } = calculateStatistics(screenplay, 'letter', minutesPerPage);
+  const { pagination, statistics } = calculateStatistics(screenplay, 'a4', minutesPerPage);
   const ranges = lineRanges(source);
   const elementIndexes = new Map(
     screenplay.elements.map((element, index) => [element.id, index] as const),
