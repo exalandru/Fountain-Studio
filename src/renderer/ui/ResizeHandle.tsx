@@ -5,11 +5,19 @@ export interface ResizeHandleProps {
   value: number;
   minimum: number;
   maximum: number;
-  /** The controlled pane is immediately to the right of the handle. */
+  /** Side of the handle occupied by the controlled pane. */
+  paneSide?: 'left' | 'right';
   onChange: (value: number) => void;
 }
 
-export function ResizeHandle({ label, value, minimum, maximum, onChange }: ResizeHandleProps) {
+export function ResizeHandle({
+  label,
+  value,
+  minimum,
+  maximum,
+  paneSide = 'right',
+  onChange,
+}: ResizeHandleProps) {
   const start = useRef({ x: 0, value: 0 });
 
   const begin = (event: React.PointerEvent<HTMLDivElement>) => {
@@ -19,7 +27,8 @@ export function ResizeHandle({ label, value, minimum, maximum, onChange }: Resiz
 
   const move = (event: React.PointerEvent<HTMLDivElement>) => {
     if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;
-    const next = start.current.value - (event.clientX - start.current.x);
+    const delta = event.clientX - start.current.x;
+    const next = start.current.value + (paneSide === 'left' ? delta : -delta);
     onChange(Math.min(maximum, Math.max(minimum, Math.round(next))));
   };
 
@@ -39,10 +48,12 @@ export function ResizeHandle({ label, value, minimum, maximum, onChange }: Resiz
         const step = event.shiftKey ? 25 : 10;
         if (event.key === 'ArrowLeft') {
           event.preventDefault();
-          onChange(Math.min(maximum, value + step));
+          const next = paneSide === 'left' ? value - step : value + step;
+          onChange(Math.min(maximum, Math.max(minimum, next)));
         } else if (event.key === 'ArrowRight') {
           event.preventDefault();
-          onChange(Math.max(minimum, value - step));
+          const next = paneSide === 'left' ? value + step : value - step;
+          onChange(Math.min(maximum, Math.max(minimum, next)));
         }
       }}
     />

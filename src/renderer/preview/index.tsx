@@ -56,8 +56,14 @@ function TitlePage({ fields }: { fields: ParseResponse['titlePage'] }) {
   const title = values.get('title') ?? [];
   const credit = values.get('credit') ?? [];
   const authors = values.get('author') ?? values.get('authors') ?? [];
+  const source = values.get('source') ?? [];
   const contact = values.get('contact') ?? [];
   const copyright = values.get('copyright') ?? [];
+  const centralKeys = new Set(['title', 'credit', 'author', 'authors', 'source']);
+  const leftKeys = new Set(['contact', 'copyright']);
+  const details = fields.filter(([key, fieldValues]) => {
+    return !centralKeys.has(key) && !leftKeys.has(key) && fieldValues.length > 0;
+  });
 
   return (
     <div className="preview-title-page">
@@ -65,6 +71,7 @@ function TitlePage({ fields }: { fields: ParseResponse['titlePage'] }) {
         <div className="preview-title">{title.join('\n')}</div>
         <div>{credit.join('\n')}</div>
         <div>{authors.join('\n')}</div>
+        {source.length > 0 ? <div>{source.join('\n')}</div> : null}
       </div>
       {(contact.length > 0 || copyright.length > 0) && (
         <div className="preview-title-footer">
@@ -73,6 +80,16 @@ function TitlePage({ fields }: { fields: ParseResponse['titlePage'] }) {
           {copyright.join('\n')}
         </div>
       )}
+      {details.length > 0 ? (
+        <dl className="preview-title-details">
+          {details.map(([key, fieldValues]) => (
+            <div key={key}>
+              <dt>{key}</dt>
+              <dd>{fieldValues.join('\n')}</dd>
+            </div>
+          ))}
+        </dl>
+      ) : null}
     </div>
   );
 }

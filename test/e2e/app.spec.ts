@@ -91,6 +91,20 @@ test('the window opens on a blank document, in English', async () => {
   await expect(page.locator('.cm-content')).toContainText('Credit: Written by');
 });
 
+test('title-page keys autocomplete beyond the first line', async () => {
+  const editor = page.locator('.cm-content');
+  await editor.click();
+  await page.keyboard.press('ControlOrMeta+Home');
+  await page.keyboard.press('ArrowDown');
+  await page.keyboard.press('ArrowDown');
+  await page.keyboard.press('ArrowDown');
+  await page.keyboard.press('ArrowDown');
+  await page.keyboard.type('Ver');
+  await page.keyboard.press('Control+Space');
+
+  await expect(page.locator('.cm-tooltip-autocomplete')).toContainText('Version:');
+});
+
 test('highlighting distinguishes Fountain element kinds', async () => {
   const editor = page.locator('.cm-content');
   await editor.click();
@@ -181,6 +195,12 @@ test('the live preview and AST navigator follow the opened screenplay', async ()
   await expect(page.locator('.preview-scene-heading')).toContainText('INT. GARAGE - NIGHT');
   await expect(page.locator('.sidebar-scene-heading')).toContainText('INT. GARAGE - NIGHT');
 
+  const sidebar = await page.locator('.workspace-sidebar').boundingBox();
+  const editor = await page.locator('.workspace-editor').boundingBox();
+  const preview = await page.locator('.workspace-preview').boundingBox();
+  expect(sidebar?.x).toBeLessThan(editor?.x ?? 0);
+  expect(editor?.x).toBeLessThan(preview?.x ?? 0);
+
   await page.getByRole('tab', { name: 'Locations' }).click();
   const garage = page.getByRole('button', { name: /GARAGE/ });
   await expect(garage).toContainText('1 occurrence');
@@ -192,6 +212,60 @@ test('the live preview and AST navigator follow the opened screenplay', async ()
   await expect(marc).toContainText('1 speech');
   await marc.click();
   await expect(page.locator('.cm-activeLine')).toContainText('MARC');
+});
+
+test('the title-page preview renders date, version and other metadata', async () => {
+  const editor = page.locator('.cm-content');
+  await editor.click();
+  await page.keyboard.press('ControlOrMeta+a');
+  await page.keyboard.type(
+    'Title: Metadata test\nCredit: Written by\nAuthor: Ada\nVersion: 2.1\nDraft date: 29 July 2026\n\nINT. ROOM - DAY\n',
+  );
+
+  const titlePage = page.locator('.preview-title-page');
+  await expect(titlePage).toContainText('Metadata test');
+  await expect(titlePage).toContainText('version');
+  await expect(titlePage).toContainText('2.1');
+  await expect(titlePage).toContainText('draft date');
+  await expect(titlePage).toContainText('29 July 2026');
+});
+
+test('clicking a decorated editor line places the cursor on that line', async () => {
+  const editor = page.locator('.cm-content');
+  await editor.click();
+  await page.keyboard.press('ControlOrMeta+a');
+  await page.keyboard.type(
+    '# Hidden section\n\n= Hidden synopsis\n\n## Another section\n\n= Another synopsis\n\nINT. TARGET ROOM - DAY\n\nCursor target.\n',
+  );
+  await page.evaluate(async () => {
+    await window.quantum.invoke('settings:patch', {
+      showSections: false,
+      showSynopses: false,
+    });
+  });
+  const target = page.locator('.cm-line').filter({ hasText: 'Cursor target.' });
+  await target.click({ position: { x: 80, y: 10 } });
+  await expect(target).toHaveClass(/cm-activeLine/);
+
+  await page.evaluate(async () => {
+    await window.quantum.invoke('settings:patch', {
+      showSections: true,
+      showSynopses: true,
+    });
+  });
+});
+
+test('scrollbar colours follow the light and dark themes', async () => {
+  const scrollbarColor = () =>
+    page.locator('.cm-scroller').evaluate((element) => getComputedStyle(element).scrollbarColor);
+
+  await page.evaluate(() => window.quantum.invoke('settings:patch', { theme: 'light' }));
+  const light = await scrollbarColor();
+  await page.evaluate(() => window.quantum.invoke('settings:patch', { theme: 'dark' }));
+  const dark = await scrollbarColor();
+
+  expect(light).not.toBe(dark);
+  await page.evaluate(() => window.quantum.invoke('settings:patch', { theme: 'system' }));
 });
 
 test('panel state is persisted in the screenplay companion file', async () => {

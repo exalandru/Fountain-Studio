@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, readdir, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { _electron as electron } from '@playwright/test';
@@ -44,6 +44,18 @@ test('a snapshot left by an interrupted session is reopened at startup', async (
     // The recovered document is flagged unsaved: nothing was written behind the author's
     // back, it is their call.
     await expect(page.locator('.tab-active .tab-name')).toContainText('•');
+
+    // Dismissing the recovered tab must delete the original snapshot identifier.
+    // Previously the restored tab received a new UUID, so the stale file returned on
+    // every subsequent launch.
+    await app.evaluate(({ dialog, BrowserWindow }) => {
+      dialog.showMessageBox = async () => ({ response: 1, checkboxChecked: false });
+      BrowserWindow.getAllWindows()[0]?.webContents.send('menu:command', {
+        command: 'file.closeTab',
+      });
+    });
+    await expect(page.locator('.tab-active .tab-name')).toContainText('Untitled');
+    await expect.poll(() => readdir(join(userData, 'autosave'))).toEqual([]);
   } finally {
     await app.evaluate(({ dialog }) => {
       dialog.showMessageBox = async () => ({ response: 1, checkboxChecked: false });

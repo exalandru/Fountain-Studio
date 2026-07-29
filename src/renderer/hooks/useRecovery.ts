@@ -30,6 +30,7 @@ export function useRecovery({ stringsRef, setStatus, t }: RecoveryOptions): void
           strings,
           record.eol,
           record.mtimeMs,
+          record.id,
         );
         if (!record.path) continue;
 

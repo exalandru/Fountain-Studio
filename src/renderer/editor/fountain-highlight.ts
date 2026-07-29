@@ -1,7 +1,7 @@
 import { RangeSetBuilder, StateEffect, StateField } from '@codemirror/state';
 import type { EditorState, Extension, Range } from '@codemirror/state';
-import { Decoration, ViewPlugin } from '@codemirror/view';
-import type { DecorationSet, EditorView, ViewUpdate } from '@codemirror/view';
+import { Decoration, EditorView, ViewPlugin } from '@codemirror/view';
+import type { DecorationSet, ViewUpdate } from '@codemirror/view';
 import type { EditorAnalysis, LexedLine } from '@shared/fountain/index.js';
 import { analyzeForEditor, parseInline } from '@shared/fountain/index.js';
 
@@ -90,6 +90,34 @@ const BOLD_ITALIC_UNDERLINE = Decoration.mark({
 const NOTE = Decoration.mark({ class: 'cm-fountain-note' });
 const BONEYARD = Decoration.mark({ class: 'cm-fountain-boneyard' });
 const HIDDEN = Decoration.replace({});
+const HIDDEN_LINE = Decoration.replace({ block: true });
+
+function buildHiddenLines(state: EditorState): DecorationSet {
+  const { lines } = state.field(fountainLexField);
+  const visibility = state.field(visibilityField);
+  const builder = new RangeSetBuilder<Decoration>();
+
+  for (const line of lines) {
+    const hidden =
+      (line.kind === 'synopsis' && !visibility.showSynopses) ||
+      (line.kind === 'section' && !visibility.showSections);
+    if (hidden) {
+      builder.add(line.from, Math.min(state.doc.length, line.to + 1), HIDDEN_LINE);
+    }
+  }
+  return builder.finish();
+}
+
+const hiddenLinesField = StateField.define<DecorationSet>({
+  create: buildHiddenLines,
+  update(value, transaction) {
+    if (transaction.docChanged || transaction.effects.some((effect) => effect.is(setVisibility))) {
+      return buildHiddenLines(transaction.state);
+    }
+    return value;
+  },
+  provide: (field) => EditorView.decorations.from(field),
+});
 
 function buildDecorations(view: EditorView): DecorationSet {
   const { lines, annotations } = view.state.field(fountainLexField);
@@ -110,7 +138,8 @@ function buildDecorations(view: EditorView): DecorationSet {
         (line.kind === 'section' && !visibility.showSections);
 
       if (hiddenByOption) {
-        collected.push(lineDecoration('cm-fountain-hidden').range(line.from));
+        // Block replacements live in `hiddenLinesField`: layout decorations cannot be
+        // provided by a view plugin.
         continue;
       }
 
@@ -209,5 +238,5 @@ const decorationPlugin = ViewPlugin.fromClass(
 );
 
 export function fountainHighlight(): Extension {
-  return [visibilityField, fountainLexField, decorationPlugin];
+  return [visibilityField, fountainLexField, hiddenLinesField, decorationPlugin];
 }

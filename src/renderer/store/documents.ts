@@ -60,6 +60,7 @@ interface DocumentsState {
     strings: NewDocumentStrings,
     eol?: Eol,
     mtimeMs?: number | null,
+    recoveryId?: string,
   ) => string;
   setContent: (id: string, content: string) => void;
   setAppData: (id: string, appData: AppData, changed?: boolean) => void;
@@ -175,8 +176,8 @@ export const useDocuments = create<DocumentsState>((set, get) => ({
    * detection. Legacy snapshots do not; for those, saving to an existing original path
    * is refused until the author explicitly chooses Save As.
    */
-  restore(path, content, strings, eol = 'lf', mtimeMs) {
-    const id = newId();
+  restore(path, content, strings, eol = 'lf', mtimeMs, recoveryId) {
+    const id = recoveryId ?? newId();
     set((state) => ({
       documents: [
         ...state.documents,

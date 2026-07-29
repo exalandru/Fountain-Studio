@@ -80,6 +80,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
 
 /** Document recovered after an abrupt shutdown. */
 export interface CrashRecovery {
+  /** Autosave file identifier; retained so dismissing recovery deletes the right file. */
+  id: string;
   path: string | null;
   content: string;
   /** Original line ending and last known disk state, when recorded by a recent build. */

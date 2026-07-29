@@ -60,9 +60,17 @@ export function fountainCompletion(completions: CompletionIndex): Extension {
 
         // ── Title page: a key at the top of the file ──
         const lexed = lines[index];
+        const beforeBody = lines
+          .slice(0, index)
+          .every(
+            (line) =>
+              line.kind === 'empty' ||
+              line.kind === 'title_page_key' ||
+              line.kind === 'title_page_value',
+          );
         if (
           lexed?.kind === 'title_page_key' ||
-          (index === 0 && /^[A-Za-z]*$/.test(trimmedBefore))
+          (beforeBody && /^[A-Za-z ]*$/.test(trimmedBefore))
         ) {
           if (!trimmedBefore.includes(':')) {
             return {

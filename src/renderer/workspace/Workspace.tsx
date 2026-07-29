@@ -147,6 +147,31 @@ export function Workspace({
       >
         {active ? (
           <div className="workspace-layout">
+            {active.appData.sidebar.visible ? (
+              <>
+                <div className="workspace-sidebar" style={{ width: active.appData.sidebar.width }}>
+                  <Sidebar
+                    analysis={analysis}
+                    state={active.appData.sidebar}
+                    activeSceneId={activeSceneId}
+                    onTabChange={onSidebarTab}
+                    onFilterChange={onSidebarFilter}
+                    onShowSynopsesChange={onSidebarSynopses}
+                    onSelectRange={onSelectEditorRange}
+                    onClose={onCloseSidebar}
+                  />
+                </div>
+                <ResizeHandle
+                  label={t('sidebar.resize')}
+                  value={active.appData.sidebar.width}
+                  minimum={220}
+                  maximum={480}
+                  paneSide="left"
+                  onChange={onResizeSidebar}
+                />
+              </>
+            ) : null}
+
             <div className="workspace-editor">
               <Editor
                 key={active.id}
@@ -198,44 +223,20 @@ export function Workspace({
               </>
             ) : null}
 
-            {active.appData.sidebar.visible ? (
-              <>
-                <ResizeHandle
-                  label={t('sidebar.resize')}
-                  value={active.appData.sidebar.width}
-                  minimum={220}
-                  maximum={480}
-                  onChange={onResizeSidebar}
-                />
-                <div className="workspace-sidebar" style={{ width: active.appData.sidebar.width }}>
-                  <Sidebar
-                    analysis={analysis}
-                    state={active.appData.sidebar}
-                    activeSceneId={activeSceneId}
-                    onTabChange={onSidebarTab}
-                    onFilterChange={onSidebarFilter}
-                    onShowSynopsesChange={onSidebarSynopses}
-                    onSelectRange={onSelectEditorRange}
-                    onClose={onCloseSidebar}
-                  />
-                </div>
-              </>
-            ) : null}
-
-            {(!active.appData.preview.visible || !active.appData.sidebar.visible) && (
-              <div className="panel-launchers">
-                {!active.appData.preview.visible ? (
-                  <button type="button" onClick={onShowPreview}>
-                    {t('preview.show')}
-                  </button>
-                ) : null}
-                {!active.appData.sidebar.visible ? (
-                  <button type="button" onClick={onShowSidebar}>
-                    {t('sidebar.show')}
-                  </button>
-                ) : null}
+            {!active.appData.sidebar.visible ? (
+              <div className="panel-launchers panel-launchers-left">
+                <button type="button" onClick={onShowSidebar}>
+                  {t('sidebar.show')}
+                </button>
               </div>
-            )}
+            ) : null}
+            {!active.appData.preview.visible ? (
+              <div className="panel-launchers panel-launchers-right">
+                <button type="button" onClick={onShowPreview}>
+                  {t('preview.show')}
+                </button>
+              </div>
+            ) : null}
           </div>
         ) : (
           <div className="empty">{t('workspace.empty')}</div>

@@ -83,7 +83,7 @@ export async function pendingAutosaves(): Promise<CrashRecovery[]> {
       const raw = await readFile(join(dir, name), 'utf8');
       const record = parseCrashRecovery(raw);
       if (!record) continue;
-      out.push(record);
+      out.push({ id: name.slice(0, -'.json'.length), ...record });
     } catch {
       // Unreadable snapshot: skip it rather than block startup.
     }

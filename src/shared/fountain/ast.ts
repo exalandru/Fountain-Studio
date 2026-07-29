@@ -243,4 +243,5 @@ export const TITLE_PAGE_KEYS = [
   'contact',
   'copyright',
   'revision',
+  'version',
 ] as const;

@@ -30,12 +30,12 @@ const shared = {
   '.cm-fountain-scene': {
     fontWeight: '700',
     textTransform: 'uppercase',
-    marginTop: '1.6em',
+    paddingTop: '1.6em',
   },
   '.cm-fountain-character': {
     fontWeight: '600',
     marginLeft: '10ch',
-    marginTop: '0.8em',
+    paddingTop: '0.8em',
   },
   '.cm-fountain-dialogue': { marginLeft: '5ch' },
   '.cm-fountain-parenthetical': { marginLeft: '8ch', fontStyle: 'italic' },
@@ -50,8 +50,6 @@ const shared = {
   '.cm-fountain-bold': { fontWeight: '700' },
   '.cm-fountain-italic': { fontStyle: 'italic' },
   '.cm-fountain-underline': { textDecoration: 'underline' },
-
-  '.cm-fountain-hidden': { display: 'none' },
 } as const;
 
 export const lightTheme: Extension = EditorView.theme(
