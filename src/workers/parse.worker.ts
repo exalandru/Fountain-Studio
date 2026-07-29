@@ -1,4 +1,5 @@
 import type { IndexedOccurrence, ParseRequest, ParseResponse } from '@shared/analysis/index.js';
+import { buildCompletionIndex } from '@shared/analysis/index.js';
 import type { Range, Screenplay } from '@shared/fountain/index.js';
 import { countWords, parse } from '@shared/fountain/index.js';
 
@@ -76,6 +77,7 @@ self.onmessage = (event: MessageEvent<ParseRequest>) => {
       mixed: l.mixed,
       occurrences: l.lines.map(occurrence),
     })),
+    completions: buildCompletionIndex(screenplay),
     durationMs: performance.now() - start,
   };
 

@@ -4,6 +4,7 @@ import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirro
 import { codeFolding, foldGutter, foldKeymap } from '@codemirror/language';
 import { highlightSelectionMatches, search, searchKeymap } from '@codemirror/search';
 import { Compartment, EditorState } from '@codemirror/state';
+import type { CompletionIndex } from '@shared/analysis/index.js';
 import {
   EditorView,
   drawSelection,
@@ -35,6 +36,7 @@ export interface EditorProps {
   showBoneyard: boolean;
   showSynopses: boolean;
   showSections: boolean;
+  completionIndex: CompletionIndex;
   onChange: (content: string) => void;
   onCursorOffset?: (offset: number) => void;
   onScrollOffset?: (offset: number) => void;
@@ -51,6 +53,7 @@ function EditorComponent({
   showBoneyard,
   showSynopses,
   showSections,
+  completionIndex,
   onChange,
   onCursorOffset,
   onScrollOffset,
@@ -60,6 +63,7 @@ function EditorComponent({
   const host = useRef<HTMLDivElement | null>(null);
   const view = useRef<EditorView | null>(null);
   const themeCompartment = useRef(new Compartment());
+  const completionCompartment = useRef(new Compartment());
   // The callback is held in a ref: threading it through the extensions would rebuild
   // the editor on every render. The ref is updated in an effect, never during render —
   // the editor only emits a change after user interaction, well after effects have run.
@@ -112,7 +116,7 @@ function EditorComponent({
         }),
         fountainHighlight(),
         fountainFolding(),
-        fountainCompletion(),
+        completionCompartment.current.of(fountainCompletion(completionIndex)),
         themeCompartment.current.of(dark ? darkTheme : lightTheme),
         EditorView.updateListener.of((update) => {
           if (update.docChanged) onChangeRef.current(update.state.doc.toString());
@@ -163,6 +167,12 @@ function EditorComponent({
 
   useEffect(() => {
     view.current?.dispatch({
+      effects: completionCompartment.current.reconfigure(fountainCompletion(completionIndex)),
+    });
+  }, [completionIndex]);
+
+  useEffect(() => {
+    view.current?.dispatch({
       effects: setVisibility.of({ showNotes, showBoneyard, showSynopses, showSections }),
     });
   }, [showBoneyard, showNotes, showSections, showSynopses]);
@@ -201,6 +211,7 @@ export const Editor = memo(
     previous.showBoneyard === next.showBoneyard &&
     previous.showSynopses === next.showSynopses &&
     previous.showSections === next.showSections &&
+    previous.completionIndex === next.completionIndex &&
     previous.externalScrollOffset === next.externalScrollOffset &&
     previous.onChange === next.onChange &&
     previous.onCursorOffset === next.onCursorOffset &&

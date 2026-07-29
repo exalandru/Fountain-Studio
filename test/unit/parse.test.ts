@@ -306,6 +306,16 @@ describe('parse — invariants over the full corpus', () => {
     );
   });
 
+  it('preserves line breaks in merged inline spans', () => {
+    const screenplay = parse('First action line.\nSecond action line.\n');
+    const action = screenplay.elements.find((element) => element.kind === 'action');
+
+    expect(action?.text).toBe('First action line.\nSecond action line.');
+    expect(action?.inline.map((span) => span.text).join('')).toBe(
+      'First action line.\nSecond action line.',
+    );
+  });
+
   it('produces a stable snapshot of the structure', () => {
     const { scenes } = parse(complet);
     expect(

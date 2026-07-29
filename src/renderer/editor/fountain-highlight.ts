@@ -10,8 +10,8 @@ import { analyzeForEditor, parseInline } from '@shared/fountain/index.js';
  *
  * The shared lexer handles a 120-page screenplay in ~6 ms (see the performance test),
  * far below the 16 ms budget per keystroke. So the **whole** document is lexed on every
- * change rather than just the viewport: highlighting, sidebar and PDF then derive
- * literally from the same analysis, with no risk of divergence.
+ * change rather than just the viewport. Structural consumers use the canonical AST
+ * worker; this synchronous pass is limited to line classes and annotation ranges.
  *
  * Decorations, on the other hand, are only built for the visible lines.
  */

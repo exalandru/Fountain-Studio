@@ -18,6 +18,35 @@ export interface AnalyzedScene extends Omit<Scene, 'elements'> {
   elementIndexes: number[];
 }
 
+/** Completion values derived from the canonical worker AST. */
+export interface CompletionIndex {
+  characters: string[];
+  locations: string[];
+  times: string[];
+}
+
+/** Builds completion values from the canonical AST, ordered by observed frequency. */
+export function buildCompletionIndex(screenplay: Screenplay): CompletionIndex {
+  const times = new Map<string, number>();
+  for (const scene of screenplay.scenes) {
+    if (scene.timeOfDay) times.set(scene.timeOfDay, (times.get(scene.timeOfDay) ?? 0) + 1);
+  }
+  const byFrequency = (values: Array<[string, number]>): string[] =>
+    values
+      .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
+      .map(([name]) => name);
+
+  return {
+    characters: byFrequency(
+      [...screenplay.characters.values()].map((character) => [character.name, character.speeches]),
+    ),
+    locations: byFrequency(
+      [...screenplay.locations.values()].map((location) => [location.name, location.count]),
+    ),
+    times: byFrequency([...times.entries()]),
+  };
+}
+
 /**
  * Serializable AST view shared by the worker and every renderer consumer.
  *
@@ -49,5 +78,6 @@ export interface ParseResponse {
     mixed: boolean;
     occurrences: IndexedOccurrence[];
   }>;
+  completions: CompletionIndex;
   durationMs: number;
 }

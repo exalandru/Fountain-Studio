@@ -1,6 +1,7 @@
 import { autocompletion } from '@codemirror/autocomplete';
 import type { CompletionContext, CompletionResult, Completion } from '@codemirror/autocomplete';
 import type { Extension } from '@codemirror/state';
+import type { CompletionIndex } from '@shared/analysis/index.js';
 import { TIMES_OF_DAY, TITLE_PAGE_KEYS } from '@shared/fountain/index.js';
 import { fountainLexField } from './fountain-highlight.js';
 
@@ -38,7 +39,7 @@ function options(values: string[], type: string, boost = 0): Completion[] {
   }));
 }
 
-export function fountainCompletion(): Extension {
+export function fountainCompletion(completions: CompletionIndex): Extension {
   return autocompletion({
     activateOnTyping: true,
     icons: false,
@@ -55,11 +56,7 @@ export function fountainCompletion(): Extension {
 
         const previousLine = index > 0 ? lines[index - 1] : undefined;
         const previousEmpty = index === 0 || previousLine?.kind === 'empty';
-        const { characters, locations, times } = analysis?.completions ?? {
-          characters: [],
-          locations: [],
-          times: [],
-        };
+        const { characters, locations, times } = completions;
 
         // ── Title page: a key at the top of the file ──
         const lexed = lines[index];

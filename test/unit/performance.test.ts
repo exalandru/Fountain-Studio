@@ -5,8 +5,8 @@ import { parse } from '../../src/shared/fountain/parse.js';
 /**
  * The specification requires fluid typing (< 16 ms) on a 120-page screenplay. Editor
  * highlighting relies on masking plus lexing the document, so those two steps must stay
- * well below a keystroke's budget. The full parse runs in a worker, so its budget is
- * wider.
+ * well below a keystroke's budget. Completion indexes and the full parse run in a
+ * worker, so their budget is wider.
  */
 
 /** ~120 pages of screenplay: 54 lines per page, realistic structure. */
