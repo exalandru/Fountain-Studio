@@ -46,6 +46,7 @@ async function createWindow(): Promise<BrowserWindow> {
       nodeIntegration: false,
       sandbox: true,
       spellcheck: true,
+      devTools: !app.isPackaged,
     },
   });
 

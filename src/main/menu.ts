@@ -265,7 +265,11 @@ export async function buildMenu(): Promise<void> {
         { label: t('menu.language'), submenu: languageItems },
         { type: 'separator' },
         { role: 'togglefullscreen', label: t('menu.view.fullscreen') },
-        { role: 'toggleDevTools', label: t('menu.view.devTools') },
+        ...(app.isPackaged
+          ? []
+          : ([
+              { role: 'toggleDevTools', label: t('menu.view.devTools') },
+            ] satisfies MenuItemConstructorOptions[])),
       ],
     },
     {

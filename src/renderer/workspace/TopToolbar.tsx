@@ -6,6 +6,7 @@ import type { Translator } from '@shared/i18n/index.js';
 const DEFAULT_EDITOR_FONT_SIZE = 15;
 
 type ToolbarIconName =
+  | 'consistency'
   | 'focus'
   | 'typewriter'
   | 'sceneNumbers'
@@ -24,6 +25,14 @@ type ToolbarIconName =
 function ToolbarIcon({ name }: { name: ToolbarIconName }) {
   let path: ReactNode;
   switch (name) {
+    case 'consistency':
+      path = (
+        <>
+          <path d="M12 3 4.5 6v5.5c0 4.5 3 7.7 7.5 9.5 4.5-1.8 7.5-5 7.5-9.5V6z" />
+          <path d="m8.5 12 2.2 2.2 4.8-5" />
+        </>
+      );
+      break;
     case 'focus':
       path = (
         <>
@@ -177,12 +186,26 @@ interface TopToolbarProps {
   settings: AppSettings;
   t: Translator['t'];
   onSettingsChange: (patch: Partial<AppSettings>) => void;
+  onOpenInconsistencies: () => void;
 }
 
 /** Four compact groups: writing modes, visibility, theme and editor zoom. */
-export function TopToolbar({ settings, t, onSettingsChange }: TopToolbarProps) {
+export function TopToolbar({
+  settings,
+  t,
+  onSettingsChange,
+  onOpenInconsistencies,
+}: TopToolbarProps) {
   return (
     <div className="topbar-actions" role="toolbar" aria-label={t('toolbar.modes')}>
+      <div className="topbar-group" role="group" aria-label={t('toolbar.aiTools')}>
+        <ToolbarButton
+          icon="consistency"
+          label={t('consistency.analyse')}
+          tooltip={t('consistency.toolbarHint')}
+          onClick={onOpenInconsistencies}
+        />
+      </div>
       <div className="topbar-group" role="group" aria-label={t('toolbar.writingModes')}>
         <ToolbarButton
           icon="focus"

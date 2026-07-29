@@ -165,38 +165,40 @@ const server = createServer((request, response) => {
       return;
     }
     if (lastContent.includes('Analyse les incohérences')) {
-      response.writeHead(200, {
-        'content-type': 'text/event-stream',
-        'cache-control': 'no-cache',
-      });
-      response.write(
-        `data: ${JSON.stringify({
-          choices: [
-            {
-              delta: {
-                content: JSON.stringify({
-                  items: [
-                    {
-                      type: 'continuity',
-                      severity: 'minor',
-                      description: 'The object changes hands.',
-                      references: [
-                        {
-                          sceneNumber: '1',
-                          heading: 'INT. LAB - NIGHT',
-                          quote: 'SECRET_SCENE_M5',
-                        },
-                      ],
-                      suggestion: 'Keep it in the same hand.',
-                    },
-                  ],
-                }),
+      setTimeout(() => {
+        response.writeHead(200, {
+          'content-type': 'text/event-stream',
+          'cache-control': 'no-cache',
+        });
+        response.write(
+          `data: ${JSON.stringify({
+            choices: [
+              {
+                delta: {
+                  content: JSON.stringify({
+                    items: [
+                      {
+                        type: 'continuity',
+                        severity: 'minor',
+                        description: 'The object changes hands.',
+                        references: [
+                          {
+                            sceneNumber: '1',
+                            heading: 'INT. LAB - NIGHT',
+                            quote: 'SECRET_SCENE_M5',
+                          },
+                        ],
+                        suggestion: 'Keep it in the same hand.',
+                      },
+                    ],
+                  }),
+                },
               },
-            },
-          ],
-        })}\n\n`,
-      );
-      response.end('data: [DONE]\n\n');
+            ],
+          })}\n\n`,
+        );
+        response.end('data: [DONE]\n\n');
+      }, 350);
       return;
     }
     if (lastContent.includes('reasoning stream')) {
@@ -351,7 +353,15 @@ test('offers fast synonyms, renames a character and persists an inconsistency re
   expect((await page.evaluate(() => window.getSelection()?.toString() ?? '')).trim()).not.toContain(
     ' ',
   );
-  await runCommand('ai.synonyms');
+  await page
+    .locator('.cm-line')
+    .filter({ hasText: 'SECRET_SCENE_M5' })
+    .click({ button: 'right', position: { x: 170, y: 8 } });
+  const contextMenu = page.locator('.editor-context-menu');
+  await expect(contextMenu).toBeVisible();
+  await expect(contextMenu.getByRole('menuitem', { name: 'Find Synonyms…' })).toBeEnabled();
+  await expect(contextMenu.getByRole('menuitem', { name: 'Rewrite Selection…' })).toBeDisabled();
+  await contextMenu.getByRole('menuitem', { name: 'Find Synonyms…' }).click();
 
   const rewrite = page.locator('.rewrite-popover');
   await expect(rewrite).toBeVisible();
@@ -390,20 +400,26 @@ test('offers fast synonyms, renames a character and persists an inconsistency re
 
   await page.locator('.cm-line').filter({ hasText: 'ALICE' }).click();
   await runCommand('ai.renameCharacter');
+  await rename.getByRole('radio', { name: /Rare/ }).check();
   await rename.getByRole('button', { name: 'Suggest alternative names' }).click();
   await expect(rename.getByText('EVELYN STONE')).toBeVisible();
   const nameRequest = requests.find(({ body }) =>
     JSON.stringify(body?.['messages']).includes('noms alternatifs pour le personnage'),
   );
+  expect(JSON.stringify(nameRequest?.body?.['messages'])).toContain('moins courants');
   expect(nameRequest?.body?.['chat_template_kwargs']).toEqual({ enable_thinking: false });
   expect(nameRequest?.body?.['reasoning_effort']).toBe('none');
   await rename.getByText('EVELYN STONE').click();
   await expect(editor).toContainText('EVELYN STONE');
 
   await runCommand('ai.openInconsistencies');
-  const panel = page.locator('.consistency-pane');
-  await expect(panel).toBeVisible();
+  const dialog = page.locator('.consistency-dialog');
+  const panel = dialog.locator('.consistency-pane');
+  await expect(dialog).toBeVisible();
+  await expect(page.getByRole('tab', { name: 'AI', exact: true })).toHaveCount(0);
   await panel.getByRole('button', { name: 'Analyse' }).click();
+  await expect(panel.locator('.consistency-running')).toBeVisible();
+  await expect(panel.locator('.consistency-running')).toContainText('Elapsed time');
   await expect(panel.locator('.consistency-item')).toContainText('The object changes hands.');
   await panel.locator('.consistency-item select').selectOption('resolved');
   await expect(panel.locator('.consistency-item select')).toHaveValue('resolved');

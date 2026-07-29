@@ -20,7 +20,7 @@ import type {
 export const APP_DATA_VERSION = 1 as const;
 
 export type SidebarTab = 'structure' | 'locations' | 'characters';
-export type RightPanelTab = 'statistics' | 'preview' | 'ai' | 'syntax';
+export type RightPanelTab = 'statistics' | 'preview' | 'syntax';
 
 export interface SidebarState {
   visible: boolean;
@@ -331,7 +331,6 @@ export function parseAppData(raw: string): AppData | null {
     if (
       preview['activeTab'] === 'preview' ||
       preview['activeTab'] === 'statistics' ||
-      preview['activeTab'] === 'ai' ||
       preview['activeTab'] === 'syntax'
     ) {
       result.preview.activeTab = preview['activeTab'];
@@ -339,7 +338,7 @@ export function parseAppData(raw: string): AppData | null {
       preview['activeTab'] === 'brainstorm' ||
       preview['activeTab'] === 'inconsistencies'
     ) {
-      result.preview.activeTab = 'ai';
+      result.preview.activeTab = 'statistics';
     }
     if (typeof timeline['visible'] === 'boolean') result.timeline.visible = timeline['visible'];
     if (typeof timeline['uniformWidth'] === 'boolean') {

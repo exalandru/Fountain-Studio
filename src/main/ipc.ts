@@ -253,6 +253,20 @@ function validateRequest<C extends IpcChannel>(channel: C, value: unknown): IpcR
         typeof record['requestId'] === 'string' &&
         /^[A-Za-z0-9_-]{1,100}$/.test(record['requestId']);
       break;
+    case 'editor:contextAction':
+      valid =
+        record !== null &&
+        (record['action'] === 'replaceMisspelling' ||
+          record['action'] === 'addToDictionary' ||
+          record['action'] === 'undo' ||
+          record['action'] === 'redo' ||
+          record['action'] === 'cut' ||
+          record['action'] === 'copy' ||
+          record['action'] === 'paste' ||
+          record['action'] === 'selectAll') &&
+        (record['value'] === undefined ||
+          (typeof record['value'] === 'string' && record['value'].length <= 200));
+      break;
     case 'autosave:write':
       valid =
         record !== null &&
@@ -526,6 +540,36 @@ export function registerIpcHandlers(): void {
     startAiChat(window, request);
   });
   handle('ai:chat:cancel', ({ requestId }) => cancelAiChat(requestId));
+  handle('editor:contextAction', ({ action, value }, window) => {
+    if (!window) return;
+    const contents = window.webContents;
+    switch (action) {
+      case 'replaceMisspelling':
+        if (value) contents.replaceMisspelling(value);
+        break;
+      case 'addToDictionary':
+        if (value) contents.session.addWordToSpellCheckerDictionary(value);
+        break;
+      case 'undo':
+        contents.undo();
+        break;
+      case 'redo':
+        contents.redo();
+        break;
+      case 'cut':
+        contents.cut();
+        break;
+      case 'copy':
+        contents.copy();
+        break;
+      case 'paste':
+        contents.paste();
+        break;
+      case 'selectAll':
+        contents.selectAll();
+        break;
+    }
+  });
 
   handle('autosave:write', ({ id, path, content, eol, mtimeMs }) =>
     writeAutosave(id, path, content, eol, mtimeMs),

@@ -37,6 +37,7 @@ function SplitBar({
       >
         <rect width="100" height="8" rx="4" className="stats-chart-track" />
         <rect width={left} height="8" rx="4" className="stats-chart-primary" />
+        <rect x={left} width={right} height="8" rx="4" className="stats-chart-secondary" />
       </svg>
     </div>
   );

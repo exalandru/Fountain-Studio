@@ -3,7 +3,6 @@ import type { ParseResponse } from '@shared/analysis/index.js';
 import type { InconsistencyState } from '@shared/appdata/index.js';
 import type {
   AiInconsistency,
-  InconsistencyMode,
   InconsistencySeverity,
   InconsistencyStatus,
   InconsistencyType,
@@ -24,12 +23,11 @@ import { startCollectedAiRequest } from './request.js';
 interface InconsistencyPanelProps {
   screenplay: string;
   analysis: ParseResponse | null;
-  activeSceneId: string | null;
   state: InconsistencyState;
   t: Translator['t'];
-  getSelection: () => string;
   onStateChange: (state: InconsistencyState) => void;
   onSelectReference: (reference: { sceneNumber: string; heading: string }) => void;
+  onClose: () => void;
 }
 
 const TYPES: Array<'all' | InconsistencyType> = [
@@ -46,18 +44,17 @@ const SEVERITIES: Array<'all' | InconsistencySeverity> = ['all', 'info', 'minor'
 export function InconsistencyPanel({
   screenplay,
   analysis,
-  activeSceneId,
   state,
   t,
-  getSelection,
   onStateChange,
   onSelectReference,
+  onClose,
 }: InconsistencyPanelProps) {
   const requestRef = useRef<AiRequestHandle | null>(null);
   const cancelled = useRef(false);
-  const [mode, setMode] = useState<InconsistencyMode>('screenplay');
   const [running, setRunning] = useState(false);
   const [phase, setPhase] = useState('');
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [typeFilter, setTypeFilter] = useState<'all' | InconsistencyType>('all');
   const [severityFilter, setSeverityFilter] = useState<'all' | InconsistencySeverity>('all');
@@ -70,7 +67,16 @@ export function InconsistencyPanel({
     [],
   );
 
-  const activeScene = analysis?.scenes.find((scene) => scene.id === activeSceneId) ?? null;
+  useEffect(() => {
+    if (!running) return;
+    const started = Date.now();
+    const timer = window.setInterval(
+      () => setElapsedSeconds(Math.floor((Date.now() - started) / 1_000)),
+      250,
+    );
+    return () => window.clearInterval(timer);
+  }, [running]);
+
   const filtered = useMemo(
     () =>
       state.items.filter(
@@ -103,19 +109,9 @@ export function InconsistencyPanel({
 
   const analyse = async () => {
     if (!analysis || running) return;
-    const selection = getSelection();
-    const target =
-      mode === 'scene' && activeScene
-        ? screenplay.slice(activeScene.range.from, activeScene.range.to)
-        : mode === 'selection'
-          ? selection
-          : '';
-    if ((mode === 'scene' && !activeScene) || (mode === 'selection' && !selection)) {
-      setError(t(mode === 'scene' ? 'consistency.noScene' : 'consistency.noSelection'));
-      return;
-    }
 
     setRunning(true);
+    setElapsedSeconds(0);
     setError(null);
     cancelled.current = false;
     try {
@@ -124,7 +120,7 @@ export function InconsistencyPanel({
       if (approximateTokens(screenplay) <= 50_000) {
         output = await request(
           config.activeProfileId,
-          buildInconsistencyPrompt(mode, screenplay, target),
+          buildInconsistencyPrompt(screenplay),
           t('consistency.directPass'),
         );
       } else {
@@ -145,7 +141,7 @@ export function InconsistencyPanel({
         }
         output = await request(
           config.activeProfileId,
-          buildFactCrossCheckPrompt(mode, facts.join('\n'), target),
+          buildFactCrossCheckPrompt(facts.join('\n')),
           t('consistency.crossCheck'),
         );
       }
@@ -178,92 +174,125 @@ export function InconsistencyPanel({
   };
 
   return (
-    <section className="consistency-pane">
-      <h2 className="consistency-heading">{t('consistency.title')}</h2>
-      <div className="consistency-controls">
-        <div className="ai-mode-switch">
-          {(['screenplay', 'scene', 'selection'] as const).map((value) => (
-            <button
-              type="button"
-              key={value}
-              className={mode === value ? 'active' : ''}
-              onClick={() => setMode(value)}
-            >
-              {t(`consistency.mode.${value}`)}
-            </button>
-          ))}
-        </div>
-        {running ? (
-          <button type="button" className="ai-primary" onClick={() => void stop()}>
-            {t('ai.chat.stop')} · {phase}
-          </button>
-        ) : (
-          <button type="button" className="ai-primary" onClick={() => void analyse()}>
-            {t('consistency.analyse')}
-          </button>
-        )}
-        <p>{t('consistency.warning')}</p>
-        {error ? <p className="ai-warning">{error}</p> : null}
-      </div>
-      <div className="consistency-filters">
-        <select
-          value={typeFilter}
-          onChange={(event) => setTypeFilter(event.target.value as typeof typeFilter)}
-        >
-          {TYPES.map((value) => (
-            <option key={value} value={value}>
-              {t(`consistency.type.${value}`)}
-            </option>
-          ))}
-        </select>
-        <select
-          value={severityFilter}
-          onChange={(event) => setSeverityFilter(event.target.value as typeof severityFilter)}
-        >
-          {SEVERITIES.map((value) => (
-            <option key={value} value={value}>
-              {t(`consistency.severity.${value}`)}
-            </option>
-          ))}
-        </select>
-      </div>
-      <div className="consistency-results">
-        {filtered.length === 0 ? (
-          <div className="panel-placeholder">
-            {state.analyzedAt ? t('consistency.empty') : t('consistency.notAnalysed')}
+    <div className="modal-backdrop" role="presentation">
+      <section
+        className="consistency-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-label={t('consistency.title')}
+        onKeyDown={(event) => {
+          if (event.key === 'Escape') onClose();
+        }}
+      >
+        <header>
+          <div>
+            <h2>{t('consistency.title')}</h2>
+            <p>{t('consistency.wholeScreenplay')}</p>
           </div>
-        ) : (
-          filtered.map((item: AiInconsistency) => (
-            <article key={item.id} className={`consistency-item severity-${item.severity}`}>
-              <div className="consistency-item-heading">
-                <strong>{t(`consistency.type.${item.type}`)}</strong>
-                <span>{t(`consistency.severity.${item.severity}`)}</span>
-              </div>
-              <p>{item.description}</p>
-              {item.references.map((reference, index) => (
-                <button
-                  type="button"
-                  className="consistency-reference"
-                  key={`${reference.sceneNumber}-${index}`}
-                  onClick={() => onSelectReference(reference)}
-                >
-                  {reference.sceneNumber} · {reference.heading}
-                  <small>{reference.quote}</small>
+          <button
+            type="button"
+            className="panel-close"
+            aria-label={t('consistency.close')}
+            onClick={onClose}
+          >
+            ×
+          </button>
+        </header>
+        <div className="consistency-pane">
+          <div className="consistency-controls">
+            {running ? (
+              <div className="consistency-running" role="status">
+                <div className="consistency-orbit" aria-hidden="true">
+                  <span />
+                  <span />
+                  <span />
+                </div>
+                <div>
+                  <strong>{phase || t('ai.chat.reasoning')}</strong>
+                  <small>
+                    {t('consistency.elapsed', {
+                      minutes: Math.floor(elapsedSeconds / 60),
+                      seconds: String(elapsedSeconds % 60).padStart(2, '0'),
+                    })}
+                  </small>
+                </div>
+                <button type="button" onClick={() => void stop()}>
+                  {t('ai.chat.stop')}
                 </button>
+              </div>
+            ) : (
+              <button type="button" className="ai-primary" onClick={() => void analyse()}>
+                {t('consistency.analyse')}
+              </button>
+            )}
+            <p>{t('consistency.warning')}</p>
+            {error ? <p className="ai-warning">{error}</p> : null}
+          </div>
+          <div className="consistency-filters">
+            <select
+              value={typeFilter}
+              onChange={(event) => setTypeFilter(event.target.value as typeof typeFilter)}
+            >
+              {TYPES.map((value) => (
+                <option key={value} value={value}>
+                  {t(`consistency.type.${value}`)}
+                </option>
               ))}
-              {item.suggestion ? <p className="consistency-suggestion">{item.suggestion}</p> : null}
-              <select
-                value={item.status}
-                onChange={(event) => setStatus(item.id, event.target.value as InconsistencyStatus)}
-              >
-                <option value="open">{t('consistency.status.open')}</option>
-                <option value="ignored">{t('consistency.status.ignored')}</option>
-                <option value="resolved">{t('consistency.status.resolved')}</option>
-              </select>
-            </article>
-          ))
-        )}
-      </div>
-    </section>
+            </select>
+            <select
+              value={severityFilter}
+              onChange={(event) => setSeverityFilter(event.target.value as typeof severityFilter)}
+            >
+              {SEVERITIES.map((value) => (
+                <option key={value} value={value}>
+                  {t(`consistency.severity.${value}`)}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="consistency-results">
+            {filtered.length === 0 ? (
+              <div className="panel-placeholder">
+                {state.analyzedAt ? t('consistency.empty') : t('consistency.notAnalysed')}
+              </div>
+            ) : (
+              filtered.map((item: AiInconsistency) => (
+                <article key={item.id} className={`consistency-item severity-${item.severity}`}>
+                  <div className="consistency-item-heading">
+                    <strong>{t(`consistency.type.${item.type}`)}</strong>
+                    <span>{t(`consistency.severity.${item.severity}`)}</span>
+                  </div>
+                  <p>{item.description}</p>
+                  {item.references.map((reference, index) => (
+                    <button
+                      type="button"
+                      className="consistency-reference"
+                      key={`${reference.sceneNumber}-${index}`}
+                      onClick={() => onSelectReference(reference)}
+                    >
+                      {reference.sceneNumber} · {reference.heading}
+                      <small>{reference.quote}</small>
+                    </button>
+                  ))}
+                  {item.suggestion ? (
+                    <p className="consistency-suggestion">{item.suggestion}</p>
+                  ) : null}
+                  <select
+                    value={item.status}
+                    onChange={(event) =>
+                      setStatus(item.id, event.target.value as InconsistencyStatus)
+                    }
+                  >
+                    <option value="open">{t('consistency.status.open')}</option>
+                    <option value="ignored">{t('consistency.status.ignored')}</option>
+                    <option value="resolved">{t('consistency.status.resolved')}</option>
+                  </select>
+                </article>
+              ))
+            )}
+          </div>
+        </div>
+      </section>
+    </div>
   );
 }

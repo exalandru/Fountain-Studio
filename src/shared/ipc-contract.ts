@@ -173,6 +173,13 @@ export interface IpcRequests {
   };
   'ai:chat:start': { arg: AiChatRequest; result: void };
   'ai:chat:cancel': { arg: { requestId: string }; result: boolean };
+  'editor:contextAction': {
+    arg: {
+      action: EditorContextAction;
+      value?: string;
+    };
+    result: void;
+  };
 
   'autosave:write': {
     arg: {
@@ -195,6 +202,16 @@ export interface IpcRequests {
   'appdata:write': { arg: { path: string; data: AppData }; result: void };
 }
 
+export type EditorContextAction =
+  | 'replaceMisspelling'
+  | 'addToDictionary'
+  | 'undo'
+  | 'redo'
+  | 'cut'
+  | 'copy'
+  | 'paste'
+  | 'selectAll';
+
 /** Events from main to renderer. */
 export interface IpcEvents {
   /** The OS or the menu asks to open files (double-click, dock drop, recent item). */
@@ -202,6 +219,23 @@ export interface IpcEvents {
     { paths: string[]; snapshots?: never } | { paths?: never; snapshots: DocumentSnapshot[] };
   /** A menu command for the renderer to run (new, save, find…). */
   'menu:command': { command: MenuCommand };
+  'editor:contextMenu': {
+    x: number;
+    y: number;
+    misspelledWord: string;
+    suggestions: string[];
+    selectedText: string;
+    singleWord: boolean;
+    characterLike: boolean;
+    editFlags: {
+      canUndo: boolean;
+      canRedo: boolean;
+      canCut: boolean;
+      canCopy: boolean;
+      canPaste: boolean;
+      canSelectAll: boolean;
+    };
+  };
   /** The OS colour scheme changed. */
   'app:themeChanged': { dark: boolean };
   /**

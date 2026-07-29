@@ -260,7 +260,7 @@ test('the right sidebar includes a compact Fountain cheat sheet', async () => {
   await expect(memo).toContainText('INT. KITCHEN - DAY #1#');
   await expect(memo).toContainText('[[ working note ]]');
   await page.keyboard.press('ArrowLeft');
-  await expect(page.getByRole('tab', { name: 'AI', exact: true })).toHaveAttribute(
+  await expect(page.getByRole('tab', { name: 'Preview', exact: true })).toHaveAttribute(
     'aria-selected',
     'true',
   );
@@ -268,10 +268,10 @@ test('the right sidebar includes a compact Fountain cheat sheet', async () => {
 });
 
 test('the top bar exposes writing modes, theme controls and the editor texture', async () => {
-  await expect(page.locator('.topbar-group')).toHaveCount(4);
+  await expect(page.locator('.topbar-group')).toHaveCount(5);
   const toolbarButtons = page.locator('.toolbar-icon-button');
-  await expect(toolbarButtons).toHaveCount(14);
-  await expect(page.locator('.toolbar-tooltip')).toHaveCount(14);
+  await expect(toolbarButtons).toHaveCount(15);
+  await expect(page.locator('.toolbar-tooltip')).toHaveCount(15);
   expect(
     await toolbarButtons.evaluateAll((buttons) =>
       buttons.every(
@@ -351,6 +351,10 @@ test('the top bar exposes writing modes, theme controls and the editor texture',
   await expect(page.locator('.app')).toHaveClass(/focus-mode/);
   await page.getByRole('button', { name: 'Exit focus' }).click();
   await expect(page.locator('.app')).not.toHaveClass(/focus-mode/);
+
+  await page.getByRole('button', { name: 'Analyse', exact: true }).click();
+  await expect(page.locator('.consistency-dialog')).toBeVisible();
+  await page.getByRole('button', { name: 'Close consistency analysis' }).click();
 });
 
 test('formatted mode hides Fountain markers and exposes a floating format bar', async () => {
@@ -446,6 +450,7 @@ test('statistics share pagination and export CSV', async () => {
   await expect(panel).toBeVisible();
   await expect(panel).toContainText('1');
   await expect(panel.locator('svg')).toHaveCount(1);
+  await expect(panel.locator('.stats-chart-secondary')).toHaveCount(1);
 
   const target = join(userData, 'screenplay-statistics.csv');
   await app.evaluate(async ({ dialog }, filePath) => {
@@ -505,6 +510,17 @@ test('the title-page preview renders date, version and other metadata', async ()
   await expect(titlePage).toContainText('2.1');
   await expect(titlePage).toContainText('draft date');
   await expect(titlePage).toContainText('29 July 2026');
+  const [paperBox, titleBox] = await Promise.all([
+    page.locator('.preview-paper').first().boundingBox(),
+    page.locator('.preview-title-block').boundingBox(),
+  ]);
+  expect(paperBox).not.toBeNull();
+  expect(titleBox).not.toBeNull();
+  if (paperBox && titleBox) {
+    const paperCenter = paperBox.x + paperBox.width / 2;
+    const titleCenter = titleBox.x + titleBox.width / 2;
+    expect(Math.abs(paperCenter - titleCenter)).toBeLessThan(2);
+  }
 });
 
 test('clicking a decorated editor line places the cursor on that line', async () => {

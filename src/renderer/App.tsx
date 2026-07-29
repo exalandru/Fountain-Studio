@@ -23,11 +23,13 @@ import { RewriteDialog } from './ai/RewriteDialog.js';
 import type { RewriteSelection } from './ai/RewriteDialog.js';
 import { CharacterNameDialog } from './ai/CharacterNameDialog.js';
 import type { CharacterNameSelection } from './ai/CharacterNameDialog.js';
+import { InconsistencyPanel } from './ai/InconsistencyPanel.js';
 import { fountainLexField } from './editor/fountain-highlight.js';
 import type { NewDocumentStrings } from './store/documents.js';
 import { useDocuments } from './store/documents.js';
 import { CommandPalette } from './ui/CommandPalette.js';
 import type { PaletteCommand } from './ui/CommandPalette.js';
+import { EditorContextMenu } from './ui/EditorContextMenu.js';
 import { Workspace } from './workspace/Workspace.js';
 
 /**
@@ -44,6 +46,7 @@ export function App() {
   const [status, setStatus] = useState<string | null>(null);
   const [pdfOpen, setPdfOpen] = useState(false);
   const [aiSettingsOpen, setAiSettingsOpen] = useState(false);
+  const [inconsistencyOpen, setInconsistencyOpen] = useState(false);
   const [, setAiSettingsRevision] = useState(0);
   const [rewriteSelection, setRewriteSelection] = useState<RewriteSelection | null>(null);
   const [characterNameSelection, setCharacterNameSelection] =
@@ -140,14 +143,7 @@ export function App() {
   });
   const openPdfDialog = useCallback(() => setPdfOpen(true), []);
   const openAiSettings = useCallback(() => setAiSettingsOpen(true), []);
-  const openInconsistencies = useCallback(
-    () =>
-      updateAppData((data) => ({
-        ...data,
-        preview: { ...data.preview, visible: true, activeTab: 'ai' },
-      })),
-    [updateAppData],
-  );
+  const openInconsistencies = useCallback(() => setInconsistencyOpen(true), []);
   const openRewrite = useCallback(
     (initialTool: 'rewrite' | 'synonyms' = 'rewrite') => {
       const view = editorView.current;
@@ -574,12 +570,6 @@ export function App() {
       updateAppData((data) => ({ ...data, inconsistencies })),
     [updateAppData],
   );
-  const getEditorSelection = useCallback(() => {
-    const view = editorView.current;
-    if (!view) return '';
-    const selection = view.state.selection.main;
-    return selection.empty ? '' : view.state.sliceDoc(selection.from, selection.to);
-  }, []);
   const selectInconsistencyReference = useCallback(
     (reference: { sceneNumber: string; heading: string }) => {
       const scene = analysis?.scenes.find(
@@ -703,9 +693,7 @@ export function App() {
         onRightPanelTab={setRightPanelTab}
         formattingActive={formattingActive}
         onFormatSelection={formatSelection}
-        onInconsistencyState={updateInconsistencies}
-        getEditorSelection={getEditorSelection}
-        onSelectInconsistencyReference={selectInconsistencyReference}
+        onOpenInconsistencies={openInconsistencies}
         onExportStats={(format) => void exportStats(format)}
         onMinutesPerPage={(value) => void patchSettings({ minutesPerPage: value })}
         onClosePreview={closePreview}
@@ -739,6 +727,20 @@ export function App() {
           onClose={() => setAiSettingsOpen(false)}
         />
       ) : null}
+      {inconsistencyOpen && active ? (
+        <InconsistencyPanel
+          screenplay={active.content}
+          analysis={analysis}
+          state={active.appData.inconsistencies}
+          t={t}
+          onStateChange={updateInconsistencies}
+          onSelectReference={(reference) => {
+            selectInconsistencyReference(reference);
+            setInconsistencyOpen(false);
+          }}
+          onClose={() => setInconsistencyOpen(false)}
+        />
+      ) : null}
       {rewriteSelection && active ? (
         <RewriteDialog
           selection={rewriteSelection}
@@ -762,6 +764,12 @@ export function App() {
           onClose={() => setPaletteOpen(false)}
         />
       ) : null}
+      <EditorContextMenu
+        t={t}
+        onSynonyms={openSynonyms}
+        onRewrite={openRewriteSelection}
+        onRenameCharacter={openRenameCharacter}
+      />
     </>
   );
 }

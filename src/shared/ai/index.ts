@@ -333,12 +333,23 @@ Tu respectes la langue, l’époque, le lieu, le genre et le ton déductibles du
 Réponds exclusivement avec un objet JSON valide de la forme {"suggestions":["..."]}, sans Markdown ni commentaire.
 Propose au maximum dix noms complets distincts, sans explication.`;
 
+export type CharacterNameStyle = 'common' | 'rare' | 'creative';
+
 export function buildCharacterNamesPrompt(
   currentName: string,
   existingNames: string[],
   sceneContext: string,
+  style: CharacterNameStyle = 'common',
 ): string {
+  const styleInstruction: Record<CharacterNameStyle, string> = {
+    common:
+      'Propose des noms communs et naturels, employés au quotidien dans la langue et la culture déductibles du texte.',
+    rare: 'Propose des noms réels et crédibles, mais nettement moins courants, sans tomber dans les noms inventés.',
+    creative:
+      'Propose des noms fictifs, inventés ou très créatifs, adaptés au genre et à l’univers de l’œuvre.',
+  };
   return `Propose jusqu’à dix noms alternatifs pour le personnage "${currentName}".
+Style demandé : ${styleInstruction[style]}
 Évite les noms déjà employés : ${existingNames.join(', ') || 'aucun'}.
 
 <scene>
@@ -370,7 +381,6 @@ export type InconsistencyType =
   'continuity' | 'chronology' | 'character' | 'location' | 'plot' | 'dialogue';
 export type InconsistencySeverity = 'info' | 'minor' | 'major';
 export type InconsistencyStatus = 'open' | 'ignored' | 'resolved';
-export type InconsistencyMode = 'screenplay' | 'scene' | 'selection';
 
 export interface InconsistencyReference {
   sceneNumber: string;
@@ -393,13 +403,8 @@ Tu ne signales que des contradictions ou risques précis, étayés par les passa
 Tu distingues continuité matérielle, chronologie, caractérisation, géographie, logique d’intrigue et dialogue contradictoire.
 Réponds exclusivement en JSON valide, sans Markdown ni commentaire.`;
 
-export function buildInconsistencyPrompt(
-  mode: InconsistencyMode,
-  screenplay: string,
-  target: string,
-): string {
-  return `Analyse les incohérences selon le mode "${mode}".
-${target ? `Cible prioritaire :\n<target>\n${target}\n</target>\n` : ''}
+export function buildInconsistencyPrompt(screenplay: string): string {
+  return `Analyse les incohérences sur l’ensemble du scénario.
 Retourne {"items":[{"type":"continuity|chronology|character|location|plot|dialogue","severity":"info|minor|major","description":"...","references":[{"sceneNumber":"...","heading":"...","quote":"..."}],"suggestion":"..."}]}.
 Chaque référence doit contenir le numéro ET le heading de scène, ainsi qu’une courte citation.
 
@@ -417,13 +422,8 @@ ${screenplayChunk}
 </screenplay>`;
 }
 
-export function buildFactCrossCheckPrompt(
-  mode: InconsistencyMode,
-  facts: string,
-  target: string,
-): string {
-  return `Vérifie les fiches factuelles entre elles et détecte les incohérences selon le mode "${mode}".
-${target ? `Cible prioritaire :\n<target>\n${target}\n</target>\n` : ''}
+export function buildFactCrossCheckPrompt(facts: string): string {
+  return `Vérifie les fiches factuelles entre elles et détecte les incohérences sur l’ensemble du scénario.
 Retourne {"items":[{"type":"continuity|chronology|character|location|plot|dialogue","severity":"info|minor|major","description":"...","references":[{"sceneNumber":"...","heading":"...","quote":"..."}],"suggestion":"..."}]}.
 
 <facts>

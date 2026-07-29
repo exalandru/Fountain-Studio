@@ -1,8 +1,7 @@
 import type { AppSettings } from '@shared/ipc-contract.js';
 import type { ParseResponse } from '@shared/analysis/index.js';
-import type { InconsistencyState, RightPanelTab } from '@shared/appdata/index.js';
+import type { RightPanelTab } from '@shared/appdata/index.js';
 import type { Translator } from '@shared/i18n/index.js';
-import { InconsistencyPanel } from '../ai/InconsistencyPanel.js';
 import type { OpenDocument } from '../store/documents.js';
 import { Editor } from '../editor/Editor.js';
 import { Preview } from '../preview/index.js';
@@ -47,9 +46,7 @@ interface WorkspaceProps {
   onRightPanelTab: (tab: RightPanelTab) => void;
   formattingActive: { bold: boolean; italic: boolean; underline: boolean };
   onFormatSelection: (marker: '*' | '**' | '_') => void;
-  onInconsistencyState: (state: InconsistencyState) => void;
-  getEditorSelection: () => string;
-  onSelectInconsistencyReference: (reference: { sceneNumber: string; heading: string }) => void;
+  onOpenInconsistencies: () => void;
   onExportStats: (format: 'csv' | 'json') => void;
   onMinutesPerPage: (value: number) => void;
   onClosePreview: () => void;
@@ -96,9 +93,7 @@ export function Workspace({
   onRightPanelTab,
   formattingActive,
   onFormatSelection,
-  onInconsistencyState,
-  getEditorSelection,
-  onSelectInconsistencyReference,
+  onOpenInconsistencies,
   onExportStats,
   onMinutesPerPage,
   onClosePreview,
@@ -183,7 +178,12 @@ export function Workspace({
           </button>
         </div>
 
-        <TopToolbar settings={settings} t={t} onSettingsChange={onSettingsChange} />
+        <TopToolbar
+          settings={settings}
+          t={t}
+          onSettingsChange={onSettingsChange}
+          onOpenInconsistencies={onOpenInconsistencies}
+        />
       </div>
 
       {settings.focusMode ? (
@@ -316,7 +316,7 @@ export function Workspace({
                     <aside className="right-sidebar" aria-label={t('rightPanel.title')}>
                       <header className="right-panel-header">
                         <div className="right-panel-tabs" role="tablist">
-                          {(['statistics', 'preview', 'ai', 'syntax'] as const).map(
+                          {(['statistics', 'preview', 'syntax'] as const).map(
                             (tab, index, tabs) => (
                               <button
                                 type="button"
@@ -373,18 +373,7 @@ export function Workspace({
                         id="right-panel-content"
                         aria-labelledby={`right-panel-tab-${active.appData.preview.activeTab}`}
                       >
-                        {active.appData.preview.activeTab === 'ai' ? (
-                          <InconsistencyPanel
-                            screenplay={active.content}
-                            analysis={analysis}
-                            activeSceneId={activeSceneId}
-                            state={active.appData.inconsistencies}
-                            t={t}
-                            getSelection={getEditorSelection}
-                            onStateChange={onInconsistencyState}
-                            onSelectReference={onSelectInconsistencyReference}
-                          />
-                        ) : active.appData.preview.activeTab === 'statistics' ? (
+                        {active.appData.preview.activeTab === 'statistics' ? (
                           <StatsPanel
                             statistics={analysis?.statistics ?? null}
                             minutesPerPage={settings.minutesPerPage}
@@ -417,15 +406,25 @@ export function Workspace({
 
               {!active.appData.sidebar.visible ? (
                 <div className="panel-launchers panel-launchers-left">
-                  <button type="button" onClick={onShowSidebar}>
-                    {t('sidebar.show')}
+                  <button
+                    type="button"
+                    aria-label={t('sidebar.show')}
+                    title={t('sidebar.show')}
+                    onClick={onShowSidebar}
+                  >
+                    ›
                   </button>
                 </div>
               ) : null}
               {!active.appData.preview.visible ? (
                 <div className="panel-launchers panel-launchers-right">
-                  <button type="button" onClick={onShowPreview}>
-                    {t('preview.show')}
+                  <button
+                    type="button"
+                    aria-label={t('preview.show')}
+                    title={t('preview.show')}
+                    onClick={onShowPreview}
+                  >
+                    ‹
                   </button>
                 </div>
               ) : null}

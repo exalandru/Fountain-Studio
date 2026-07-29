@@ -116,7 +116,7 @@ describe('companion schema', () => {
       }),
     );
     expect(parsed?.sidebar.activeTab).toBe('structure');
-    expect(parsed?.preview.activeTab).toBe('ai');
+    expect(parsed?.preview.activeTab).toBe('statistics');
   });
 
   it('bounds persisted brainstorming conversations and discards attachment content', () => {

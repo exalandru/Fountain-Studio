@@ -4,6 +4,7 @@ import {
   CHARACTER_NAMES_SYSTEM_PROMPT,
   parseShortSuggestions,
 } from '@shared/ai/index.js';
+import type { CharacterNameStyle } from '@shared/ai/index.js';
 import { useTranslator } from '../hooks/useTranslator.js';
 import type { AiRequestHandle } from './request.js';
 import { startCollectedAiRequest } from './request.js';
@@ -26,6 +27,7 @@ export function CharacterNameDialog({ selection, onRename, onClose }: CharacterN
   const requestRef = useRef<AiRequestHandle | null>(null);
   const [name, setName] = useState(selection.name);
   const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [style, setStyle] = useState<CharacterNameStyle>('common');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -57,6 +59,7 @@ export function CharacterNameDialog({ selection, onRename, onClose }: CharacterN
               selection.name,
               selection.existingNames,
               selection.sceneContext,
+              style,
             ),
           },
         ],
@@ -128,6 +131,24 @@ export function CharacterNameDialog({ selection, onRename, onClose }: CharacterN
         </button>
       </div>
       <div className="character-name-ai">
+        <fieldset className="character-name-styles">
+          <legend>{t('characterName.style')}</legend>
+          {(['common', 'rare', 'creative'] as const).map((value) => (
+            <label key={value} className={style === value ? 'is-active' : ''}>
+              <input
+                type="radio"
+                name="character-name-style"
+                value={value}
+                checked={style === value}
+                onChange={() => setStyle(value)}
+              />
+              <span>
+                <strong>{t(`characterName.style.${value}`)}</strong>
+                <small>{t(`characterName.style.${value}Hint`)}</small>
+              </span>
+            </label>
+          ))}
+        </fieldset>
         <button type="button" disabled={busy} onClick={() => void suggest()}>
           {busy ? t('characterName.generating') : t('characterName.suggest')}
         </button>
