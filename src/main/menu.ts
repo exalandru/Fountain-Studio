@@ -153,6 +153,12 @@ export async function buildMenu(): Promise<void> {
           click: () => send('view.toggleNotes'),
         },
         {
+          label: t('menu.view.showBoneyard'),
+          type: 'checkbox',
+          checked: settings.showBoneyard,
+          click: () => send('view.toggleBoneyard'),
+        },
+        {
           label: t('menu.view.showSynopses'),
           type: 'checkbox',
           checked: settings.showSynopses,

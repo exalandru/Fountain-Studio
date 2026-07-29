@@ -4,6 +4,7 @@ import { buildMenu } from './menu.js';
 import { openPaths, registerIpcHandlers } from './ipc.js';
 import { applySpellCheckerLanguage } from './spellcheck.js';
 import { getSettings } from './store.js';
+import { installCloseGuard, markApplicationQuitting } from './window-lifecycle.js';
 
 /**
  * Main process entry point.
@@ -40,10 +41,10 @@ async function createWindow(): Promise<BrowserWindow> {
     backgroundColor: dark ? '#1c1c1e' : '#faf9f7',
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
     webPreferences: {
-      preload: join(import.meta.dirname, '../preload/index.mjs'),
+      preload: join(import.meta.dirname, '../preload/index.cjs'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false,
+      sandbox: true,
       spellcheck: true,
     },
   });
@@ -52,9 +53,18 @@ async function createWindow(): Promise<BrowserWindow> {
 
   // Any attempt to open an external URL goes to the browser, never inside the app.
   window.webContents.setWindowOpenHandler(({ url }) => {
-    if (/^https?:/.test(url)) void shell.openExternal(url);
+    try {
+      if (new URL(url).protocol === 'https:') void shell.openExternal(url);
+    } catch {
+      // Invalid URLs are denied like every unsupported scheme.
+    }
     return { action: 'deny' };
   });
+  window.webContents.on('will-navigate', (event, url) => {
+    if (url !== window.webContents.getURL()) event.preventDefault();
+  });
+  window.webContents.on('will-attach-webview', (event) => event.preventDefault());
+  installCloseGuard(window);
 
   if (process.env['ELECTRON_RENDERER_URL']) {
     await window.loadURL(process.env['ELECTRON_RENDERER_URL']);
@@ -68,13 +78,22 @@ async function createWindow(): Promise<BrowserWindow> {
 }
 
 function flushPendingFiles(): void {
-  if (pendingFiles.length === 0 || !mainWindow) return;
+  if (pendingFiles.length === 0 || !mainWindow || mainWindow.isDestroyed()) return;
   const paths = pendingFiles.splice(0, pendingFiles.length);
   void openPaths(paths).then((documents) => {
     if (documents.length > 0) {
-      mainWindow?.webContents.send('app:openFiles', { paths: documents.map((d) => d.path ?? '') });
+      mainWindow?.webContents.send('app:openFiles', { snapshots: documents });
     }
   });
+}
+
+async function createMainWindow(): Promise<BrowserWindow> {
+  const window = await createWindow();
+  mainWindow = window;
+  window.on('closed', () => {
+    if (mainWindow === window) mainWindow = null;
+  });
+  return window;
 }
 
 // Single instance: files opened from the OS join the existing window.
@@ -112,29 +131,36 @@ if (!app.requestSingleInstanceLock()) {
         },
       });
     });
+    // Writer Studio does not need camera, microphone, geolocation, notifications or
+    // other web permissions. Electron otherwise approves permission requests by
+    // default, so both request and check paths are explicitly denied.
+    session.defaultSession.setPermissionRequestHandler((_contents, _permission, callback) => {
+      callback(false);
+    });
+    session.defaultSession.setPermissionCheckHandler(() => false);
 
     registerIpcHandlers();
     await buildMenu();
 
-    mainWindow = await createWindow();
-    mainWindow.on('closed', () => {
-      mainWindow = null;
-    });
+    await createMainWindow();
 
     flushPendingFiles();
 
     nativeTheme.on('updated', () => {
-      mainWindow?.webContents.send('app:themeChanged', {
+      if (!mainWindow || mainWindow.isDestroyed()) return;
+      mainWindow.webContents.send('app:themeChanged', {
         dark: nativeTheme.shouldUseDarkColors,
       });
     });
 
     app.on('activate', async () => {
       if (BrowserWindow.getAllWindows().length === 0) {
-        mainWindow = await createWindow();
+        await createMainWindow();
       }
     });
   });
+
+  app.on('before-quit', markApplicationQuitting);
 
   app.on('window-all-closed', () => {
     if (process.platform !== 'darwin') app.quit();

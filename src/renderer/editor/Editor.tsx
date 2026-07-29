@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { memo, useEffect, useRef } from 'react';
 import { closeBrackets, closeBracketsKeymap } from '@codemirror/autocomplete';
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
 import { codeFolding, foldGutter, foldKeymap } from '@codemirror/language';
@@ -32,21 +32,29 @@ export interface EditorProps {
   dark: boolean;
   fontSize: number;
   showNotes: boolean;
+  showBoneyard: boolean;
   showSynopses: boolean;
   showSections: boolean;
   onChange: (content: string) => void;
+  onCursorOffset?: (offset: number) => void;
+  onScrollOffset?: (offset: number) => void;
+  externalScrollOffset?: number | null;
   onViewReady?: (view: EditorView | null) => void;
 }
 
-export function Editor({
+function EditorComponent({
   documentId,
   initialContent,
   dark,
   fontSize,
   showNotes,
+  showBoneyard,
   showSynopses,
   showSections,
   onChange,
+  onCursorOffset,
+  onScrollOffset,
+  externalScrollOffset,
   onViewReady,
 }: EditorProps) {
   const host = useRef<HTMLDivElement | null>(null);
@@ -56,9 +64,18 @@ export function Editor({
   // the editor on every render. The ref is updated in an effect, never during render —
   // the editor only emits a change after user interaction, well after effects have run.
   const onChangeRef = useRef(onChange);
+  const onCursorRef = useRef(onCursorOffset);
+  const onScrollRef = useRef(onScrollOffset);
+  const suppressScroll = useRef(false);
   useEffect(() => {
     onChangeRef.current = onChange;
   }, [onChange]);
+  useEffect(() => {
+    onCursorRef.current = onCursorOffset;
+  }, [onCursorOffset]);
+  useEffect(() => {
+    onScrollRef.current = onScrollOffset;
+  }, [onScrollOffset]);
 
   useEffect(() => {
     if (!host.current) return;
@@ -99,6 +116,9 @@ export function Editor({
         themeCompartment.current.of(dark ? darkTheme : lightTheme),
         EditorView.updateListener.of((update) => {
           if (update.docChanged) onChangeRef.current(update.state.doc.toString());
+          if (update.docChanged || update.selectionSet) {
+            onCursorRef.current?.(update.state.selection.main.head);
+          }
         }),
       ],
     });
@@ -106,9 +126,26 @@ export function Editor({
     const instance = new EditorView({ state, parent: host.current });
     view.current = instance;
     onViewReady?.(instance);
+    onCursorRef.current?.(instance.state.selection.main.head);
+
+    let frame = 0;
+    const handleScroll = () => {
+      if (suppressScroll.current) {
+        suppressScroll.current = false;
+        return;
+      }
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        const block = instance.lineBlockAtHeight(instance.scrollDOM.scrollTop);
+        onScrollRef.current?.(block.from);
+      });
+    };
+    instance.scrollDOM.addEventListener('scroll', handleScroll, { passive: true });
     instance.focus();
 
     return () => {
+      cancelAnimationFrame(frame);
+      instance.scrollDOM.removeEventListener('scroll', handleScroll);
       onViewReady?.(null);
       instance.destroy();
       view.current = null;
@@ -126,9 +163,21 @@ export function Editor({
 
   useEffect(() => {
     view.current?.dispatch({
-      effects: setVisibility.of({ showNotes, showSynopses, showSections }),
+      effects: setVisibility.of({ showNotes, showBoneyard, showSynopses, showSections }),
     });
-  }, [showNotes, showSynopses, showSections]);
+  }, [showBoneyard, showNotes, showSections, showSynopses]);
+
+  useEffect(() => {
+    const instance = view.current;
+    if (externalScrollOffset === null || externalScrollOffset === undefined || !instance) return;
+    suppressScroll.current = true;
+    instance.dispatch({
+      effects: EditorView.scrollIntoView(
+        Math.min(instance.state.doc.length, Math.max(0, externalScrollOffset)),
+        { y: 'start' },
+      ),
+    });
+  }, [externalScrollOffset]);
 
   useEffect(() => {
     host.current?.style.setProperty('--editor-font-size', `${fontSize}px`);
@@ -136,3 +185,25 @@ export function Editor({
 
   return <div className="editor-host" ref={host} />;
 }
+
+/**
+ * CodeMirror owns the live text after mounting. Zustand mirrors it for persistence,
+ * but feeding that same string back as a React prop would otherwise rerender this
+ * wrapper on every keystroke for no effect.
+ */
+export const Editor = memo(
+  EditorComponent,
+  (previous, next) =>
+    previous.documentId === next.documentId &&
+    previous.dark === next.dark &&
+    previous.fontSize === next.fontSize &&
+    previous.showNotes === next.showNotes &&
+    previous.showBoneyard === next.showBoneyard &&
+    previous.showSynopses === next.showSynopses &&
+    previous.showSections === next.showSections &&
+    previous.externalScrollOffset === next.externalScrollOffset &&
+    previous.onChange === next.onChange &&
+    previous.onCursorOffset === next.onCursorOffset &&
+    previous.onScrollOffset === next.onScrollOffset &&
+    previous.onViewReady === next.onViewReady,
+);

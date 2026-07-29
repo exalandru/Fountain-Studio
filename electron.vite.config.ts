@@ -16,7 +16,11 @@ export default defineConfig({
     plugins: [externalizeDepsPlugin()],
     resolve: { alias: { '@shared': shared } },
     build: {
-      rollupOptions: { input: { index: resolve(__dirname, 'src/preload/index.ts') } },
+      // Sandboxed Electron preloads execute as CommonJS, even in an ESM application.
+      rollupOptions: {
+        input: { index: resolve(__dirname, 'src/preload/index.ts') },
+        output: { format: 'cjs', entryFileNames: '[name].cjs' },
+      },
     },
   },
   renderer: {

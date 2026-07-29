@@ -29,45 +29,6 @@ const TRANSITIONS = [
   'FADE OUT.',
 ];
 
-/** Collects names already in use, most frequent first. */
-function harvest(lines: ReturnType<typeof collectLines>): {
-  characters: string[];
-  locations: string[];
-  times: string[];
-} {
-  const characters = new Map<string, number>();
-  const locations = new Map<string, number>();
-  const times = new Map<string, number>();
-
-  for (const line of lines) {
-    if (line.kind === 'character' && line.character) {
-      characters.set(line.character, (characters.get(line.character) ?? 0) + 1);
-    }
-    if (line.kind === 'scene_heading') {
-      // Reuse the heading as written: that is what the author wants to find again.
-      const body = line.text.replace(/^(INT\.?\/EXT\.?|I\/E\.?|INT\.?|EXT\.?|EST\.?)\s*/i, '');
-      const segments = body.split(/\s+-\s+/);
-      const place = segments.slice(0, -1).join(' - ') || segments[0] || '';
-      const moment = segments.length > 1 ? segments[segments.length - 1] : undefined;
-      if (place) locations.set(place.trim(), (locations.get(place.trim()) ?? 0) + 1);
-      if (moment) times.set(moment.trim(), (times.get(moment.trim()) ?? 0) + 1);
-    }
-  }
-
-  const byFrequency = (map: Map<string, number>): string[] =>
-    [...map.entries()].sort((a, b) => b[1] - a[1]).map(([name]) => name);
-
-  return {
-    characters: byFrequency(characters),
-    locations: byFrequency(locations),
-    times: byFrequency(times),
-  };
-}
-
-function collectLines(context: CompletionContext) {
-  return context.state.field(fountainLexField, false)?.lines ?? [];
-}
-
 function options(values: string[], type: string, boost = 0): Completion[] {
   return values.map((label, index) => ({
     label,
@@ -83,7 +44,8 @@ export function fountainCompletion(): Extension {
     icons: false,
     override: [
       (context: CompletionContext): CompletionResult | null => {
-        const lines = collectLines(context);
+        const analysis = context.state.field(fountainLexField, false);
+        const lines = analysis?.lines ?? [];
         const doc = context.state.doc;
         const currentLine = doc.lineAt(context.pos);
         const index = currentLine.number - 1;
@@ -93,7 +55,11 @@ export function fountainCompletion(): Extension {
 
         const previousLine = index > 0 ? lines[index - 1] : undefined;
         const previousEmpty = index === 0 || previousLine?.kind === 'empty';
-        const { characters, locations, times } = harvest(lines);
+        const { characters, locations, times } = analysis?.completions ?? {
+          characters: [],
+          locations: [],
+          times: [],
+        };
 
         // ── Title page: a key at the top of the file ──
         const lexed = lines[index];

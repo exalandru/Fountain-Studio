@@ -2,8 +2,8 @@ import { RangeSetBuilder, StateEffect, StateField } from '@codemirror/state';
 import type { EditorState, Extension, Range } from '@codemirror/state';
 import { Decoration, ViewPlugin } from '@codemirror/view';
 import type { DecorationSet, EditorView, ViewUpdate } from '@codemirror/view';
-import type { LexedLine } from '@shared/fountain/index.js';
-import { lexDocument, maskAnnotations, parseInline } from '@shared/fountain/index.js';
+import type { EditorAnalysis, LexedLine } from '@shared/fountain/index.js';
+import { analyzeForEditor, parseInline } from '@shared/fountain/index.js';
 
 /**
  * Fountain syntax highlighting.
@@ -18,6 +18,7 @@ import { lexDocument, maskAnnotations, parseInline } from '@shared/fountain/inde
 
 export interface VisibilityOptions {
   showNotes: boolean;
+  showBoneyard: boolean;
   showSynopses: boolean;
   showSections: boolean;
 }
@@ -25,7 +26,12 @@ export interface VisibilityOptions {
 export const setVisibility = StateEffect.define<VisibilityOptions>();
 
 export const visibilityField = StateField.define<VisibilityOptions>({
-  create: () => ({ showNotes: true, showSynopses: true, showSections: true }),
+  create: () => ({
+    showNotes: true,
+    showBoneyard: true,
+    showSynopses: true,
+    showSections: true,
+  }),
   update(value, transaction) {
     for (const effect of transaction.effects) {
       if (effect.is(setVisibility)) return effect.value;
@@ -34,30 +40,16 @@ export const visibilityField = StateField.define<VisibilityOptions>({
   },
 });
 
-interface LexResult {
-  lines: LexedLine[];
-  /** Note and boneyard ranges, so they can be styled distinctly. */
-  annotations: Array<{ kind: 'note' | 'boneyard'; from: number; to: number }>;
-}
-
 /** Analysis of the current document, recomputed on every change. */
-export const fountainLexField = StateField.define<LexResult>({
+export const fountainLexField = StateField.define<EditorAnalysis>({
   create(state) {
-    return analyze(state.doc.toString());
+    return analyzeForEditor(state.doc.toString());
   },
   update(value, transaction) {
     if (!transaction.docChanged) return value;
-    return analyze(transaction.newDoc.toString());
+    return analyzeForEditor(transaction.newDoc.toString());
   },
 });
-
-function analyze(source: string): LexResult {
-  const { masked, annotations } = maskAnnotations(source);
-  return {
-    lines: lexDocument(masked),
-    annotations: annotations.map((a) => ({ kind: a.kind, from: a.range.from, to: a.range.to })),
-  };
-}
 
 /** One CSS class per element kind — the styling lives in the theme, not here. */
 const LINE_CLASS: Record<string, string> = {
@@ -90,6 +82,11 @@ const BOLD = Decoration.mark({ class: 'cm-fountain-bold' });
 const ITALIC = Decoration.mark({ class: 'cm-fountain-italic' });
 const UNDERLINE = Decoration.mark({ class: 'cm-fountain-underline' });
 const BOLD_ITALIC = Decoration.mark({ class: 'cm-fountain-bold cm-fountain-italic' });
+const BOLD_UNDERLINE = Decoration.mark({ class: 'cm-fountain-bold cm-fountain-underline' });
+const ITALIC_UNDERLINE = Decoration.mark({ class: 'cm-fountain-italic cm-fountain-underline' });
+const BOLD_ITALIC_UNDERLINE = Decoration.mark({
+  class: 'cm-fountain-bold cm-fountain-italic cm-fountain-underline',
+});
 const NOTE = Decoration.mark({ class: 'cm-fountain-note' });
 const BONEYARD = Decoration.mark({ class: 'cm-fountain-boneyard' });
 const HIDDEN = Decoration.replace({});
@@ -138,7 +135,9 @@ function buildDecorations(view: EditorView): DecorationSet {
     if (annotation.kind === 'note') {
       collected.push((visibility.showNotes ? NOTE : HIDDEN).range(annotation.from, annotation.to));
     } else {
-      collected.push(BONEYARD.range(annotation.from, annotation.to));
+      collected.push(
+        (visibility.showBoneyard ? BONEYARD : HIDDEN).range(annotation.from, annotation.to),
+      );
     }
   }
 
@@ -170,7 +169,19 @@ function collectEmphasis(state: EditorState, line: LexedLine, out: Array<Range<D
     if (span.from >= span.to) continue;
 
     const decoration =
-      span.bold && span.italic ? BOLD_ITALIC : span.bold ? BOLD : span.italic ? ITALIC : UNDERLINE;
+      span.bold && span.italic && span.underline
+        ? BOLD_ITALIC_UNDERLINE
+        : span.bold && span.underline
+          ? BOLD_UNDERLINE
+          : span.italic && span.underline
+            ? ITALIC_UNDERLINE
+            : span.bold && span.italic
+              ? BOLD_ITALIC
+              : span.bold
+                ? BOLD
+                : span.italic
+                  ? ITALIC
+                  : UNDERLINE;
     out.push(decoration.range(span.from, span.to));
   }
 }

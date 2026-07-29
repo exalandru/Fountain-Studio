@@ -111,6 +111,25 @@ describe('saveDocument — atomic write', () => {
     expect(await readFile(path, 'utf8')).toBe('version disque\n');
   });
 
+  it('refuses an existing legacy recovery target whose previous state is unknown', async () => {
+    const path = join(directory, 'legacy-recovery.fountain');
+    await writeFile(path, 'newer disk version\n', 'utf8');
+
+    const outcome = await saveDocument(
+      {
+        path,
+        content: 'unknown recovered version\n',
+        eol: 'lf',
+        expectedMtimeMs: null,
+        refuseExisting: true,
+      },
+      3,
+    );
+
+    expect(outcome.status).toBe('conflict');
+    expect(await readFile(path, 'utf8')).toBe('newer disk version\n');
+  });
+
   it('accepts the write when the mtime matches', async () => {
     const path = join(directory, 'suite.fountain');
     await writeFile(path, 'v1\n', 'utf8');

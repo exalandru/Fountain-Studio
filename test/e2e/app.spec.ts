@@ -44,6 +44,12 @@ test.beforeAll(async () => {
 });
 
 test.afterAll(async () => {
+  if (!app) return;
+  // The suite intentionally leaves an edited tab behind. Confirm discard so the close
+  // handshake is exercised without leaving a native modal open in CI.
+  await app.evaluate(({ dialog }) => {
+    dialog.showMessageBox = async () => ({ response: 1, checkboxChecked: false });
+  });
   await app.close();
 });
 
@@ -169,6 +175,65 @@ test('an existing .fountain file opens in a new tab', async () => {
   await expect(page.locator('.tab')).toHaveCount(2);
   await expect(page.locator('.tab-active .tab-name')).toContainText('opened.fountain');
   await expect(page.locator('.cm-content')).toContainText('INT. GARAGE - NIGHT');
+});
+
+test('the live preview and AST navigator follow the opened screenplay', async () => {
+  await expect(page.locator('.preview-scene-heading')).toContainText('INT. GARAGE - NIGHT');
+  await expect(page.locator('.sidebar-scene-heading')).toContainText('INT. GARAGE - NIGHT');
+
+  await page.getByRole('tab', { name: 'Locations' }).click();
+  const garage = page.getByRole('button', { name: /GARAGE/ });
+  await expect(garage).toContainText('1 occurrence');
+  await garage.click();
+  await expect(page.locator('.cm-activeLine')).toContainText('INT. GARAGE - NIGHT');
+
+  await page.getByRole('tab', { name: 'Characters' }).click();
+  const marc = page.getByRole('button', { name: /MARC/ });
+  await expect(marc).toContainText('1 speech');
+  await marc.click();
+  await expect(page.locator('.cm-activeLine')).toContainText('MARC');
+});
+
+test('panel state is persisted in the screenplay companion file', async () => {
+  await page.getByLabel('Sync scroll with editor').check();
+  await page.getByRole('tab', { name: 'Structure' }).click();
+
+  const companion = join(userData, 'opened.fountain.appdata.json');
+  await expect
+    .poll(async () => {
+      try {
+        return JSON.parse(await readFile(companion, 'utf8')) as unknown;
+      } catch {
+        return null;
+      }
+    })
+    .toMatchObject({
+      version: 1,
+      preview: { syncScroll: true },
+      sidebar: { activeTab: 'structure' },
+    });
+});
+
+test('notes, boneyard and synopses have independent editor visibility', async () => {
+  const editor = page.locator('.cm-content');
+  await editor.click();
+  await page.keyboard.press('ControlOrMeta+a');
+  await page.keyboard.type(
+    '# ACT ONE\n\n= Hidden from paper\n\nINT. GARAGE - NIGHT\n\n[[A note]]\n\n/* discarded */\n\nMARC\nHello.\n',
+  );
+
+  await expect(page.locator('.cm-fountain-note')).toHaveCount(1);
+  await expect(page.locator('.cm-fountain-boneyard')).toHaveCount(1);
+  await expect(page.locator('.cm-fountain-synopsis')).toHaveCount(1);
+  await expect(page.locator('.preview-dialogue')).toContainText('Hello.');
+  // Editorial annotations never reach the paper preview.
+  await expect(page.locator('.preview-scroll')).not.toContainText('A note');
+  await expect(page.locator('.preview-scroll')).not.toContainText('Hidden from paper');
+
+  await runCommand('view.toggleBoneyard');
+  await expect(page.locator('.cm-fountain-boneyard')).toHaveCount(0);
+  await runCommand('view.toggleBoneyard');
+  await expect(page.locator('.cm-fountain-boneyard')).toHaveCount(1);
 });
 
 test('switching to French retranslates the interface and the native menu', async () => {

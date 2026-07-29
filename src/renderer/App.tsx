@@ -1,18 +1,20 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { EditorView } from '@codemirror/view';
+import { EditorView } from '@codemirror/view';
 import { openSearchPanel } from '@codemirror/search';
+import type { AppData, SidebarTab } from '@shared/appdata/index.js';
 import type { AppSettings, MenuCommand } from '@shared/ipc-contract.js';
 import { Editor } from './editor/Editor.js';
+import { useDocumentIO } from './hooks/useDocumentIO.js';
 import { useScreenplay } from './hooks/useScreenplay.js';
 import { useTranslator } from './hooks/useTranslator.js';
+import { Preview } from './preview/index.js';
+import { Sidebar } from './sidebar/index.js';
 import type { NewDocumentStrings } from './store/documents.js';
 import { useDocuments } from './store/documents.js';
+import { ResizeHandle } from './ui/ResizeHandle.js';
 
 /**
- * Application shell: tabs, editor, status bar.
- *
- * The preview, sidebar and timeline arrive in M2/M4; the layout anticipates them
- * (central area plus reserved slots) without scaffolding them yet.
+ * Application shell: tabs, editor, live preview, AST sidebar and status bar.
  */
 export function App() {
   const documents = useDocuments((state) => state.documents);
@@ -23,18 +25,41 @@ export function App() {
 
   const [dark, setDark] = useState(() => window.matchMedia('(prefers-color-scheme: dark)').matches);
   const [status, setStatus] = useState<string | null>(null);
+  const [cursorPosition, setCursorPosition] = useState<{
+    documentId: string | null;
+    offset: number;
+  }>({ documentId: null, offset: 0 });
+  const [editorScrollPosition, setEditorScrollPosition] = useState<{
+    documentId: string | null;
+    offset: number;
+  }>({ documentId: null, offset: 0 });
+  const [previewScrollPosition, setPreviewScrollPosition] = useState<{
+    documentId: string | null;
+    offset: number;
+  }>({ documentId: null, offset: 0 });
   const editorView = useRef<EditorView | null>(null);
-  /**
-   * Documents whose save is in flight. Two concurrent writes to the same file would
-   * rotate the `.bak` files twice and leave a backup identical to the current file —
-   * or overwrite the most recent one.
-   */
-  const saving = useRef(new Set<string>());
+  const closing = useRef(false);
 
   const active = documents.find((d) => d.id === activeId) ?? null;
+  const anyDirty = documents.some((document) => document.dirty);
+  const activeName = active?.name ?? null;
   const analysis = useScreenplay(active?.id ?? null, active?.content ?? '', active?.revision ?? 0);
 
   const effectiveDark = settings.theme === 'dark' || (settings.theme === 'system' && dark);
+  const cursorOffset = cursorPosition.documentId === activeId ? cursorPosition.offset : 0;
+  const activeSceneId =
+    analysis?.scenes.find(
+      (scene) => cursorOffset >= scene.range.from && cursorOffset <= scene.range.to,
+    )?.id ?? null;
+
+  const updateAppData = useCallback(
+    (update: (current: AppData) => AppData) => {
+      const current = store().active();
+      if (!current) return;
+      store().setAppData(current.id, update(current.appData), true);
+    },
+    [store],
+  );
 
   /**
    * Localised strings the store needs. Kept here because the store must not depend on
@@ -54,6 +79,12 @@ export function App() {
   useEffect(() => {
     stringsRef.current = documentStrings;
   }, [documentStrings]);
+  const { closeTab, openDialog, openPaths, save } = useDocumentIO({
+    locale,
+    t,
+    stringsRef,
+    setStatus,
+  });
 
   // ── Settings and theme ─────────────────────────────────────────────────────
   useEffect(() => {
@@ -99,7 +130,21 @@ export function App() {
 
       if (pending.length > 0) {
         for (const record of pending) {
-          store().restore(record.path, record.content, stringsRef.current);
+          const id = store().restore(
+            record.path,
+            record.content,
+            stringsRef.current,
+            record.eol,
+            record.mtimeMs,
+          );
+          if (record.path) {
+            try {
+              const appData = await window.quantum.invoke('appdata:read', { path: record.path });
+              if (!cancelled && appData) store().setAppData(id, appData);
+            } catch {
+              if (!cancelled) setStatus(t('status.appDataFailed'));
+            }
+          }
         }
         setStatus(t('status.recovered', { count: pending.length }));
       }
@@ -116,109 +161,69 @@ export function App() {
 
   // ── Window title ───────────────────────────────────────────────────────────
   useEffect(() => {
-    if (!active) return;
+    if (!activeName) return;
     void window.quantum.invoke('window:setDirty', {
-      dirty: active.dirty,
-      name: active.name,
+      dirty: anyDirty,
+      name: activeName,
     });
-  }, [active?.dirty, active?.name, active]);
+  }, [activeName, anyDirty]);
 
-  // ── Saving ─────────────────────────────────────────────────────────────────
-  const save = useCallback(
-    async (options: { forceDialog: boolean }): Promise<boolean> => {
-      const current = store().active();
-      if (!current) return false;
-      if (saving.current.has(current.id)) return false;
+  // ── Closing the native window, guarding every dirty tab ───────────────────
+  useEffect(() => {
+    return window.quantum.on('app:willQuit', () => {
+      if (closing.current) return;
+      closing.current = true;
 
-      saving.current.add(current.id);
-      try {
-        let path = current.path;
-        if (path === null || options.forceDialog) {
-          path = await window.quantum.invoke('dialog:pickSaveAs', {
-            suggestedName: current.path ?? `${current.name.replace(/\.fountain$/, '')}.fountain`,
-          });
-          if (path === null) return false;
-        }
-
-        // Re-read the content at the last moment: the author may have kept typing while
-        // the dialog was open.
-        const fresh = store().documents.find((d) => d.id === current.id) ?? current;
-
-        const outcome = await window.quantum.invoke('file:save', {
-          path,
-          content: fresh.content,
-          eol: fresh.eol,
-          // "Save as" targets a new file: there is no mtime to compare against.
-          expectedMtimeMs: options.forceDialog || fresh.path !== path ? null : fresh.mtimeMs,
-        });
-
-        if (outcome.status === 'saved') {
-          store().markSaved(current.id, outcome.path, outcome.mtimeMs);
-          void window.quantum.invoke('autosave:clear', { id: current.id });
-          setStatus(
-            t('status.saved', {
-              time: new Date().toLocaleTimeString(locale),
-            }),
+      void (async () => {
+        let proceed = false;
+        try {
+          // A close signal can arrive before the periodic autosave. Snapshot everything
+          // first so even a crash while a native confirmation is open remains recoverable.
+          const dirtyDocuments = store().documents.filter((document) => document.dirty);
+          await Promise.all(
+            dirtyDocuments.map((document) =>
+              window.quantum.invoke('autosave:write', {
+                id: document.id,
+                path: document.path,
+                content: document.content,
+                eol: document.eol,
+                mtimeMs: document.mtimeMs,
+              }),
+            ),
           );
-          return true;
+
+          proceed = true;
+          for (const snapshot of dirtyDocuments) {
+            const current = store().documents.find((document) => document.id === snapshot.id);
+            if (!current?.dirty) continue;
+
+            const answer = await window.quantum.invoke('dialog:confirmDiscard', {
+              name: current.name,
+            });
+            if (answer === 'cancel') {
+              proceed = false;
+              break;
+            }
+            if (answer === 'save') {
+              store().setActive(current.id);
+              if (!(await save({ forceDialog: false }))) {
+                proceed = false;
+                break;
+              }
+            } else {
+              await window.quantum.invoke('autosave:clear', { id: current.id });
+            }
+          }
+        } finally {
+          try {
+            await window.quantum.invoke('window:closeDecision', { proceed });
+          } finally {
+            closing.current = false;
+          }
         }
-
-        if (outcome.status === 'conflict') {
-          setStatus(t('status.conflict'));
-        } else if (outcome.status === 'error') {
-          setStatus(t('status.saveFailed', { error: outcome.message }));
-        }
-        return false;
-      } finally {
-        saving.current.delete(current.id);
-      }
-    },
-    [locale, store, t],
-  );
-
-  // ── Opening ────────────────────────────────────────────────────────────────
-  const openDialog = useCallback(async () => {
-    const snapshots = await window.quantum.invoke('dialog:pickOpen', undefined);
-    store().adopt(snapshots);
-  }, [store]);
-
-  const openPaths = useCallback(
-    async (paths: string[]) => {
-      const snapshots = await Promise.all(
-        paths.map((path) => window.quantum.invoke('file:read', { path }).catch(() => null)),
-      );
-      store().adopt(snapshots.filter((s): s is NonNullable<typeof s> => s !== null));
-    },
-    [store],
-  );
-
-  useEffect(
-    () => window.quantum.on('app:openFiles', ({ paths }) => void openPaths(paths)),
-    [openPaths],
-  );
-
-  // ── Closing a tab, guarding unsaved changes ────────────────────────────────
-  const closeTab = useCallback(
-    async (id: string) => {
-      const target = store().documents.find((d) => d.id === id);
-      if (!target) return;
-
-      if (target.dirty) {
-        const answer = await window.quantum.invoke('dialog:confirmDiscard', { name: target.name });
-        if (answer === 'cancel') return;
-        if (answer === 'save') {
-          store().setActive(id);
-          const saved = await save({ forceDialog: false });
-          if (!saved) return;
-        }
-      }
-
-      void window.quantum.invoke('autosave:clear', { id });
-      store().close(id);
-      if (store().documents.length === 0) store().newDocument(stringsRef.current);
-    },
-    [save, store],
-  );
+      })();
+    });
+  }, [save, store]);
 
   // ── Menu commands ──────────────────────────────────────────────────────────
   useEffect(() => {
@@ -238,6 +243,8 @@ export function App() {
         if (editorView.current) openSearchPanel(editorView.current);
       },
       'view.toggleNotes': () => void patchSettings({ showNotes: !store().settings.showNotes }),
+      'view.toggleBoneyard': () =>
+        void patchSettings({ showBoneyard: !store().settings.showBoneyard }),
       'view.toggleSynopses': () =>
         void patchSettings({ showSynopses: !store().settings.showSynopses }),
       'view.toggleSections': () =>
@@ -253,6 +260,23 @@ export function App() {
     return window.quantum.on('menu:command', ({ command }) => handlers[command]?.());
   }, [closeTab, openDialog, patchSettings, save, store, t]);
 
+  // Companion metadata is written after a short quiet period. It never marks the
+  // screenplay dirty because UI layout is not Fountain content.
+  const activePath = active?.path ?? null;
+  const activeAppData = active?.appData ?? null;
+  const activeAppDataRevision = active?.appDataRevision ?? 0;
+  useEffect(() => {
+    if (!activePath || !activeAppData || activeAppDataRevision === 0) return;
+    const timer = setTimeout(() => {
+      void window.quantum
+        .invoke('appdata:write', { path: activePath, data: activeAppData })
+        .catch(() => {
+          setStatus(t('status.appDataFailed'));
+        });
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [activeAppData, activeAppDataRevision, activePath, t]);
+
   // ── Backup autosave ────────────────────────────────────────────────────────
   useEffect(() => {
     if (settings.autosaveSeconds <= 0) return;
@@ -264,6 +288,8 @@ export function App() {
           id: document.id,
           path: document.path,
           content: document.content,
+          eol: document.eol,
+          mtimeMs: document.mtimeMs,
         });
       }
     }, settings.autosaveSeconds * 1000);
@@ -299,6 +325,92 @@ export function App() {
     };
   }, [openPaths, t]);
 
+  // Stable UI callbacks keep the memoised preview/sidebar from rendering on every
+  // keystroke while their worker analysis is unchanged.
+  const handleEditorChange = useCallback(
+    (content: string) => {
+      const id = store().activeId;
+      if (id) store().setContent(id, content);
+    },
+    [store],
+  );
+  const handleCursorOffset = useCallback(
+    (offset: number) => setCursorPosition({ documentId: store().activeId, offset }),
+    [store],
+  );
+  const handleEditorScroll = useCallback(
+    (offset: number) => {
+      const current = store().active();
+      if (current?.appData.preview.syncScroll) {
+        setEditorScrollPosition({ documentId: current.id, offset });
+      }
+    },
+    [store],
+  );
+  const handlePreviewScroll = useCallback(
+    (offset: number) => setPreviewScrollPosition({ documentId: store().activeId, offset }),
+    [store],
+  );
+  const handleViewReady = useCallback((view: EditorView | null) => {
+    editorView.current = view;
+  }, []);
+  const resizePreview = useCallback(
+    (width: number) => updateAppData((data) => ({ ...data, preview: { ...data.preview, width } })),
+    [updateAppData],
+  );
+  const setPreviewSync = useCallback(
+    (syncScroll: boolean) =>
+      updateAppData((data) => ({ ...data, preview: { ...data.preview, syncScroll } })),
+    [updateAppData],
+  );
+  const closePreview = useCallback(
+    () =>
+      updateAppData((data) => ({
+        ...data,
+        preview: { ...data.preview, visible: false },
+      })),
+    [updateAppData],
+  );
+  const resizeSidebar = useCallback(
+    (width: number) => updateAppData((data) => ({ ...data, sidebar: { ...data.sidebar, width } })),
+    [updateAppData],
+  );
+  const setSidebarTab = useCallback(
+    (activeTab: SidebarTab) =>
+      updateAppData((data) => ({ ...data, sidebar: { ...data.sidebar, activeTab } })),
+    [updateAppData],
+  );
+  const setSidebarFilter = useCallback(
+    (filter: string) =>
+      updateAppData((data) => ({ ...data, sidebar: { ...data.sidebar, filter } })),
+    [updateAppData],
+  );
+  const setSidebarSynopses = useCallback(
+    (showSynopses: boolean) =>
+      updateAppData((data) => ({
+        ...data,
+        sidebar: { ...data.sidebar, showSynopses },
+      })),
+    [updateAppData],
+  );
+  const selectEditorRange = useCallback((range: { from: number; to: number }) => {
+    const view = editorView.current;
+    if (!view) return;
+    view.dispatch({
+      selection: { anchor: range.from },
+      effects: EditorView.scrollIntoView(range.from, { y: 'center' }),
+    });
+    view.focus();
+  }, []);
+  const closeSidebar = useCallback(
+    () =>
+      updateAppData((data) => ({
+        ...data,
+        sidebar: { ...data.sidebar, visible: false },
+      })),
+    [updateAppData],
+  );
+
   return (
     <div className="app">
       <div className="tabbar" role="tablist">
@@ -306,12 +418,32 @@ export function App() {
           <div
             key={document.id}
             role="tab"
+            aria-controls="workspace-panel"
             aria-selected={document.id === activeId}
-            tabIndex={0}
+            tabIndex={document.id === activeId ? 0 : -1}
             className={`tab${document.id === activeId ? ' tab-active' : ''}`}
             onClick={() => store().setActive(document.id)}
             onKeyDown={(event) => {
               if (event.key === 'Enter' || event.key === ' ') store().setActive(document.id);
+              const currentIndex = documents.findIndex((item) => item.id === document.id);
+              const nextIndex =
+                event.key === 'ArrowRight'
+                  ? (currentIndex + 1) % documents.length
+                  : event.key === 'ArrowLeft'
+                    ? (currentIndex - 1 + documents.length) % documents.length
+                    : event.key === 'Home'
+                      ? 0
+                      : event.key === 'End'
+                        ? documents.length - 1
+                        : -1;
+              const next = documents[nextIndex];
+              if (nextIndex >= 0 && next) {
+                event.preventDefault();
+                store().setActive(next.id);
+                const tabs =
+                  event.currentTarget.parentElement?.querySelectorAll<HTMLElement>('[role="tab"]');
+                tabs?.[nextIndex]?.focus();
+              }
             }}
           >
             <span className="tab-name">
@@ -341,22 +473,119 @@ export function App() {
         </button>
       </div>
 
-      <main className="workspace">
+      <main
+        className="workspace"
+        id="workspace-panel"
+        role="tabpanel"
+        aria-label={active?.name ?? t('workspace.empty')}
+      >
         {active ? (
-          <Editor
-            key={active.id}
-            documentId={active.id}
-            initialContent={active.content}
-            dark={effectiveDark}
-            fontSize={settings.editorFontSize}
-            showNotes={settings.showNotes}
-            showSynopses={settings.showSynopses}
-            showSections={settings.showSections}
-            onChange={(content) => store().setContent(active.id, content)}
-            onViewReady={(view) => {
-              editorView.current = view;
-            }}
-          />
+          <div className="workspace-layout">
+            <div className="workspace-editor">
+              <Editor
+                key={active.id}
+                documentId={active.id}
+                initialContent={active.content}
+                dark={effectiveDark}
+                fontSize={settings.editorFontSize}
+                showNotes={settings.showNotes}
+                showBoneyard={settings.showBoneyard}
+                showSynopses={settings.showSynopses}
+                showSections={settings.showSections}
+                externalScrollOffset={
+                  active.appData.preview.syncScroll &&
+                  previewScrollPosition.documentId === active.id
+                    ? previewScrollPosition.offset
+                    : null
+                }
+                onChange={handleEditorChange}
+                onCursorOffset={handleCursorOffset}
+                onScrollOffset={handleEditorScroll}
+                onViewReady={handleViewReady}
+              />
+            </div>
+
+            {active.appData.preview.visible ? (
+              <>
+                <ResizeHandle
+                  label={t('preview.resize')}
+                  value={active.appData.preview.width}
+                  minimum={320}
+                  maximum={760}
+                  onChange={resizePreview}
+                />
+                <div className="workspace-preview" style={{ width: active.appData.preview.width }}>
+                  <Preview
+                    analysis={analysis}
+                    syncScroll={active.appData.preview.syncScroll}
+                    externalOffset={
+                      editorScrollPosition.documentId === active.id
+                        ? editorScrollPosition.offset
+                        : null
+                    }
+                    onScrollOffset={handlePreviewScroll}
+                    onSyncScrollChange={setPreviewSync}
+                    onClose={closePreview}
+                  />
+                </div>
+              </>
+            ) : null}
+
+            {active.appData.sidebar.visible ? (
+              <>
+                <ResizeHandle
+                  label={t('sidebar.resize')}
+                  value={active.appData.sidebar.width}
+                  minimum={220}
+                  maximum={480}
+                  onChange={resizeSidebar}
+                />
+                <div className="workspace-sidebar" style={{ width: active.appData.sidebar.width }}>
+                  <Sidebar
+                    analysis={analysis}
+                    state={active.appData.sidebar}
+                    activeSceneId={activeSceneId}
+                    onTabChange={setSidebarTab}
+                    onFilterChange={setSidebarFilter}
+                    onShowSynopsesChange={setSidebarSynopses}
+                    onSelectRange={selectEditorRange}
+                    onClose={closeSidebar}
+                  />
+                </div>
+              </>
+            ) : null}
+
+            {(!active.appData.preview.visible || !active.appData.sidebar.visible) && (
+              <div className="panel-launchers">
+                {!active.appData.preview.visible ? (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      updateAppData((data) => ({
+                        ...data,
+                        preview: { ...data.preview, visible: true },
+                      }))
+                    }
+                  >
+                    {t('preview.show')}
+                  </button>
+                ) : null}
+                {!active.appData.sidebar.visible ? (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      updateAppData((data) => ({
+                        ...data,
+                        sidebar: { ...data.sidebar, visible: true },
+                      }))
+                    }
+                  >
+                    {t('sidebar.show')}
+                  </button>
+                ) : null}
+              </div>
+            )}
+          </div>
         ) : (
           <div className="empty">{t('workspace.empty')}</div>
         )}

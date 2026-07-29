@@ -105,7 +105,7 @@ const MERGEABLE = new Set<ElementKind>(['action', 'dialogue', 'lyrics']);
 function buildElements(lines: LexedLine[], source: string): Element[] {
   const elements: Element[] = [];
   let currentSpeaker: string | undefined;
-  let counter = 0;
+  const signatureOccurrences = new Map<string, number>();
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
@@ -138,8 +138,11 @@ function buildElements(lines: LexedLine[], source: string): Element[] {
     if (!first || !last) continue;
 
     const text = group.map((l) => l.text).join('\n');
+    const signature = `${kind}\u0000${text}\u0000${first.forced ? 'forced' : ''}`;
+    const occurrence = signatureOccurrences.get(signature) ?? 0;
+    signatureOccurrences.set(signature, occurrence + 1);
     const element: Element = {
-      id: `el-${counter++}`,
+      id: stableId('el', signature, occurrence),
       kind,
       range: { from: first.from, to: last.to },
       line: first.line,
@@ -172,6 +175,17 @@ function buildElements(lines: LexedLine[], source: string): Element[] {
   return elements;
 }
 
+/** Small deterministic FNV-1a identifier, stable when unrelated blocks are inserted. */
+function stableId(prefix: string, signature: string, occurrence: number): string {
+  let hash = 0x811c9dc5;
+  const input = `${signature}\u0000${occurrence}`;
+  for (let index = 0; index < input.length; index++) {
+    hash ^= input.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return `${prefix}-${(hash >>> 0).toString(36)}`;
+}
+
 /**
  * Computes emphasis spans line by line, each with its absolute offset.
  *
@@ -181,7 +195,22 @@ function buildElements(lines: LexedLine[], source: string): Element[] {
 function inlineForGroup(group: LexedLine[], source: string): Element['inline'] {
   const spans: Element['inline'] = [];
 
-  for (const line of group) {
+  for (let index = 0; index < group.length; index++) {
+    const line = group[index];
+    if (!line) continue;
+    if (index > 0) {
+      const previous = group[index - 1];
+      if (previous) {
+        spans.push({
+          text: '\n',
+          bold: false,
+          italic: false,
+          underline: false,
+          from: previous.to,
+          to: previous.to + 1,
+        });
+      }
+    }
     const raw = source.slice(line.from, line.to);
     const at = raw.indexOf(line.text);
     const offset = at === -1 ? line.from : line.from + at;
@@ -207,8 +236,6 @@ function buildStructure(
   const seenNumbers = new Map<string, number>();
 
   let current: Scene | null = null;
-  let sectionCounter = 0;
-
   for (const element of elements) {
     if (element.kind === 'section') {
       current = null;
@@ -221,7 +248,7 @@ function buildStructure(
       }
 
       const node: SectionNode = {
-        id: `sec-${++sectionCounter}`,
+        id: `sec-${element.id.slice(3)}`,
         depth,
         title: stripEmphasis(element.text),
         line: element.line,
@@ -260,7 +287,7 @@ function buildStructure(
       }
 
       const scene: Scene = {
-        id: `sc-${index}`,
+        id: `sc-${element.id.slice(3)}`,
         number: declared ?? String(index),
         index,
         heading,

@@ -40,9 +40,9 @@ export interface Range {
 
 export interface Element {
   /**
-   * Deterministic identifier for a given snapshot of the document (`el-12`, `sc-3`).
-   * This is the key to the AI ↔ editor mapping (§5.4 of the specification): the ids
-   * sent to the model are generated here, which guarantees exact references on return.
+   * Content-derived deterministic identifier. It survives unrelated insertions, which
+   * lets AI annotations and companion metadata reconcile the same block across edits.
+   * Identical repeated blocks use a local occurrence suffix before hashing.
    */
   id: string;
   kind: ElementKind;

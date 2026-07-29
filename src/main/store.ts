@@ -1,10 +1,12 @@
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
-import { basename, dirname, join } from 'node:path';
+import { readFile } from 'node:fs/promises';
+import { basename, join } from 'node:path';
 import { app } from 'electron';
 import type { AppSettings, RecentFile } from '@shared/ipc-contract.js';
 import { DEFAULT_SETTINGS } from '@shared/ipc-contract.js';
-import type { Locale, Translator } from '@shared/i18n/index.js';
-import { createTranslator, LOCALES, resolveLocale } from '@shared/i18n/index.js';
+import type { Translator } from '@shared/i18n/index.js';
+import { createTranslator, resolveLocale } from '@shared/i18n/index.js';
+import { sanitizeSettings } from '@shared/settings/index.js';
+import { writeFileAtomic } from './files/atomic.js';
 
 /**
  * Settings and recent files, persisted as JSON in the userData directory.
@@ -22,6 +24,7 @@ interface StoreShape {
 }
 
 let cache: StoreShape | null = null;
+let persistQueue: Promise<void> = Promise.resolve();
 
 function storePath(): string {
   return join(app.getPath('userData'), 'settings.json');
@@ -29,10 +32,6 @@ function storePath(): string {
 
 function defaults(): StoreShape {
   return { version: 1, settings: { ...DEFAULT_SETTINGS }, recent: [] };
-}
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(max, Math.max(min, Math.round(value)));
 }
 
 /**
@@ -49,27 +48,7 @@ function sanitize(raw: unknown): StoreShape {
   const input = raw as { settings?: unknown; recent?: unknown };
 
   if (typeof input.settings === 'object' && input.settings !== null) {
-    const s = input.settings as Record<string, unknown>;
-    const target = base.settings;
-
-    if (s['theme'] === 'system' || s['theme'] === 'light' || s['theme'] === 'dark') {
-      target.theme = s['theme'];
-    }
-    if (typeof s['language'] === 'string' && LOCALES.includes(s['language'] as Locale)) {
-      target.language = s['language'] as Locale;
-    }
-    if (typeof s['editorFontSize'] === 'number' && Number.isFinite(s['editorFontSize'])) {
-      target.editorFontSize = clamp(s['editorFontSize'], 10, 28);
-    }
-    if (typeof s['autosaveSeconds'] === 'number' && Number.isFinite(s['autosaveSeconds'])) {
-      target.autosaveSeconds = clamp(s['autosaveSeconds'], 0, 3600);
-    }
-    if (typeof s['backupCount'] === 'number' && Number.isFinite(s['backupCount'])) {
-      target.backupCount = clamp(s['backupCount'], 0, 20);
-    }
-    if (typeof s['showNotes'] === 'boolean') target.showNotes = s['showNotes'];
-    if (typeof s['showSynopses'] === 'boolean') target.showSynopses = s['showSynopses'];
-    if (typeof s['showSections'] === 'boolean') target.showSections = s['showSections'];
+    base.settings = sanitizeSettings(input.settings);
   }
 
   if (Array.isArray(input.recent)) {
@@ -112,15 +91,12 @@ async function load(): Promise<StoreShape> {
 }
 
 async function persist(): Promise<void> {
-  if (!cache) return;
-  const target = storePath();
-  await mkdir(dirname(target), { recursive: true });
-
-  // Same precaution as for screenplays: temporary file then rename, so an abrupt
-  // shutdown never leaves a truncated settings.json behind.
-  const temporary = `${target}.tmp`;
-  await writeFile(temporary, JSON.stringify(cache, null, 2), 'utf8');
-  await rename(temporary, target);
+  persistQueue = persistQueue.then(async () => {
+    if (!cache) return;
+    const target = storePath();
+    await writeFileAtomic(target, JSON.stringify(cache, null, 2));
+  });
+  return persistQueue;
 }
 
 export async function getSettings(): Promise<AppSettings> {
@@ -129,7 +105,10 @@ export async function getSettings(): Promise<AppSettings> {
 
 export async function patchSettings(patch: Partial<AppSettings>): Promise<AppSettings> {
   const store = await load();
-  store.settings = { ...store.settings, ...patch };
+  store.settings = sanitize({
+    settings: { ...store.settings, ...patch },
+    recent: store.recent,
+  }).settings;
   await persist();
   return { ...store.settings };
 }

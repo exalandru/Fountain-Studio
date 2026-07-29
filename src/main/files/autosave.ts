@@ -1,7 +1,9 @@
-import { mkdir, readFile, readdir, rename, unlink, writeFile } from 'node:fs/promises';
+import { readFile, readdir, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import { app } from 'electron';
-import type { CrashRecovery } from '@shared/ipc-contract.js';
+import { parseCrashRecovery } from '@shared/documents/index.js';
+import type { CrashRecovery, Eol } from '@shared/ipc-contract.js';
+import { writeFileAtomic } from './atomic.js';
 
 /**
  * Backup autosave, for crash recovery (§4.9).
@@ -15,11 +17,26 @@ import type { CrashRecovery } from '@shared/ipc-contract.js';
 interface AutosaveRecord {
   path: string | null;
   content: string;
+  eol: Eol;
+  mtimeMs: number | null;
   savedAt: number;
 }
 
 function directory(): string {
   return join(app.getPath('userData'), 'autosave');
+}
+
+const pendingById = new Map<string, Promise<void>>();
+
+function serialise(id: string, operation: () => Promise<void>): Promise<void> {
+  const previous = pendingById.get(id) ?? Promise.resolve();
+  const current = previous.then(operation, operation);
+  pendingById.set(id, current);
+  const cleanup = () => {
+    if (pendingById.get(id) === current) pendingById.delete(id);
+  };
+  void current.then(cleanup, cleanup);
+  return current;
 }
 
 /** A tab id must not be able to escape the autosave directory. */
@@ -31,20 +48,21 @@ export async function writeAutosave(
   id: string,
   path: string | null,
   content: string,
+  eol: Eol,
+  mtimeMs: number | null,
 ): Promise<void> {
-  const dir = directory();
-  await mkdir(dir, { recursive: true });
-
-  const record: AutosaveRecord = { path, content, savedAt: Date.now() };
-  const target = join(dir, safeName(id));
-  const temporary = `${target}.tmp`;
-
-  await writeFile(temporary, JSON.stringify(record), 'utf8');
-  await rename(temporary, target);
+  return serialise(id, async () => {
+    const dir = directory();
+    const record: AutosaveRecord = { path, content, eol, mtimeMs, savedAt: Date.now() };
+    const target = join(dir, safeName(id));
+    await writeFileAtomic(target, JSON.stringify(record));
+  });
 }
 
 export async function clearAutosave(id: string): Promise<void> {
-  await unlink(join(directory(), safeName(id))).catch(() => undefined);
+  return serialise(id, async () => {
+    await unlink(join(directory(), safeName(id))).catch(() => undefined);
+  });
 }
 
 /** Snapshots left behind by a previous session that did not end normally. */
@@ -63,28 +81,13 @@ export async function pendingAutosaves(): Promise<CrashRecovery[]> {
     if (!name.endsWith('.json')) continue;
     try {
       const raw = await readFile(join(dir, name), 'utf8');
-      const record = JSON.parse(raw) as AutosaveRecord;
-      if (typeof record.content !== 'string') continue;
-      out.push({
-        path: typeof record.path === 'string' ? record.path : null,
-        content: record.content,
-        savedAt: typeof record.savedAt === 'number' ? record.savedAt : 0,
-      });
+      const record = parseCrashRecovery(raw);
+      if (!record) continue;
+      out.push(record);
     } catch {
       // Unreadable snapshot: skip it rather than block startup.
     }
   }
 
   return out.sort((a, b) => b.savedAt - a.savedAt);
-}
-
-export async function clearAllAutosaves(): Promise<void> {
-  const dir = directory();
-  try {
-    for (const name of await readdir(dir)) {
-      if (name.endsWith('.json')) await unlink(join(dir, name)).catch(() => undefined);
-    }
-  } catch {
-    // No directory: nothing to clean up.
-  }
 }

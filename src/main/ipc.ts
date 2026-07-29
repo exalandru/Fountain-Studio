@@ -1,19 +1,16 @@
-import { BrowserWindow, dialog, ipcMain, shell } from 'electron';
-import { basename } from 'node:path';
+import { BrowserWindow, dialog, ipcMain } from 'electron';
+import type { IpcMainInvokeEvent } from 'electron';
+import { basename, isAbsolute } from 'node:path';
+import { parseAppData } from '@shared/appdata/index.js';
 import type { DocumentSnapshot, IpcChannel, IpcRequests } from '@shared/ipc-contract.js';
 import type { Translator } from '@shared/i18n/index.js';
 import { clearAutosave, pendingAutosaves, writeAutosave } from './files/autosave.js';
-import { fileExists, readDocument, saveDocument } from './files/document.js';
+import { readAppData, writeAppData } from './files/appdata.js';
+import { readDocument, saveDocument } from './files/document.js';
 import { buildMenu } from './menu.js';
 import { applySpellCheckerLanguage } from './spellcheck.js';
-import {
-  addRecent,
-  clearRecent,
-  getSettings,
-  getTranslator,
-  listRecent,
-  patchSettings,
-} from './store.js';
+import { resolveCloseDecision } from './window-lifecycle.js';
+import { addRecent, getSettings, getTranslator, patchSettings } from './store.js';
 
 /**
  * IPC handler registration, typed by the shared contract.
@@ -21,6 +18,123 @@ import {
  * `handle` ties the channel key, the argument type and the result type together: a
  * signature that drifts from the contract does not compile.
  */
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function validPath(value: unknown): value is string {
+  return (
+    typeof value === 'string' && value.length > 0 && value.length <= 32_768 && isAbsolute(value)
+  );
+}
+
+function validMtime(value: unknown): value is number | null {
+  return value === null || (typeof value === 'number' && Number.isFinite(value) && value >= 0);
+}
+
+function validateRequest<C extends IpcChannel>(channel: C, value: unknown): IpcRequests[C]['arg'] {
+  const record = isRecord(value) ? value : null;
+  let valid = false;
+
+  switch (channel) {
+    case 'dialog:pickOpen':
+    case 'settings:get':
+    case 'autosave:pending':
+      valid = value === undefined;
+      break;
+    case 'dialog:pickSaveAs':
+      valid =
+        record !== null &&
+        typeof record['suggestedName'] === 'string' &&
+        record['suggestedName'].length <= 255;
+      break;
+    case 'dialog:confirmDiscard':
+      valid = record !== null && typeof record['name'] === 'string' && record['name'].length <= 255;
+      break;
+    case 'appdata:read':
+      valid = record !== null && validPath(record['path']);
+      break;
+    case 'file:openPaths':
+      valid =
+        record !== null &&
+        Array.isArray(record['paths']) &&
+        record['paths'].length <= 100 &&
+        record['paths'].every(validPath);
+      break;
+    case 'file:save':
+      valid =
+        record !== null &&
+        validPath(record['path']) &&
+        typeof record['content'] === 'string' &&
+        record['content'].length <= 100_000_000 &&
+        (record['eol'] === 'lf' || record['eol'] === 'crlf') &&
+        validMtime(record['expectedMtimeMs']) &&
+        (record['refuseExisting'] === undefined || typeof record['refuseExisting'] === 'boolean');
+      break;
+    case 'settings:patch':
+      valid = record !== null;
+      break;
+    case 'autosave:write':
+      valid =
+        record !== null &&
+        typeof record['id'] === 'string' &&
+        record['id'].length > 0 &&
+        record['id'].length <= 200 &&
+        (record['path'] === null || validPath(record['path'])) &&
+        typeof record['content'] === 'string' &&
+        record['content'].length <= 100_000_000 &&
+        (record['eol'] === 'lf' || record['eol'] === 'crlf') &&
+        validMtime(record['mtimeMs']);
+      break;
+    case 'autosave:clear':
+      valid =
+        record !== null &&
+        typeof record['id'] === 'string' &&
+        record['id'].length > 0 &&
+        record['id'].length <= 200;
+      break;
+    case 'window:setDirty':
+      valid =
+        record !== null &&
+        typeof record['dirty'] === 'boolean' &&
+        typeof record['name'] === 'string' &&
+        record['name'].length <= 255;
+      break;
+    case 'window:closeDecision':
+      valid = record !== null && typeof record['proceed'] === 'boolean';
+      break;
+    case 'appdata:write':
+      valid =
+        record !== null &&
+        validPath(record['path']) &&
+        (() => {
+          try {
+            return parseAppData(JSON.stringify(record['data'])) !== null;
+          } catch {
+            return false;
+          }
+        })();
+      break;
+  }
+
+  if (!valid) throw new TypeError(`Invalid payload for IPC channel "${channel}"`);
+  return value as IpcRequests[C]['arg'];
+}
+
+function isTrustedRenderer(event: IpcMainInvokeEvent): boolean {
+  if (event.senderFrame !== event.sender.mainFrame) return false;
+
+  try {
+    const actual = new URL(event.senderFrame.url);
+    if (actual.protocol === 'file:') return true;
+
+    const developmentUrl = process.env['ELECTRON_RENDERER_URL'];
+    return Boolean(developmentUrl && actual.origin === new URL(developmentUrl).origin);
+  } catch {
+    return false;
+  }
+}
+
 function handle<C extends IpcChannel>(
   channel: C,
   listener: (
@@ -28,9 +142,10 @@ function handle<C extends IpcChannel>(
     window: BrowserWindow | null,
   ) => Promise<IpcRequests[C]['result']> | IpcRequests[C]['result'],
 ): void {
-  ipcMain.handle(channel, (event, arg) =>
-    listener(arg as IpcRequests[C]['arg'], BrowserWindow.fromWebContents(event.sender)),
-  );
+  ipcMain.handle(channel, (event, arg: unknown) => {
+    if (!isTrustedRenderer(event)) throw new Error('Untrusted IPC sender');
+    return listener(validateRequest(channel, arg), BrowserWindow.fromWebContents(event.sender));
+  });
 }
 
 /** File-type filters for the native dialogs, in the interface language. */
@@ -61,6 +176,7 @@ export async function openPaths(paths: string[]): Promise<DocumentSnapshot[]> {
       );
     }
   }
+  if (documents.length > 0) await buildMenu();
 
   return documents;
 }
@@ -110,7 +226,7 @@ export function registerIpcHandlers(): void {
     return response === 0 ? 'save' : response === 1 ? 'discard' : 'cancel';
   });
 
-  handle('file:read', ({ path }) => readDocument(path));
+  handle('file:openPaths', ({ paths }) => openPaths(paths));
 
   handle('file:save', async (request) => {
     const settings = await getSettings();
@@ -123,14 +239,6 @@ export function registerIpcHandlers(): void {
     return outcome;
   });
 
-  handle('file:exists', ({ path }) => fileExists(path));
-
-  handle('recent:list', () => listRecent());
-  handle('recent:clear', async () => {
-    await clearRecent();
-    await buildMenu();
-  });
-
   handle('settings:get', () => getSettings());
   handle('settings:patch', async (patch) => {
     const before = await getSettings();
@@ -140,6 +248,7 @@ export function registerIpcHandlers(): void {
     if (
       before.language !== next.language ||
       before.showNotes !== next.showNotes ||
+      before.showBoneyard !== next.showBoneyard ||
       before.showSynopses !== next.showSynopses ||
       before.showSections !== next.showSections
     ) {
@@ -159,7 +268,9 @@ export function registerIpcHandlers(): void {
     return next;
   });
 
-  handle('autosave:write', ({ id, path, content }) => writeAutosave(id, path, content));
+  handle('autosave:write', ({ id, path, content, eol, mtimeMs }) =>
+    writeAutosave(id, path, content, eol, mtimeMs),
+  );
   handle('autosave:clear', ({ id }) => clearAutosave(id));
   handle('autosave:pending', () => pendingAutosaves());
 
@@ -170,8 +281,10 @@ export function registerIpcHandlers(): void {
     // On macOS the close button also shows the unsaved state.
     window.setDocumentEdited(dirty);
   });
-
-  handle('shell:showItemInFolder', ({ path }) => {
-    shell.showItemInFolder(path);
+  handle('window:closeDecision', ({ proceed }, window) => {
+    resolveCloseDecision(window, proceed);
   });
+
+  handle('appdata:read', ({ path }) => readAppData(path));
+  handle('appdata:write', ({ path, data }) => writeAppData(path, data));
 }

@@ -43,6 +43,7 @@ interface Entry {
   version: string;
   license: string;
   path: string;
+  notice: string | null;
 }
 
 /** Normalises the `license` field, which has three historical shapes in npm. */
@@ -75,52 +76,128 @@ function isAllowed(expr: string): boolean {
   return ALLOWED.has(cleaned.replace(/\+$/, ''));
 }
 
-/** Walks node_modules, including @foo/bar scopes and nested node_modules. */
-function collect(dir: string, out: Map<string, Entry>): void {
-  let names: string[];
+/** Reads the licence/copyright notice shipped by a package, when present. */
+function readNotice(packagePath: string): string | null {
   try {
-    names = readdirSync(dir);
+    const candidate = readdirSync(packagePath)
+      .filter((name) => /^(licen[cs]e|copying|notice)(\.|$)/i.test(name))
+      .sort()[0];
+    if (!candidate) return null;
+    const path = join(packagePath, candidate);
+    if (!statSync(path).isFile()) return null;
+    const notice = readFileSync(path, 'utf8').trim();
+    return notice.length > 0 ? notice : null;
   } catch {
-    return;
+    return null;
   }
+}
 
-  for (const name of names) {
-    if (name === '.bin' || name === '.cache') continue;
-    const full = join(dir, name);
+interface LockPackage extends Pkg {
+  dependencies?: Record<string, string>;
+  devDependencies?: Record<string, string>;
+  optionalDependencies?: Record<string, string>;
+  peerDependencies?: Record<string, string>;
+}
 
-    if (name.startsWith('@')) {
-      collect(full, out);
-      continue;
+interface PackageLock {
+  packages?: Record<string, LockPackage>;
+}
+
+function resolveDependency(
+  packages: Record<string, LockPackage>,
+  from: string,
+  name: string,
+): string | null {
+  let directory = from;
+  while (true) {
+    const candidate = directory ? `${directory}/node_modules/${name}` : `node_modules/${name}`;
+    if (packages[candidate]) return candidate;
+    const parentMarker = directory.lastIndexOf('/node_modules/');
+    if (parentMarker === -1) {
+      if (directory === '') return null;
+      directory = '';
+    } else {
+      directory = directory.slice(0, parentMarker);
     }
+  }
+}
 
-    const manifest = join(full, 'package.json');
-    let pkg: Pkg;
+/**
+ * Walks the dependency graph recorded by package-lock.json.
+ *
+ * Auditing the lock graph is deterministic and ignores extraneous packages left in a
+ * developer's node_modules. Installed manifests are still read as a fallback for old
+ * lock entries and to collect their licence texts.
+ */
+function collectLocked(root: string, out: Map<string, Entry>): void {
+  const lock = JSON.parse(readFileSync(join(root, 'package-lock.json'), 'utf8')) as PackageLock;
+  const packages = lock.packages;
+  const rootPackage = packages?.[''];
+  if (!packages || !rootPackage) throw new Error('Invalid package-lock.json: packages are missing');
+
+  const queue: string[] = [];
+  const visited = new Set<string>();
+  const enqueueDependencies = (from: string, pkg: LockPackage) => {
+    const dependencies = {
+      ...pkg.dependencies,
+      ...pkg.devDependencies,
+      ...pkg.optionalDependencies,
+      ...pkg.peerDependencies,
+    };
+    for (const name of Object.keys(dependencies)) {
+      const resolved = resolveDependency(packages, from, name);
+      if (resolved && !visited.has(resolved)) queue.push(resolved);
+    }
+  };
+
+  enqueueDependencies('', rootPackage);
+  while (queue.length > 0) {
+    const lockPath = queue.shift();
+    if (!lockPath || visited.has(lockPath)) continue;
+    visited.add(lockPath);
+
+    const locked = packages[lockPath];
+    if (!locked) continue;
+    const installedPath = join(root, lockPath);
+    let manifest: Pkg | null = null;
     try {
-      if (!statSync(manifest).isFile()) continue;
-      pkg = JSON.parse(readFileSync(manifest, 'utf8')) as Pkg;
+      manifest = JSON.parse(readFileSync(join(installedPath, 'package.json'), 'utf8')) as Pkg;
     } catch {
-      continue;
+      // Missing installed package is acceptable for platform-specific optional entries;
+      // its auditable name/version/licence must still be present in the lock.
     }
 
-    if (pkg.name && pkg.version) {
-      const key = `${pkg.name}@${pkg.version}`;
+    const name = locked.name ?? manifest?.name ?? lockPath.split('/node_modules/').at(-1);
+    const version = locked.version ?? manifest?.version;
+    const license = readLicense(locked) === 'UNKNOWN' ? readLicense(manifest ?? {}) : readLicense(locked);
+    if (!name || !version) {
+      out.set(`unreadable:${lockPath}`, {
+        name: `[incomplete lock entry: ${lockPath}]`,
+        version: version ?? '?',
+        license: 'UNKNOWN',
+        path: installedPath,
+        notice: null,
+      });
+    } else {
+      const key = `${name}@${version}`;
       if (!out.has(key)) {
         out.set(key, {
-          name: pkg.name,
-          version: pkg.version,
-          license: readLicense(pkg),
-          path: full,
+          name,
+          version,
+          license,
+          path: installedPath,
+          notice: readNotice(installedPath),
         });
       }
     }
 
-    collect(join(full, 'node_modules'), out);
+    enqueueDependencies(lockPath, locked);
   }
 }
 
 const root = resolve(import.meta.dirname, '..');
 const packages = new Map<string, Entry>();
-collect(join(root, 'node_modules'), packages);
+collectLocked(root, packages);
 
 if (packages.size === 0) {
   console.error('No dependency found — run `npm install` first.');
@@ -158,6 +235,23 @@ const notices = [
   '|---|---|---|',
   ...sorted.map((e) => `| ${e.name} | ${e.version} | ${e.license} |`),
   '',
+  '## Licence and copyright texts',
+  '',
+  ...(() => {
+    const grouped = new Map<string, string[]>();
+    for (const entry of sorted) {
+      if (!entry.notice) continue;
+      const packagesForNotice = grouped.get(entry.notice) ?? [];
+      packagesForNotice.push(`${entry.name}@${entry.version}`);
+      grouped.set(entry.notice, packagesForNotice);
+    }
+    return [...grouped.entries()].flatMap(([notice, packageNames]) => [
+      `### ${packageNames.join(', ')}`,
+      '',
+      ...notice.split('\n').map((line) => `    ${line}`),
+      '',
+    ]);
+  })(),
 ];
 writeFileSync(join(root, 'THIRD-PARTY-NOTICES.md'), notices.join('\n'), 'utf8');
 

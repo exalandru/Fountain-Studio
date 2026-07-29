@@ -1,4 +1,7 @@
 import { create } from 'zustand';
+import type { AppData } from '@shared/appdata/index.js';
+import { createDefaultAppData } from '@shared/appdata/index.js';
+import { refuseRecoveredExistingFile, resolveSavedRevision } from '@shared/documents/index.js';
 import type { AppSettings, DocumentSnapshot, Eol } from '@shared/ipc-contract.js';
 import { DEFAULT_SETTINGS } from '@shared/ipc-contract.js';
 
@@ -20,6 +23,15 @@ export interface OpenDocument {
   dirty: boolean;
   /** Incremented on every change — used to drop stale analyses. */
   revision: number;
+  /**
+   * A recovered legacy snapshot had no recorded disk mtime. Its original path must not
+   * be overwritten until the author explicitly confirms it through Save As.
+   */
+  refuseExistingOnSave: boolean;
+  /** Per-screenplay UI metadata persisted in the companion file. */
+  appData: AppData;
+  /** Zero after loading, incremented only by local UI changes. */
+  appDataRevision: number;
 }
 
 /** Localised strings the store needs; supplied by the caller, which owns the translator. */
@@ -42,9 +54,20 @@ interface DocumentsState {
   active: () => OpenDocument | null;
   newDocument: (strings: NewDocumentStrings) => string;
   adopt: (snapshots: DocumentSnapshot[]) => string | null;
-  restore: (path: string | null, content: string, strings: NewDocumentStrings) => string;
+  restore: (
+    path: string | null,
+    content: string,
+    strings: NewDocumentStrings,
+    eol?: Eol,
+    mtimeMs?: number | null,
+  ) => string;
   setContent: (id: string, content: string) => void;
-  markSaved: (id: string, path: string, mtimeMs: number) => void;
+  setAppData: (id: string, appData: AppData, changed?: boolean) => void;
+  /**
+   * Commits the metadata of a completed disk write. Returns true only when no newer
+   * edit happened while the write was in flight.
+   */
+  markSaved: (id: string, path: string, mtimeMs: number, savedRevision: number) => boolean;
   setActive: (id: string) => void;
   close: (id: string) => void;
   setSettings: (settings: AppSettings) => void;
@@ -97,6 +120,9 @@ export const useDocuments = create<DocumentsState>((set, get) => ({
       mtimeMs: null,
       dirty: false,
       revision: 0,
+      refuseExistingOnSave: false,
+      appData: createDefaultAppData(),
+      appDataRevision: 0,
     };
     set((state) => ({ documents: [...state.documents, document], activeId: id }));
     return id;
@@ -130,6 +156,9 @@ export const useDocuments = create<DocumentsState>((set, get) => ({
           mtimeMs: snapshot.mtimeMs,
           dirty: false,
           revision: 0,
+          refuseExistingOnSave: false,
+          appData: createDefaultAppData(),
+          appDataRevision: 0,
         });
       }
 
@@ -142,11 +171,11 @@ export const useDocuments = create<DocumentsState>((set, get) => ({
   /**
    * Reopens content recovered after an abrupt shutdown.
    *
-   * `mtimeMs` stays `null`: we do not know the state of the file on disk at the time of
-   * the crash, so the first save goes through conflict detection rather than blindly
-   * overwriting a possibly newer version.
+   * New snapshots carry their last known mtime and therefore retain external-change
+   * detection. Legacy snapshots do not; for those, saving to an existing original path
+   * is refused until the author explicitly chooses Save As.
    */
-  restore(path, content, strings) {
+  restore(path, content, strings, eol = 'lf', mtimeMs) {
     const id = newId();
     set((state) => ({
       documents: [
@@ -156,10 +185,13 @@ export const useDocuments = create<DocumentsState>((set, get) => ({
           path,
           name: path === null ? strings.recovered : nameFromPath(path),
           content,
-          eol: 'lf',
-          mtimeMs: null,
+          eol,
+          mtimeMs: mtimeMs ?? null,
           dirty: true,
           revision: 0,
+          refuseExistingOnSave: refuseRecoveredExistingFile(path, mtimeMs),
+          appData: createDefaultAppData(),
+          appDataRevision: 0,
         },
       ],
       activeId: state.activeId ?? id,
@@ -182,14 +214,45 @@ export const useDocuments = create<DocumentsState>((set, get) => ({
     }));
   },
 
-  markSaved(id, path, mtimeMs) {
+  setAppData(id, appData, changed = false) {
     set((state) => ({
       documents: state.documents.map((document) =>
         document.id === id
-          ? { ...document, path, name: nameFromPath(path), mtimeMs, dirty: false }
+          ? {
+              ...document,
+              appData,
+              appDataRevision: changed ? document.appDataRevision + 1 : document.appDataRevision,
+            }
           : document,
       ),
     }));
+  },
+
+  markSaved(id, path, mtimeMs, savedRevision) {
+    let fullySaved = false;
+    set((state) => ({
+      documents: state.documents.map((document) =>
+        document.id === id
+          ? (() => {
+              const decision = resolveSavedRevision(
+                document.revision,
+                savedRevision,
+                document.dirty,
+              );
+              fullySaved = decision.fullySaved;
+              return {
+                ...document,
+                path,
+                name: nameFromPath(path),
+                mtimeMs,
+                dirty: decision.dirty,
+                refuseExistingOnSave: false,
+              };
+            })()
+          : document,
+      ),
+    }));
+    return fullySaved;
   },
 
   setActive(id) {

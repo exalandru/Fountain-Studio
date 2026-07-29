@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { _electron as electron } from '@playwright/test';
@@ -45,6 +45,56 @@ test('a snapshot left by an interrupted session is reopened at startup', async (
     // back, it is their call.
     await expect(page.locator('.tab-active .tab-name')).toContainText('•');
   } finally {
+    await app.evaluate(({ dialog }) => {
+      dialog.showMessageBox = async () => ({ response: 1, checkboxChecked: false });
+    });
+    await app.close();
+  }
+});
+
+test('a legacy recovery snapshot cannot overwrite an existing disk file silently', async () => {
+  const userData = await mkdtemp(join(tmpdir(), 'quantum-draft-recovery-conflict-'));
+  await mkdir(join(userData, 'autosave'), { recursive: true });
+
+  const screenplayPath = join(userData, 'existing.fountain');
+  await writeFile(screenplayPath, 'NEWER DISK CONTENT\n', 'utf8');
+  await writeFile(
+    join(userData, 'autosave', 'legacy.json'),
+    JSON.stringify({
+      path: screenplayPath,
+      content: 'OLDER RECOVERED CONTENT\n',
+      savedAt: Date.now() - 10_000,
+    }),
+    'utf8',
+  );
+
+  const env: Record<string, string> = {};
+  for (const [key, value] of Object.entries(process.env)) {
+    if (key !== 'ELECTRON_RUN_AS_NODE' && value !== undefined) env[key] = value;
+  }
+  env['LANG'] = 'en_US.UTF-8';
+  env['LC_ALL'] = 'en_US.UTF-8';
+
+  const app = await electron.launch({
+    args: ['out/main/index.js', `--user-data-dir=${userData}`, '--lang=en-US'],
+    env,
+  });
+
+  try {
+    const page = await app.firstWindow();
+    await page.waitForSelector('.cm-content');
+    await app.evaluate(({ BrowserWindow }) => {
+      BrowserWindow.getAllWindows()[0]?.webContents.send('menu:command', {
+        command: 'file.save',
+      });
+    });
+
+    await expect(page.locator('.status-message')).toContainText('changed outside');
+    await expect.poll(() => readFile(screenplayPath, 'utf8')).toBe('NEWER DISK CONTENT\n');
+  } finally {
+    await app.evaluate(({ dialog }) => {
+      dialog.showMessageBox = async () => ({ response: 1, checkboxChecked: false });
+    });
     await app.close();
   }
 });

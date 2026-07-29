@@ -50,6 +50,7 @@ export const en = {
   // ── Menu: View ───────────────────────────────────────────────────────────
   'menu.view': 'View',
   'menu.view.showNotes': 'Show Notes',
+  'menu.view.showBoneyard': 'Show Boneyard',
   'menu.view.showSynopses': 'Show Synopses',
   'menu.view.showSections': 'Show Sections',
   'menu.view.increaseFont': 'Increase Font Size',
@@ -101,6 +102,7 @@ export const en = {
   'status.saved': 'Saved — {time}',
   'status.conflict': 'The file was changed outside the application. Use “Save As…”.',
   'status.saveFailed': 'Save failed: {error}',
+  'status.appDataFailed': 'Could not save the screenplay layout.',
   'status.recovered': {
     one: '{count} document recovered after an unexpected shutdown. Check its contents before saving.',
     other:
@@ -122,4 +124,27 @@ export const en = {
     'Unterminated boneyard: all text to the end of the file is ignored.',
   'diagnostic.unterminatedNote': 'Unterminated note: the closing `]]` is missing.',
   'diagnostic.duplicateSceneNumber': 'Scene number “{number}” is already used on line {line}.',
+
+  // ── Sidebar and preview ───────────────────────────────────────────────────
+  'sidebar.structure': 'Structure',
+  'sidebar.title': 'Navigator',
+  'sidebar.locations': 'Locations',
+  'sidebar.characters': 'Characters',
+  'sidebar.filterPlaceholder': 'Filter...',
+  'sidebar.noResults': 'No results found.',
+  'sidebar.loading': 'Analysing screenplay…',
+  'sidebar.showSynopses': 'Show synopses',
+  'sidebar.locationMixed': 'INT/EXT',
+  'sidebar.occurrences': { one: '{count} occurrence', other: '{count} occurrences' },
+  'sidebar.speeches': { one: '{count} speech', other: '{count} speeches' },
+  'sidebar.words': { one: '{count} word', other: '{count} words' },
+  'sidebar.close': 'Close navigator',
+  'sidebar.show': 'Show navigator',
+  'sidebar.resize': 'Resize navigator',
+  'preview.title': 'Screenplay preview',
+  'preview.syncScroll': 'Sync scroll with editor',
+  'preview.loading': 'Preparing preview…',
+  'preview.close': 'Close preview',
+  'preview.show': 'Show preview',
+  'preview.resize': 'Resize preview',
 } as const;

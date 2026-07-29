@@ -6,6 +6,7 @@ directories:
 files:
   - out/**
   - resources/**
+  - THIRD-PARTY-NOTICES.md
   - '!**/*.map'
 asarUnpack:
   - resources/**
@@ -15,16 +16,20 @@ fileAssociations:
     description: Scénario au format Fountain
     role: Editor
 mac:
+  icon: build/icon.png
   category: public.app-category.productivity
   target:
     - dmg
     - zip
   hardenedRuntime: true
   entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
 win:
+  icon: build/icon.png
   target:
     - nsis
 linux:
+  icon: build/icon.png
   target:
     - AppImage
     - deb

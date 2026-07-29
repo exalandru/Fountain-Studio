@@ -43,14 +43,20 @@ describe('catalogues', () => {
   });
 
   it('French is actually translated, not copied from English', () => {
-    // Some entries legitimately match — proper nouns, "Services", "{name} — Quantum
-    // Draft". Anything beyond a handful of those means a translation was forgotten.
+    const intentionallyIdentical: MessageKey[] = [
+      'app.name',
+      'window.title',
+      'menu.app.services',
+      'status.about',
+      'sidebar.structure',
+      'sidebar.locationMixed',
+    ];
     const identical = keys.filter((key) => {
       const a = en[key];
       const b = fr[key];
       return typeof a === 'string' && typeof b === 'string' && a === b;
     });
-    expect(identical.length).toBeLessThan(6);
+    expect(identical.sort()).toEqual(intentionallyIdentical.sort());
   });
 
   it('placeholders match between locales', () => {

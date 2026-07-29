@@ -48,6 +48,7 @@ export const fr: Catalog = {
   // ── Menu : Affichage ─────────────────────────────────────────────────────
   'menu.view': 'Affichage',
   'menu.view.showNotes': 'Afficher les notes',
+  'menu.view.showBoneyard': 'Afficher les commentaires masqués',
   'menu.view.showSynopses': 'Afficher les synopsis',
   'menu.view.showSections': 'Afficher les sections',
   'menu.view.increaseFont': 'Agrandir la police',
@@ -100,6 +101,7 @@ export const fr: Catalog = {
   'status.conflict':
     'Le fichier a été modifié en dehors de l’application. Utilisez « Enregistrer sous… ».',
   'status.saveFailed': 'Échec de l’enregistrement : {error}',
+  'status.appDataFailed': 'Impossible d’enregistrer la disposition du scénario.',
   'status.recovered': {
     one: '{count} document récupéré après un arrêt inattendu. Vérifiez le contenu avant d’enregistrer.',
     other:
@@ -119,4 +121,27 @@ export const fr: Catalog = {
   'diagnostic.unterminatedNote': 'Note non fermée : le `]]` de fermeture est absent.',
   'diagnostic.duplicateSceneNumber':
     'Le numéro de scène « {number} » est déjà utilisé à la ligne {line}.',
+
+  // ── Sidebar and preview ───────────────────────────────────────────────────
+  'sidebar.structure': 'Structure',
+  'sidebar.title': 'Navigateur',
+  'sidebar.locations': 'Lieux',
+  'sidebar.characters': 'Personnages',
+  'sidebar.filterPlaceholder': 'Filtre...',
+  'sidebar.noResults': 'Aucun résultat.',
+  'sidebar.loading': 'Analyse du scénario…',
+  'sidebar.showSynopses': 'Afficher les synopsis',
+  'sidebar.locationMixed': 'INT/EXT',
+  'sidebar.occurrences': { one: '{count} occurrence', other: '{count} occurrences' },
+  'sidebar.speeches': { one: '{count} réplique', other: '{count} répliques' },
+  'sidebar.words': { one: '{count} mot', other: '{count} mots' },
+  'sidebar.close': 'Fermer le navigateur',
+  'sidebar.show': 'Afficher le navigateur',
+  'sidebar.resize': 'Redimensionner le navigateur',
+  'preview.title': 'Aperçu du scénario',
+  'preview.syncScroll': 'Synchroniser le défilement',
+  'preview.loading': 'Préparation de l’aperçu…',
+  'preview.close': 'Fermer l’aperçu',
+  'preview.show': 'Afficher l’aperçu',
+  'preview.resize': 'Redimensionner l’aperçu',
 };

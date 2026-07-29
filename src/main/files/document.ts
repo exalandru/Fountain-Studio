@@ -1,7 +1,7 @@
 import { constants } from 'node:fs';
-import { access, copyFile, mkdir, open, readFile, rename, stat, unlink } from 'node:fs/promises';
-import { basename, dirname, join } from 'node:path';
+import { access, copyFile, readFile, rename, stat, unlink } from 'node:fs/promises';
 import type { DocumentSnapshot, Eol, SaveOutcome, SaveRequest } from '@shared/ipc-contract.js';
+import { writeFileAtomic } from './atomic.js';
 
 /**
  * Reading and writing `.fountain` files.
@@ -68,53 +68,30 @@ async function rotateBackups(path: string, keep: number): Promise<void> {
   // Remove the oldest, then shift the others down one slot.
   const oldest = name(keep);
   if (await fileExists(oldest)) {
-    await unlink(oldest).catch(() => undefined);
+    await unlink(oldest);
   }
   for (let i = keep - 1; i >= 1; i--) {
     const from = name(i);
     if (await fileExists(from)) {
-      await rename(from, name(i + 1)).catch(() => undefined);
+      await rename(from, name(i + 1));
     }
   }
 
-  await copyFile(path, name(1)).catch(() => undefined);
-}
-
-/**
- * Atomic write: the temporary file goes in the **same directory** (therefore the same
- * volume, otherwise `rename` stops being atomic), it is flushed to disk, then renamed
- * over the target. A power cut leaves either the old file intact or the new one
- * complete — never a truncated file.
- */
-async function writeAtomic(path: string, data: string): Promise<void> {
-  const temporary = join(
-    dirname(path),
-    `.${basename(path)}.${process.pid}.${Date.now().toString(36)}.tmp`,
-  );
-
-  const handle = await open(temporary, 'w');
-  try {
-    await handle.writeFile(data, 'utf8');
-    await handle.sync();
-  } finally {
-    await handle.close();
-  }
-
-  try {
-    await rename(temporary, path);
-  } catch (error) {
-    await unlink(temporary).catch(() => undefined);
-    throw error;
-  }
+  await copyFile(path, name(1));
 }
 
 export async function saveDocument(
   request: SaveRequest,
   backupCount: number,
 ): Promise<SaveOutcome> {
-  const { path, content, eol, expectedMtimeMs } = request;
+  const { path, content, eol, expectedMtimeMs, refuseExisting = false } = request;
 
   try {
+    if (refuseExisting && (await fileExists(path))) {
+      const current = await stat(path);
+      return { status: 'conflict', path, mtimeMs: current.mtimeMs };
+    }
+
     // Refuse to overwrite if the file changed since it was read.
     if (expectedMtimeMs !== null && (await fileExists(path))) {
       const current = await stat(path);
@@ -124,9 +101,8 @@ export async function saveDocument(
       }
     }
 
-    await mkdir(dirname(path), { recursive: true });
     await rotateBackups(path, backupCount);
-    await writeAtomic(path, fromLf(content, eol));
+    await writeFileAtomic(path, fromLf(content, eol));
 
     const stats = await stat(path);
     return { status: 'saved', path, mtimeMs: stats.mtimeMs };

@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { lexDocument } from '../../src/shared/fountain/lexer.js';
-import { maskAnnotations } from '../../src/shared/fountain/mask.js';
+import { analyzeForEditor } from '../../src/shared/fountain/editor-analysis.js';
 import { parse } from '../../src/shared/fountain/parse.js';
 
 /**
@@ -10,7 +9,7 @@ import { parse } from '../../src/shared/fountain/parse.js';
  * wider.
  */
 
-/** ~120 pages of screenplay: 55 lines per page, realistic structure. */
+/** ~120 pages of screenplay: 54 lines per page, realistic structure. */
 function generateScreenplay(pages: number): string {
   const out: string[] = ['Title: Test de charge', 'Author: Quantum Draft', '', '# ACTE I', ''];
 
@@ -20,7 +19,7 @@ function generateScreenplay(pages: number): string {
   let line = 0;
   let scene = 0;
 
-  while (line < pages * 55) {
+  while (line < pages * 54) {
     scene++;
     const inOut = scene % 3 === 0 ? 'EXT.' : 'INT.';
     out.push(
@@ -62,19 +61,18 @@ describe('performance on a 120-page screenplay', () => {
     expect(lines).toBeGreaterThan(6000);
   });
 
-  it('masking plus lexing fits well within a keystroke budget (16 ms)', () => {
+  it('the complete synchronous editor analysis fits within a keystroke budget (16 ms)', () => {
     // Median over several passes, to smooth out noise and JIT warm-up.
     const durations: number[] = [];
     for (let i = 0; i < 15; i++) {
       const start = performance.now();
-      const { masked } = maskAnnotations(script);
-      lexDocument(masked);
+      analyzeForEditor(script);
       durations.push(performance.now() - start);
     }
     durations.sort((a, b) => a - b);
     const median = durations[Math.floor(durations.length / 2)] ?? Infinity;
 
-    console.log(`  mask + lex: ${median.toFixed(1)} ms (median, ${script.length} characters)`);
+    console.log(`  editor analysis: ${median.toFixed(1)} ms (median, ${script.length} characters)`);
     expect(median).toBeLessThan(16);
   });
 

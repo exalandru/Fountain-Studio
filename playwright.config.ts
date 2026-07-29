@@ -1,10 +1,10 @@
 import { defineConfig } from '@playwright/test';
 
 /**
- * Tests de bout en bout sur l'application Electron réellement empaquetée.
+ * End-to-end tests against the actual Electron application build.
  *
- * Ils s'exécutent sur le contenu de `out/`, donc `npm run build` doit avoir été lancé.
- * Un seul worker : les tests partagent le dossier userData de l'application.
+ * They execute the content of `out/`, so `npm run build` must run first.
+ * One worker: some journey tests share their application's userData directory.
  */
 export default defineConfig({
   testDir: './test/e2e',

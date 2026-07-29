@@ -9,7 +9,9 @@ export default tseslint.config(
   {
     files: ['src/renderer/**/*.{ts,tsx}'],
     plugins: { 'react-hooks': reactHooks },
-    rules: reactHooks.configs.recommended.rules,
+    rules: {
+      ...reactHooks.configs.recommended.rules,
+    },
   },
   {
     files: ['**/*.{ts,tsx}'],
@@ -20,9 +22,8 @@ export default tseslint.config(
     },
   },
   {
-    // src/shared doit rester du TypeScript pur : ni Electron, ni Node, ni DOM.
-    // C'est ce qui garantit qu'il tourne indifféremment en worker, main ou renderer,
-    // et qu'il reste testable sans harnais (PLAN.md §3.1).
+    // src/shared stays pure TypeScript: no Electron, Node or DOM dependency. This keeps
+    // it portable between workers, main and renderer, and testable without a harness.
     files: ['src/shared/**/*.ts'],
     rules: {
       'no-restricted-imports': [
@@ -31,7 +32,7 @@ export default tseslint.config(
           patterns: [
             {
               group: ['electron', 'electron/*', 'node:*', 'fs', 'path', 'os', 'child_process'],
-              message: 'src/shared doit rester agnostique de la plateforme (PLAN.md §3.1).',
+              message: 'src/shared must remain platform-agnostic (PLAN.md §3.1).',
             },
           ],
         },

@@ -255,6 +255,9 @@ describe('parse — element grouping', () => {
     expect(actions).toHaveLength(2);
     expect(actions[0]?.text).toBe('He walks in.\nHe looks around.');
     expect(actions[0]?.lineCount).toBe(2);
+    expect(actions[0]?.inline.map((span) => span.text).join('')).toBe(
+      'He walks in.\nHe looks around.',
+    );
   });
 
   it('merges the lines of a single speech', () => {
@@ -291,6 +294,16 @@ describe('parse — invariants over the full corpus', () => {
     const { elements, scenes } = parse(complet);
     expect(new Set(elements.map((e) => e.id)).size).toBe(elements.length);
     expect(new Set(scenes.map((s) => s.id)).size).toBe(scenes.length);
+  });
+
+  it('keeps block identifiers stable across unrelated insertions', () => {
+    const original = parse('INT. KITCHEN - DAY\n\nShe enters.');
+    const edited = parse('A note before the scene.\n\nINT. KITCHEN - DAY\n\nShe enters.');
+
+    expect(edited.scenes[0]?.id).toBe(original.scenes[0]?.id);
+    expect(edited.elements.find((element) => element.text === 'She enters.')?.id).toBe(
+      original.elements.find((element) => element.text === 'She enters.')?.id,
+    );
   });
 
   it('produces a stable snapshot of the structure', () => {

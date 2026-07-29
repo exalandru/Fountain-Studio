@@ -6,8 +6,8 @@
     "noEmit": true,
     "jsx": "react-jsx",
     "lib": ["ES2023", "DOM", "DOM.Iterable", "WebWorker"],
-    // vite/client fournit les déclarations des imports d'assets (CSS, ?worker, ?url)
-    // et de import.meta.env.
+    // vite/client provides declarations for asset imports (CSS, ?worker, ?url)
+    // and import.meta.env.
     "types": ["vite/client"]
   }
 }

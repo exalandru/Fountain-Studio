@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { ParseRequest, ParseResponse } from '../../workers/parse.worker.js';
+import type { ParseRequest, ParseResponse } from '@shared/analysis/index.js';
 
 /**
  * Debounced screenplay analysis in a worker.
@@ -11,7 +11,9 @@ import type { ParseRequest, ParseResponse } from '../../workers/parse.worker.js'
  * The returned result is **derived** from state, never synchronised by an effect: one
  * tab's analysis must not flash briefly when switching to another.
  */
-const DEBOUNCE_MS = 120;
+// The preview has a stricter <100 ms refresh target than the original M1 sidebar.
+// Parsing itself takes ~17 ms on 120 pages, leaving enough room for a 50 ms debounce.
+const DEBOUNCE_MS = 50;
 
 export function useScreenplay(
   documentId: string | null,

@@ -1,4 +1,5 @@
 import type { Locale } from './i18n/index.js';
+import type { AppData } from './appdata/index.js';
 
 /**
  * Single IPC contract between the main process and the renderer.
@@ -28,6 +29,13 @@ export interface SaveRequest {
   eol: Eol;
   /** mtime known to the renderer; the main process refuses to overwrite a changed file. */
   expectedMtimeMs: number | null;
+  /**
+   * Refuse an existing target when its previous state is unknown.
+   *
+   * This is used for legacy crash-recovery snapshots that predate persisted mtimes.
+   * A native Save As confirmation is the explicit escape hatch.
+   */
+  refuseExisting?: boolean;
 }
 
 export type SaveOutcome =
@@ -51,6 +59,7 @@ export interface AppSettings {
   /** Number of `.bak` files kept per document. */
   backupCount: number;
   showNotes: boolean;
+  showBoneyard: boolean;
   showSynopses: boolean;
   showSections: boolean;
   /** Interface language. English is the fallback for every unknown locale. */
@@ -63,6 +72,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   autosaveSeconds: 30,
   backupCount: 3,
   showNotes: true,
+  showBoneyard: true,
   showSynopses: true,
   showSections: true,
   language: 'en',
@@ -72,6 +82,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
 export interface CrashRecovery {
   path: string | null;
   content: string;
+  /** Original line ending and last known disk state, when recorded by a recent build. */
+  eol?: Eol;
+  mtimeMs?: number | null;
   savedAt: number;
 }
 
@@ -81,28 +94,38 @@ export interface IpcRequests {
   'dialog:pickSaveAs': { arg: { suggestedName: string }; result: string | null };
   'dialog:confirmDiscard': { arg: { name: string }; result: 'save' | 'discard' | 'cancel' };
 
-  'file:read': { arg: { path: string }; result: DocumentSnapshot };
+  'file:openPaths': { arg: { paths: string[] }; result: DocumentSnapshot[] };
   'file:save': { arg: SaveRequest; result: SaveOutcome };
-  'file:exists': { arg: { path: string }; result: boolean };
-
-  'recent:list': { arg: void; result: RecentFile[] };
-  'recent:clear': { arg: void; result: void };
 
   'settings:get': { arg: void; result: AppSettings };
   'settings:patch': { arg: Partial<AppSettings>; result: AppSettings };
 
-  'autosave:write': { arg: { id: string; path: string | null; content: string }; result: void };
+  'autosave:write': {
+    arg: {
+      id: string;
+      path: string | null;
+      content: string;
+      eol: Eol;
+      mtimeMs: number | null;
+    };
+    result: void;
+  };
   'autosave:clear': { arg: { id: string }; result: void };
   'autosave:pending': { arg: void; result: CrashRecovery[] };
 
   'window:setDirty': { arg: { dirty: boolean; name: string }; result: void };
-  'shell:showItemInFolder': { arg: { path: string }; result: void };
+  /** Completes the close handshake initiated by `app:willQuit`. */
+  'window:closeDecision': { arg: { proceed: boolean }; result: void };
+  /** Companion file: read/write versioned metadata alongside the screenplay. */
+  'appdata:read': { arg: { path: string }; result: AppData | null };
+  'appdata:write': { arg: { path: string; data: AppData }; result: void };
 }
 
 /** Events from main to renderer. */
 export interface IpcEvents {
   /** The OS or the menu asks to open files (double-click, dock drop, recent item). */
-  'app:openFiles': { paths: string[] };
+  'app:openFiles':
+    { paths: string[]; snapshots?: never } | { paths?: never; snapshots: DocumentSnapshot[] };
   /** A menu command for the renderer to run (new, save, find…). */
   'menu:command': { command: MenuCommand };
   /** The OS colour scheme changed. */
@@ -125,6 +148,7 @@ export type MenuCommand =
   | 'edit.find'
   | 'edit.replace'
   | 'view.toggleNotes'
+  | 'view.toggleBoneyard'
   | 'view.toggleSynopses'
   | 'view.toggleSections'
   | 'view.increaseFont'
