@@ -47,6 +47,7 @@ export const en = {
   'menu.edit.find': 'Find…',
   'menu.edit.replace': 'Find and Replace…',
   'menu.edit.renumberScenes': 'Number Scenes',
+  'menu.edit.removeSceneNumbers': 'Remove Scene Numbering',
 
   // ── Menu: View ───────────────────────────────────────────────────────────
   'menu.view': 'View',
@@ -152,6 +153,10 @@ export const en = {
   },
   'status.unsupportedFormat': 'Unsupported format: {files}',
   'status.scenesRenumbered': '{count} scenes renumbered.',
+  'status.sceneNumbersRemoved': {
+    one: '{count} scene number removed.',
+    other: '{count} scene numbers removed.',
+  },
   'status.about': '{app} {version}',
 
   // ── New document template ────────────────────────────────────────────────

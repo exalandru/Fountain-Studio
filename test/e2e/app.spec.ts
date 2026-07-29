@@ -245,6 +245,10 @@ test('scene numbers appear on both sides and can be disabled globally', async ()
 
   await runCommand('scene.renumber');
   await expect(page.locator('.cm-content')).toContainText('INT. GARAGE - NIGHT #1#');
+  await runCommand('scene.removeNumbers');
+  await expect(page.locator('.cm-content')).not.toContainText('#1#');
+  await page.keyboard.press('ControlOrMeta+z');
+  await expect(page.locator('.cm-content')).toContainText('INT. GARAGE - NIGHT #1#');
   await page.keyboard.press('ControlOrMeta+z');
   await expect(page.locator('.cm-content')).not.toContainText('#1#');
 });

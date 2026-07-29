@@ -53,6 +53,11 @@ async function responseError(response: Response): Promise<never> {
   throw new HttpError(response.status, body);
 }
 
+/** OpenAI-compatible servers use both statuses for unsupported optional parameters. */
+function isParameterRejection(response: Response): boolean {
+  return response.status === 400 || response.status === 422;
+}
+
 export async function listAiModels(
   profile: AiConnectionProfile,
   apiKeyOverride?: string,
@@ -107,7 +112,7 @@ export async function testAiConnection(
   const useReasoning =
     profile.reasoningEnabled && reasoningCompatibility.get(profile.baseUrl) !== false;
   let response = await request(useReasoning);
-  if (response.status === 400 && useReasoning) {
+  if (isParameterRejection(response) && useReasoning) {
     reasoningCompatibility.set(profile.baseUrl, false);
     response = await request(false);
   }
@@ -134,7 +139,7 @@ function classifyError(error: unknown): { code: AiErrorCode; message: string } {
     ) {
       return { code: 'contextLength', message: 'The attached context is too long for this model.' };
     }
-    if (error.status === 400) {
+    if (error.status === 400 || error.status === 422) {
       return {
         code: 'invalidRequest',
         message: error.body || 'The endpoint rejected the request.',
@@ -248,14 +253,15 @@ async function chatResponse(
   request: AiChatRequest,
   controller: AbortController,
   reasoning: boolean,
-  disableReasoning: boolean,
+  reasoningDisabled: boolean,
+  includeNonReasoningHints: boolean,
 ): Promise<Response> {
   const body: Record<string, unknown> = {
     model: profile.model,
     messages: [
       {
         role: 'system',
-        content: disableReasoning ? `${request.systemPrompt}\n/no_think` : request.systemPrompt,
+        content: reasoningDisabled ? `${request.systemPrompt}\n/no_think` : request.systemPrompt,
       },
       ...request.messages,
     ],
@@ -263,7 +269,7 @@ async function chatResponse(
     max_tokens: profile.maxTokens,
     stream: true,
   };
-  if (disableReasoning) {
+  if (includeNonReasoningHints) {
     body['reasoning_effort'] = 'none';
     body['chat_template_kwargs'] = { enable_thinking: false };
   }
@@ -288,7 +294,8 @@ export function startAiChat(window: BrowserWindow, request: AiChatRequest): void
       const compatibility = reasoningCompatibility.get(profile.baseUrl);
       let useReasoning =
         request.reasoning !== 'disabled' && profile.reasoningEnabled && compatibility !== false;
-      let disableReasoning =
+      const reasoningDisabled = request.reasoning === 'disabled';
+      let includeNonReasoningHints =
         request.reasoning === 'disabled' &&
         nonReasoningCompatibility.get(profile.baseUrl) !== false;
       let response = await chatResponse(
@@ -297,9 +304,10 @@ export function startAiChat(window: BrowserWindow, request: AiChatRequest): void
         request,
         controller,
         useReasoning,
-        disableReasoning,
+        reasoningDisabled,
+        includeNonReasoningHints,
       );
-      if (response.status === 400 && useReasoning) {
+      if (isParameterRejection(response) && useReasoning) {
         reasoningCompatibility.set(profile.baseUrl, false);
         useReasoning = false;
         response = await chatResponse(
@@ -308,12 +316,21 @@ export function startAiChat(window: BrowserWindow, request: AiChatRequest): void
           request,
           controller,
           false,
-          disableReasoning,
+          reasoningDisabled,
+          includeNonReasoningHints,
         );
-      } else if (response.status === 400 && disableReasoning) {
+      } else if (isParameterRejection(response) && includeNonReasoningHints) {
         nonReasoningCompatibility.set(profile.baseUrl, false);
-        disableReasoning = false;
-        response = await chatResponse(profile, apiKey, request, controller, false, false);
+        includeNonReasoningHints = false;
+        response = await chatResponse(
+          profile,
+          apiKey,
+          request,
+          controller,
+          false,
+          reasoningDisabled,
+          false,
+        );
       }
       if (!response.ok) await responseError(response);
 

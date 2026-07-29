@@ -177,6 +177,10 @@ export async function buildMenu(): Promise<void> {
         },
         { type: 'separator' },
         { label: t('menu.edit.renumberScenes'), click: () => send('scene.renumber') },
+        {
+          label: t('menu.edit.removeSceneNumbers'),
+          click: () => send('scene.removeNumbers'),
+        },
         { type: 'separator' },
         { label: t('spell.language'), submenu: spellcheckItems },
       ],

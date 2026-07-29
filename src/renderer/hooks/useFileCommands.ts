@@ -19,6 +19,7 @@ interface FileCommandsOptions {
   onSynonyms: () => void;
   onRenameCharacter: () => void;
   onRenumberScenes: () => void;
+  onRemoveSceneNumbers: () => void;
   onToggleTimeline: () => void;
   onCommandPalette: () => void;
   patchSettings: (patch: Partial<AppSettings>) => Promise<void>;
@@ -41,6 +42,7 @@ export function useFileCommands({
   onSynonyms,
   onRenameCharacter,
   onRenumberScenes,
+  onRemoveSceneNumbers,
   onToggleTimeline,
   onCommandPalette,
   patchSettings,
@@ -91,6 +93,7 @@ export function useFileCommands({
         'ai.renameCharacter': onRenameCharacter,
         'ai.openInconsistencies': onOpenInconsistencies,
         'scene.renumber': onRenumberScenes,
+        'scene.removeNumbers': onRemoveSceneNumbers,
         'help.about': () => setStatus(t('status.about', { app: t('app.name'), version: '0.1.0' })),
       } satisfies Record<MenuCommand, () => void>;
 
@@ -107,6 +110,7 @@ export function useFileCommands({
       onSynonyms,
       onRenameCharacter,
       onRenumberScenes,
+      onRemoveSceneNumbers,
       onToggleTimeline,
       openDialog,
       patchSettings,

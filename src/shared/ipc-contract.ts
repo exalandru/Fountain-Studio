@@ -245,6 +245,7 @@ export type MenuCommand =
   | 'ai.renameCharacter'
   | 'ai.openInconsistencies'
   | 'scene.renumber'
+  | 'scene.removeNumbers'
   | 'help.about';
 
 export type IpcChannel = keyof IpcRequests;

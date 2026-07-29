@@ -67,6 +67,35 @@ const server = createServer((request, response) => {
       typeof (lastMessage as { content?: unknown }).content === 'string'
         ? (lastMessage as { content: string }).content
         : '';
+    if (lastContent.includes('MISTRAL_422_COMPATIBILITY')) {
+      if (body?.['chat_template_kwargs']) {
+        response.writeHead(422, { 'content-type': 'application/json' });
+        response.end(
+          JSON.stringify({
+            object: 'error',
+            message: {
+              detail: [
+                {
+                  type: 'extra_forbidden',
+                  loc: ['body', 'chat_template_kwargs'],
+                  msg: 'Extra inputs are not permitted',
+                },
+              ],
+            },
+            type: 'invalid_request_error',
+          }),
+        );
+        return;
+      }
+      response.writeHead(200, { 'content-type': 'text/event-stream' });
+      response.write(
+        `data: ${JSON.stringify({
+          choices: [{ delta: { content: 'Mistral compatible response' } }],
+        })}\n\n`,
+      );
+      response.end('data: [DONE]\n\n');
+      return;
+    }
     if (lastContent.includes('Propose jusqu’à dix synonymes')) {
       response.writeHead(200, { 'content-type': 'text/event-stream' });
       response.write(
@@ -326,6 +355,7 @@ test('offers fast synonyms, renames a character and persists an inconsistency re
 
   const rewrite = page.locator('.rewrite-popover');
   await expect(rewrite).toBeVisible();
+  await expect(rewrite.getByRole('button', { name: 'Rewrite', exact: true })).toHaveCount(0);
   await expect(rewrite.locator('.rewrite-variant')).toHaveCount(10);
   const synonymRequest = requests.find(({ body }) =>
     JSON.stringify(body?.['messages']).includes('Propose jusqu’à dix synonymes'),
@@ -339,6 +369,7 @@ test('offers fast synonyms, renames a character and persists an inconsistency re
 
   await page.locator('.cm-line').filter({ hasText: 'SECRET_SCENE_M5' }).click({ clickCount: 3 });
   await runCommand('ai.rewrite');
+  await expect(rewrite.getByRole('button', { name: 'Synonyms', exact: true })).toHaveCount(0);
   await expect(rewrite.locator('.rewrite-variant')).toHaveCount(3);
   const rewriteRequest = requests.find(({ body }) =>
     JSON.stringify(body?.['messages']).includes('Reformule le passage sélectionné'),
@@ -393,4 +424,50 @@ test('offers fast synonyms, renames a character and persists an inconsistency re
       }
     })
     .toBe('resolved');
+});
+
+test('retries a Mistral-style 422 response without non-standard parameters', async () => {
+  requests = [];
+  const result = await page.evaluate(async () => {
+    const config = await window.quantum.invoke('ai:config:get', undefined);
+    return new Promise<{ content: string; error: string | null }>((resolve) => {
+      const requestId = 'mistral-422';
+      let content = '';
+      const cleanups: Array<() => void> = [];
+      const finish = (error: string | null) => {
+        cleanups.forEach((cleanup) => cleanup());
+        resolve({ content, error });
+      };
+      cleanups.push(
+        window.quantum.on('ai:chunk', (event) => {
+          if (event.requestId === requestId) content += event.chunk;
+        }),
+        window.quantum.on('ai:done', (event) => {
+          if (event.requestId === requestId) finish(null);
+        }),
+        window.quantum.on('ai:error', (event) => {
+          if (event.requestId === requestId) finish(event.message);
+        }),
+      );
+      void window.quantum.invoke('ai:chat:start', {
+        requestId,
+        profileId: config.activeProfileId,
+        mode: 'creative',
+        reasoning: 'disabled',
+        systemPrompt: 'Plain text only.',
+        messages: [{ role: 'user', content: 'MISTRAL_422_COMPATIBILITY' }],
+      });
+    });
+  });
+
+  expect(result).toEqual({ content: 'Mistral compatible response', error: null });
+  const attempts = requests.filter(({ body }) =>
+    JSON.stringify(body?.['messages']).includes('MISTRAL_422_COMPATIBILITY'),
+  );
+  expect(attempts).toHaveLength(2);
+  expect(attempts[0]?.body?.['chat_template_kwargs']).toEqual({ enable_thinking: false });
+  expect(attempts[0]?.body?.['reasoning_effort']).toBe('none');
+  expect(attempts[1]?.body?.['chat_template_kwargs']).toBeUndefined();
+  expect(attempts[1]?.body?.['reasoning_effort']).toBeUndefined();
+  expect(JSON.stringify(attempts[1]?.body?.['messages'])).toContain('/no_think');
 });

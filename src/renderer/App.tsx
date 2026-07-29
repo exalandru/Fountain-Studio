@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { isolateHistory } from '@codemirror/commands';
 import { EditorView } from '@codemirror/view';
 import type {
   AppData,
@@ -22,6 +23,7 @@ import { RewriteDialog } from './ai/RewriteDialog.js';
 import type { RewriteSelection } from './ai/RewriteDialog.js';
 import { CharacterNameDialog } from './ai/CharacterNameDialog.js';
 import type { CharacterNameSelection } from './ai/CharacterNameDialog.js';
+import { fountainLexField } from './editor/fountain-highlight.js';
 import type { NewDocumentStrings } from './store/documents.js';
 import { useDocuments } from './store/documents.js';
 import { CommandPalette } from './ui/CommandPalette.js';
@@ -349,26 +351,41 @@ export function App() {
     onRenameCharacter: openRenameCharacter,
     onRenumberScenes: () => {
       const view = editorView.current;
-      if (!view || !analysis) return;
-      const changes = analysis.scenes.flatMap((scene, index) => {
-        const heading = analysis.elements.find(
-          (element) =>
-            element.kind === 'scene_heading' &&
-            element.range.from >= scene.range.from &&
-            element.range.from <= scene.range.to,
-        );
-        if (!heading) return [];
-        const source = view.state.sliceDoc(heading.range.from, heading.range.to);
+      if (!view) return;
+      const headings = view.state
+        .field(fountainLexField)
+        .lines.filter((line) => line.kind === 'scene_heading');
+      const changes = headings.flatMap((heading, index) => {
+        const source = view.state.sliceDoc(heading.from, heading.to);
         const numbered = /\s+#[^#\r\n]+#\s*$/.test(source)
           ? source.replace(/\s+#[^#\r\n]+#(\s*)$/, ` #${index + 1}#$1`)
           : `${source.replace(/\s+$/, '')} #${index + 1}#${source.match(/\s+$/)?.[0] ?? ''}`;
         return numbered === source
           ? []
-          : [{ from: heading.range.from, to: heading.range.to, insert: numbered }];
+          : [{ from: heading.from, to: heading.to, insert: numbered }];
       });
-      if (changes.length > 0) view.dispatch({ changes });
+      if (changes.length > 0) {
+        view.dispatch({ changes, annotations: isolateHistory.of('full') });
+      }
       view.focus();
-      setStatus(t('status.scenesRenumbered', { count: analysis.scenes.length }));
+      setStatus(t('status.scenesRenumbered', { count: headings.length }));
+    },
+    onRemoveSceneNumbers: () => {
+      const view = editorView.current;
+      if (!view) return;
+      const changes = view.state.field(fountainLexField).lines.flatMap((heading) => {
+        if (heading.kind !== 'scene_heading') return [];
+        const source = view.state.sliceDoc(heading.from, heading.to);
+        const unnumbered = source.replace(/\s+#[^#\r\n]+#(\s*)$/, '$1');
+        return unnumbered === source
+          ? []
+          : [{ from: heading.from, to: heading.to, insert: unnumbered }];
+      });
+      if (changes.length > 0) {
+        view.dispatch({ changes, annotations: isolateHistory.of('full') });
+      }
+      view.focus();
+      setStatus(t('status.sceneNumbersRemoved', { count: changes.length }));
     },
     onToggleTimeline: toggleTimeline,
     onCommandPalette: () => setPaletteOpen(true),

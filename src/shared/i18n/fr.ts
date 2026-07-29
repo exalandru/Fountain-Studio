@@ -45,6 +45,7 @@ export const fr: Catalog = {
   'menu.edit.find': 'Rechercher…',
   'menu.edit.replace': 'Rechercher et remplacer…',
   'menu.edit.renumberScenes': 'Numéroter les scènes',
+  'menu.edit.removeSceneNumbers': 'Supprimer la numérotation des scènes',
 
   // ── Menu : Affichage ─────────────────────────────────────────────────────
   'menu.view': 'Affichage',
@@ -152,6 +153,10 @@ export const fr: Catalog = {
   },
   'status.unsupportedFormat': 'Format non pris en charge : {files}',
   'status.scenesRenumbered': '{count} scènes renumérotées.',
+  'status.sceneNumbersRemoved': {
+    one: '{count} numéro de scène supprimé.',
+    other: '{count} numéros de scène supprimés.',
+  },
   'status.about': '{app} {version}',
 
   // ── Modèle de nouveau document ───────────────────────────────────────────

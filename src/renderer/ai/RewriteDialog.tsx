@@ -53,11 +53,7 @@ export function RewriteDialog({
 }: RewriteDialogProps) {
   const { t } = useTranslator();
   const requestRef = useRef<AiRequestHandle | null>(null);
-  const selectedText = selection.text.trim();
-  const isSingleWord = /\p{L}/u.test(selectedText) && !/\s/u.test(selectedText);
-  const [tool, setTool] = useState<'rewrite' | 'synonyms'>(
-    selection.initialTool ?? (isSingleWord ? 'synonyms' : 'rewrite'),
-  );
+  const tool = selection.initialTool ?? 'rewrite';
   const [variants, setVariants] = useState<string[]>([]);
   const [phase, setPhase] = useState<'idle' | 'waiting' | 'reasoning' | 'answering'>('idle');
   const [error, setError] = useState<string | null>(null);
@@ -135,7 +131,7 @@ export function RewriteDialog({
       className="rewrite-popover"
       role="dialog"
       aria-modal="false"
-      aria-label={t('rewrite.title')}
+      aria-label={t(tool === 'synonyms' ? 'rewrite.synonymsTitle' : 'rewrite.title')}
       style={{ top, left }}
       onKeyDown={(event) => {
         if (event.key === 'Escape') onClose();
@@ -153,30 +149,6 @@ export function RewriteDialog({
         </button>
       </header>
       <div className="rewrite-controls">
-        {isSingleWord ? (
-          <div className="ai-mode-switch">
-            <button
-              type="button"
-              className={tool === 'synonyms' ? 'active' : ''}
-              onClick={() => {
-                setTool('synonyms');
-                setVariants([]);
-              }}
-            >
-              {t('rewrite.synonyms')}
-            </button>
-            <button
-              type="button"
-              className={tool === 'rewrite' ? 'active' : ''}
-              onClick={() => {
-                setTool('rewrite');
-                setVariants([]);
-              }}
-            >
-              {t('rewrite.rewrite')}
-            </button>
-          </div>
-        ) : null}
         {tool === 'rewrite' ? (
           <label>
             <span>{t('rewrite.tone')}</span>
