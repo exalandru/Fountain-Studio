@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  verify:
+    name: Vérifications (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest, ubuntu-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # Garde-fou de licences : aucune dépendance contaminante ne doit entrer
+      # dans l'arbre (PLAN.md §2.1). Bloquant, dès le premier jalon.
+      - run: npm run check:licenses
+
+      - run: npm run format:check
+
+      - run: npm run lint
+
+      - run: npm run typecheck
+
+      - run: npm test
+
+      - run: npm run build
+
+      # Les tests de bout en bout ont besoin d'un serveur d'affichage sous Linux.
+      - name: Tests E2E (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: xvfb-run --auto-servernum npm run test:e2e
+
+      - name: Tests E2E (macOS, Windows)
+        if: matrix.os != 'ubuntu-latest'
+        run: npm run test:e2e
+
+      - name: Journaux d'échec
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: resultats-${{ matrix.os }}
+          path: |
+            test-results/
+            playwright-report/
+          retention-days: 7

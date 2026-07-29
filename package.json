@@ -1,0 +1,61 @@
+{
+  "name": "quantum-draft",
+  "productName": "Quantum Draft",
+  "version": "0.1.0",
+  "description": "Application desktop d'écriture scénaristique au format Fountain, assistée par IA",
+  "author": "Exalandru",
+  "license": "UNLICENSED",
+  "private": true,
+  "main": "./out/main/index.js",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "electron-vite dev",
+    "start": "electron-vite preview",
+    "build": "npm run typecheck && electron-vite build",
+    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
+    "lint": "eslint . --max-warnings 0",
+    "format": "prettier --write \"src/**/*.{ts,tsx,css}\" \"test/**/*.ts\" \"*.ts\"",
+    "format:check": "prettier --check \"src/**/*.{ts,tsx,css}\" \"test/**/*.ts\" \"*.ts\"",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "playwright test",
+    "check:licenses": "tsx scripts/check-licenses.ts",
+    "build:mac": "npm run build && electron-builder --mac",
+    "build:win": "npm run build && electron-builder --win",
+    "build:linux": "npm run build && electron-builder --linux"
+  },
+  "dependencies": {
+    "@codemirror/autocomplete": "6.20.3",
+    "@codemirror/commands": "6.10.4",
+    "@codemirror/language": "6.12.4",
+    "@codemirror/search": "6.7.1",
+    "@codemirror/state": "6.7.1",
+    "@codemirror/view": "6.43.7",
+    "@lezer/highlight": "1.2.3",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "zustand": "5.0.14"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@playwright/test": "1.62.0",
+    "@types/node": "26.1.2",
+    "@types/react": "19.2.17",
+    "@types/react-dom": "19.2.3",
+    "@vitejs/plugin-react": "5.2.0",
+    "electron": "43.2.0",
+    "electron-builder": "26.15.3",
+    "electron-vite": "5.0.0",
+    "eslint": "10.8.0",
+    "eslint-plugin-react-hooks": "7.1.1",
+    "prettier": "3.9.6",
+    "tsx": "4.23.1",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.65.0",
+    "vite": "7.3.6",
+    "vitest": "4.1.10"
+  }
+}

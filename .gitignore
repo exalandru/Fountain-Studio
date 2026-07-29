@@ -1,0 +1,12 @@
+node_modules/
+out/
+dist/
+.DS_Store
+*.log
+.vite/
+test-results/
+playwright-report/
+THIRD-PARTY-NOTICES.md
+tsconfig.*.tsbuildinfo
+PLAN.md
+CDC.md

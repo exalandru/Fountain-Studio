@@ -1,0 +1,202 @@
+import { RangeSetBuilder, StateEffect, StateField } from '@codemirror/state';
+import type { EditorState, Extension, Range } from '@codemirror/state';
+import { Decoration, ViewPlugin } from '@codemirror/view';
+import type { DecorationSet, EditorView, ViewUpdate } from '@codemirror/view';
+import type { LexedLine } from '@shared/fountain/index.js';
+import { lexDocument, maskAnnotations, parseInline } from '@shared/fountain/index.js';
+
+/**
+ * Fountain syntax highlighting.
+ *
+ * The shared lexer handles a 120-page screenplay in ~6 ms (see the performance test),
+ * far below the 16 ms budget per keystroke. So the **whole** document is lexed on every
+ * change rather than just the viewport: highlighting, sidebar and PDF then derive
+ * literally from the same analysis, with no risk of divergence.
+ *
+ * Decorations, on the other hand, are only built for the visible lines.
+ */
+
+export interface VisibilityOptions {
+  showNotes: boolean;
+  showSynopses: boolean;
+  showSections: boolean;
+}
+
+export const setVisibility = StateEffect.define<VisibilityOptions>();
+
+export const visibilityField = StateField.define<VisibilityOptions>({
+  create: () => ({ showNotes: true, showSynopses: true, showSections: true }),
+  update(value, transaction) {
+    for (const effect of transaction.effects) {
+      if (effect.is(setVisibility)) return effect.value;
+    }
+    return value;
+  },
+});
+
+interface LexResult {
+  lines: LexedLine[];
+  /** Note and boneyard ranges, so they can be styled distinctly. */
+  annotations: Array<{ kind: 'note' | 'boneyard'; from: number; to: number }>;
+}
+
+/** Analysis of the current document, recomputed on every change. */
+export const fountainLexField = StateField.define<LexResult>({
+  create(state) {
+    return analyze(state.doc.toString());
+  },
+  update(value, transaction) {
+    if (!transaction.docChanged) return value;
+    return analyze(transaction.newDoc.toString());
+  },
+});
+
+function analyze(source: string): LexResult {
+  const { masked, annotations } = maskAnnotations(source);
+  return {
+    lines: lexDocument(masked),
+    annotations: annotations.map((a) => ({ kind: a.kind, from: a.range.from, to: a.range.to })),
+  };
+}
+
+/** One CSS class per element kind — the styling lives in the theme, not here. */
+const LINE_CLASS: Record<string, string> = {
+  scene_heading: 'cm-fountain-scene',
+  action: 'cm-fountain-action',
+  character: 'cm-fountain-character',
+  dialogue: 'cm-fountain-dialogue',
+  parenthetical: 'cm-fountain-parenthetical',
+  lyrics: 'cm-fountain-lyrics',
+  transition: 'cm-fountain-transition',
+  centered: 'cm-fountain-centered',
+  page_break: 'cm-fountain-pagebreak',
+  section: 'cm-fountain-section',
+  synopsis: 'cm-fountain-synopsis',
+  title_page_key: 'cm-fountain-titlekey',
+  title_page_value: 'cm-fountain-titlevalue',
+};
+
+const lineDecorations = new Map<string, Decoration>();
+function lineDecoration(className: string): Decoration {
+  let decoration = lineDecorations.get(className);
+  if (!decoration) {
+    decoration = Decoration.line({ class: className });
+    lineDecorations.set(className, decoration);
+  }
+  return decoration;
+}
+
+const BOLD = Decoration.mark({ class: 'cm-fountain-bold' });
+const ITALIC = Decoration.mark({ class: 'cm-fountain-italic' });
+const UNDERLINE = Decoration.mark({ class: 'cm-fountain-underline' });
+const BOLD_ITALIC = Decoration.mark({ class: 'cm-fountain-bold cm-fountain-italic' });
+const NOTE = Decoration.mark({ class: 'cm-fountain-note' });
+const BONEYARD = Decoration.mark({ class: 'cm-fountain-boneyard' });
+const HIDDEN = Decoration.replace({});
+
+function buildDecorations(view: EditorView): DecorationSet {
+  const { lines, annotations } = view.state.field(fountainLexField);
+  const visibility = view.state.field(visibilityField);
+  const collected: Array<Range<Decoration>> = [];
+
+  for (const { from, to } of view.visibleRanges) {
+    const firstLine = view.state.doc.lineAt(from).number - 1;
+    const lastLine = view.state.doc.lineAt(to).number - 1;
+
+    for (let index = firstLine; index <= lastLine && index < lines.length; index++) {
+      const line = lines[index];
+      if (!line) continue;
+
+      // Optional hiding of entire kinds (Better Fountain parity, §4.4).
+      const hiddenByOption =
+        (line.kind === 'synopsis' && !visibility.showSynopses) ||
+        (line.kind === 'section' && !visibility.showSections);
+
+      if (hiddenByOption) {
+        collected.push(lineDecoration('cm-fountain-hidden').range(line.from));
+        continue;
+      }
+
+      const className = LINE_CLASS[line.kind];
+      if (className) collected.push(lineDecoration(className).range(line.from));
+
+      // Emphasis only means something on elements that are actually rendered.
+      if (
+        line.kind === 'action' ||
+        line.kind === 'dialogue' ||
+        line.kind === 'scene_heading' ||
+        line.kind === 'centered' ||
+        line.kind === 'lyrics'
+      ) {
+        collectEmphasis(view.state, line, collected);
+      }
+    }
+  }
+
+  for (const annotation of annotations) {
+    if (annotation.to <= from0(view) || annotation.from >= to0(view)) continue;
+    if (annotation.kind === 'note') {
+      collected.push((visibility.showNotes ? NOTE : HIDDEN).range(annotation.from, annotation.to));
+    } else {
+      collected.push(BONEYARD.range(annotation.from, annotation.to));
+    }
+  }
+
+  // RangeSetBuilder requires sorted insertion; line and mark decorations were
+  // collected in two passes, hence the final sort.
+  collected.sort((a, b) => a.from - b.from || a.value.startSide - b.value.startSide);
+
+  const builder = new RangeSetBuilder<Decoration>();
+  for (const range of collected) builder.add(range.from, range.to, range.value);
+  return builder.finish();
+}
+
+function from0(view: EditorView): number {
+  return view.visibleRanges[0]?.from ?? 0;
+}
+
+function to0(view: EditorView): number {
+  const ranges = view.visibleRanges;
+  return ranges[ranges.length - 1]?.to ?? view.state.doc.length;
+}
+
+function collectEmphasis(state: EditorState, line: LexedLine, out: Array<Range<Decoration>>): void {
+  const raw = state.doc.sliceString(line.from, line.to);
+  const at = raw.indexOf(line.text);
+  const offset = at === -1 ? line.from : line.from + at;
+
+  for (const span of parseInline(line.text, offset)) {
+    if (!span.bold && !span.italic && !span.underline) continue;
+    if (span.from >= span.to) continue;
+
+    const decoration =
+      span.bold && span.italic ? BOLD_ITALIC : span.bold ? BOLD : span.italic ? ITALIC : UNDERLINE;
+    out.push(decoration.range(span.from, span.to));
+  }
+}
+
+const decorationPlugin = ViewPlugin.fromClass(
+  class {
+    decorations: DecorationSet;
+
+    constructor(view: EditorView) {
+      this.decorations = buildDecorations(view);
+    }
+
+    update(update: ViewUpdate): void {
+      // The viewport changes on scroll: redecorate even without a document change.
+      if (
+        update.docChanged ||
+        update.viewportChanged ||
+        update.transactions.some((t) => t.effects.some((e) => e.is(setVisibility)))
+      ) {
+        this.decorations = buildDecorations(update.view);
+      }
+    }
+  },
+  { decorations: (plugin) => plugin.decorations },
+);
+
+export function fountainHighlight(): Extension {
+  return [visibilityField, fountainLexField, decorationPlugin];
+}
