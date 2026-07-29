@@ -1,6 +1,9 @@
 import type { AppSettings } from '@shared/ipc-contract.js';
 import type { ParseResponse } from '@shared/analysis/index.js';
+import type { BrainstormState } from '@shared/appdata/index.js';
+import type { AiAttachment, AiAttachmentKind } from '@shared/ai/index.js';
 import type { Translator } from '@shared/i18n/index.js';
+import { BrainstormPanel } from '../ai/BrainstormPanel.js';
 import type { OpenDocument } from '../store/documents.js';
 import { Editor } from '../editor/Editor.js';
 import { Preview } from '../preview/index.js';
@@ -40,7 +43,13 @@ interface WorkspaceProps {
   onViewReady: EditorParameters['onViewReady'];
   onResizePreview: (width: number) => void;
   onPreviewSync: (enabled: boolean) => void;
-  onRightPanelTab: (tab: 'preview' | 'statistics') => void;
+  onRightPanelTab: (tab: 'preview' | 'statistics' | 'brainstorm') => void;
+  brainstormSettingsRevision: number;
+  onBrainstormState: (state: BrainstormState) => void;
+  onCreateAiAttachment: (kind: AiAttachmentKind) => AiAttachment | null;
+  onAiInsert: (content: string) => void;
+  onAiNote: (content: string) => void;
+  onOpenAiSettings: () => void;
   onExportStats: (format: 'csv' | 'json') => void;
   onMinutesPerPage: (value: number) => void;
   onClosePreview: () => void;
@@ -84,6 +93,12 @@ export function Workspace({
   onResizePreview,
   onPreviewSync,
   onRightPanelTab,
+  brainstormSettingsRevision,
+  onBrainstormState,
+  onCreateAiAttachment,
+  onAiInsert,
+  onAiNote,
+  onOpenAiSettings,
   onExportStats,
   onMinutesPerPage,
   onClosePreview,
@@ -258,11 +273,26 @@ export function Workspace({
                     className="workspace-preview"
                     style={{ width: active.appData.preview.width }}
                   >
-                    {active.appData.preview.activeTab === 'statistics' ? (
+                    {active.appData.preview.activeTab === 'brainstorm' ? (
+                      <BrainstormPanel
+                        state={active.appData.brainstorm}
+                        settingsRevision={brainstormSettingsRevision}
+                        t={t}
+                        createAttachment={onCreateAiAttachment}
+                        onStateChange={onBrainstormState}
+                        onInsert={onAiInsert}
+                        onNote={onAiNote}
+                        onShowPreview={() => onRightPanelTab('preview')}
+                        onShowStatistics={() => onRightPanelTab('statistics')}
+                        onOpenSettings={onOpenAiSettings}
+                        onClose={onClosePreview}
+                      />
+                    ) : active.appData.preview.activeTab === 'statistics' ? (
                       <StatsPanel
                         statistics={analysis?.statistics ?? null}
                         minutesPerPage={settings.minutesPerPage}
                         onShowPreview={() => onRightPanelTab('preview')}
+                        onShowBrainstorm={() => onRightPanelTab('brainstorm')}
                         onExport={onExportStats}
                         onMinutesPerPage={onMinutesPerPage}
                         onClose={onClosePreview}
@@ -280,6 +310,7 @@ export function Workspace({
                         onScrollOffset={onPreviewScroll}
                         onSyncScrollChange={onPreviewSync}
                         onShowStatistics={() => onRightPanelTab('statistics')}
+                        onShowBrainstorm={() => onRightPanelTab('brainstorm')}
                         onClose={onClosePreview}
                       />
                     )}

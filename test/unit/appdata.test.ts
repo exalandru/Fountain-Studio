@@ -28,6 +28,32 @@ describe('companion schema', () => {
     data.sidebar.activeTab = 'characters';
     data.timeline.colorMode = 'timeOfDay';
     data.timeline.zoom = 1.7;
+    data.brainstorm.activeConversationId = 'conversation-1';
+    data.brainstorm.conversations = [
+      {
+        id: 'conversation-1',
+        title: 'Structure de l’acte II',
+        mode: 'creative',
+        createdAt: 1,
+        updatedAt: 2,
+        messages: [
+          {
+            id: 'message-1',
+            role: 'user',
+            content: 'Comment renforcer le midpoint ?',
+            createdAt: 1,
+            attachments: [
+              {
+                id: 'stats-1',
+                kind: 'statistics',
+                label: 'Statistiques',
+                approximateTokens: 120,
+              },
+            ],
+          },
+        ],
+      },
+    ];
 
     expect(parseAppData(serializeAppData(data))).toEqual(data);
   });
@@ -54,6 +80,56 @@ describe('companion schema', () => {
     expect(parsed?.preview.activeTab).toBe('statistics');
     expect(parsed?.timeline.zoom).toBe(2.5);
     expect(parsed?.timeline.colorMode).toBe('timeOfDay');
+    expect(parsed?.brainstorm).toEqual({
+      activeConversationId: null,
+      conversations: [],
+    });
+  });
+
+  it('bounds persisted brainstorming conversations and discards attachment content', () => {
+    const parsed = parseAppData(
+      JSON.stringify({
+        version: APP_DATA_VERSION,
+        brainstorm: {
+          activeConversationId: 'conversation-1',
+          conversations: [
+            {
+              id: 'conversation-1',
+              title: 'x'.repeat(300),
+              mode: 'creative',
+              createdAt: 1,
+              updatedAt: 2,
+              messages: [
+                {
+                  id: 'message-1',
+                  role: 'user',
+                  content: 'Question',
+                  createdAt: 1,
+                  attachments: [
+                    {
+                      id: 'script-1',
+                      kind: 'script',
+                      label: 'Scénario',
+                      content: 'must not persist through validation',
+                      approximateTokens: 42,
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      }),
+    );
+
+    expect(parsed?.brainstorm.activeConversationId).toBe('conversation-1');
+    expect(parsed?.brainstorm.conversations[0]?.title).toHaveLength(200);
+    expect(parsed?.brainstorm.conversations[0]?.messages[0]?.attachments?.[0]).toEqual({
+      id: 'script-1',
+      kind: 'script',
+      label: 'Scénario',
+      approximateTokens: 42,
+    });
   });
 });
 

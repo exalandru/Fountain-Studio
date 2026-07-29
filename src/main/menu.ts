@@ -259,6 +259,18 @@ export async function buildMenu(): Promise<void> {
       ],
     },
     {
+      label: t('menu.ai'),
+      submenu: [
+        {
+          label: t('menu.ai.brainstorm'),
+          accelerator: 'CmdOrCtrl+Shift+B',
+          click: () => send('ai.openBrainstorm'),
+        },
+        { type: 'separator' },
+        { label: t('menu.ai.settings'), click: () => send('ai.openSettings') },
+      ],
+    },
+    {
       label: t('menu.window'),
       submenu: isMac
         ? [

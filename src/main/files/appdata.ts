@@ -57,9 +57,13 @@ export async function readAppData(path: string): Promise<AppData | null> {
 export async function writeAppData(path: string, data: AppData): Promise<void> {
   const target = companionPath(path);
   const previous = pendingWrites.get(target) ?? Promise.resolve();
-  const current = previous.then(async () => {
-    await writeFileAtomic(target, serializeAppData(data));
-  });
+  const current = previous
+    .catch(() => {
+      // A failed write must not prevent a later state change from being persisted.
+    })
+    .then(async () => {
+      await writeFileAtomic(target, serializeAppData(data));
+    });
   pendingWrites.set(target, current);
   try {
     await current;

@@ -1,5 +1,13 @@
 import type { Locale } from './i18n/index.js';
 import type { AppData } from './appdata/index.js';
+import type {
+  AiChatRequest,
+  AiConfig,
+  AiConfigView,
+  AiConnectionProfile,
+  AiErrorCode,
+  AiKeyUpdate,
+} from './ai/index.js';
 
 /**
  * Single IPC contract between the main process and the renderer.
@@ -147,6 +155,21 @@ export interface IpcRequests {
 
   'settings:get': { arg: void; result: AppSettings };
   'settings:patch': { arg: Partial<AppSettings>; result: AppSettings };
+  'ai:config:get': { arg: void; result: AiConfigView };
+  'ai:config:save': {
+    arg: { config: AiConfig; keyUpdates: AiKeyUpdate[] };
+    result: AiConfigView;
+  };
+  'ai:models:list': {
+    arg: { profile: AiConnectionProfile; apiKey: string | null };
+    result: string[];
+  };
+  'ai:connection:test': {
+    arg: { profile: AiConnectionProfile; apiKey: string | null };
+    result: { latencyMs: number; model: string };
+  };
+  'ai:chat:start': { arg: AiChatRequest; result: void };
+  'ai:chat:cancel': { arg: { requestId: string }; result: boolean };
 
   'autosave:write': {
     arg: {
@@ -183,6 +206,11 @@ export interface IpcEvents {
    * native menu. The renderer refreshes its copy instead of polling.
    */
   'app:settingsChanged': { settings: AppSettings };
+  /** The provider is streaming hidden reasoning before its visible answer. */
+  'ai:reasoning': { requestId: string };
+  'ai:chunk': { requestId: string; chunk: string };
+  'ai:done': { requestId: string; reasoningUsed: boolean };
+  'ai:error': { requestId: string; code: AiErrorCode; message: string };
   /** The application is about to quit; the renderer should report unsaved state. */
   'app:willQuit': { reason: 'quit' | 'closeWindow' };
 }
@@ -207,6 +235,8 @@ export type MenuCommand =
   | 'view.toggleFocus'
   | 'view.toggleTypewriter'
   | 'view.commandPalette'
+  | 'ai.openBrainstorm'
+  | 'ai.openSettings'
   | 'scene.renumber'
   | 'help.about';
 

@@ -19,6 +19,7 @@ export interface PreviewProps {
   onScrollOffset: (offset: number) => void;
   onSyncScrollChange: (enabled: boolean) => void;
   onShowStatistics: () => void;
+  onShowBrainstorm: () => void;
   onClose: () => void;
 }
 
@@ -178,6 +179,7 @@ export const Preview = memo(function Preview({
   onScrollOffset,
   onSyncScrollChange,
   onShowStatistics,
+  onShowBrainstorm,
   onClose,
 }: PreviewProps) {
   const { t } = useTranslator();
@@ -320,6 +322,9 @@ export const Preview = memo(function Preview({
     <section className="preview-pane" ref={paneRef} aria-label={t('preview.title')}>
       <header className="panel-header">
         <span>{t('preview.title')}</span>
+        <button type="button" className="panel-tab-button" onClick={onShowBrainstorm}>
+          {t('ai.chat.title')}
+        </button>
         <button type="button" className="panel-tab-button" onClick={onShowStatistics}>
           {t('stats.title')}
         </button>

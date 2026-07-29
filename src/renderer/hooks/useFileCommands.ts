@@ -13,6 +13,8 @@ interface FileCommandsOptions {
   openDialog: () => Promise<void>;
   openPaths: (paths: string[]) => Promise<void>;
   onExportPdf: () => void;
+  onOpenAiSettings: () => void;
+  onOpenBrainstorm: () => void;
   onToggleTimeline: () => void;
   onCommandPalette: () => void;
   patchSettings: (patch: Partial<AppSettings>) => Promise<void>;
@@ -29,6 +31,8 @@ export function useFileCommands({
   openDialog,
   openPaths,
   onExportPdf,
+  onOpenAiSettings,
+  onOpenBrainstorm,
   onToggleTimeline,
   onCommandPalette,
   patchSettings,
@@ -71,6 +75,8 @@ export function useFileCommands({
         'view.toggleTypewriter': () =>
           void patchSettings({ typewriterMode: !store().settings.typewriterMode }),
         'view.commandPalette': onCommandPalette,
+        'ai.openBrainstorm': onOpenBrainstorm,
+        'ai.openSettings': onOpenAiSettings,
         'scene.renumber': () => setStatus(t('status.renumberPlanned')),
         'help.about': () => setStatus(t('status.about', { app: t('app.name'), version: '0.1.0' })),
       } satisfies Record<MenuCommand, () => void>;
@@ -82,6 +88,8 @@ export function useFileCommands({
       editorView,
       onCommandPalette,
       onExportPdf,
+      onOpenAiSettings,
+      onOpenBrainstorm,
       onToggleTimeline,
       openDialog,
       patchSettings,

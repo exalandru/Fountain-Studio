@@ -2,6 +2,7 @@ import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron';
 import type { IpcMainInvokeEvent } from 'electron';
 import { basename, isAbsolute, join } from 'node:path';
 import { parseAppData } from '@shared/appdata/index.js';
+import type { AiConnectionProfile } from '@shared/ai/index.js';
 import type { DocumentSnapshot, IpcChannel, IpcRequests } from '@shared/ipc-contract.js';
 import type { Translator } from '@shared/i18n/index.js';
 import { clearAutosave, pendingAutosaves, writeAutosave } from './files/autosave.js';
@@ -13,6 +14,8 @@ import { applySpellCheckerLanguage } from './spellcheck.js';
 import { resolveCloseDecision } from './window-lifecycle.js';
 import { renderScreenplayPdf } from './pdf/render.js';
 import { addRecent, getSettings, getTranslator, patchSettings } from './store.js';
+import { cancelAiChat, listAiModels, startAiChat, testAiConnection } from './ai/proxy.js';
+import { getAiConfigView, saveAiConfig } from './ai/settings.js';
 
 /**
  * IPC handler registration, typed by the shared contract.
@@ -64,6 +67,72 @@ function validPdfOptions(value: unknown): boolean {
   );
 }
 
+function validAiProfile(value: unknown): value is AiConnectionProfile {
+  if (!isRecord(value)) return false;
+  let validUrl = false;
+  if (typeof value['baseUrl'] === 'string' && value['baseUrl'].length <= 2_000) {
+    try {
+      const url = new URL(value['baseUrl']);
+      validUrl =
+        (url.protocol === 'http:' || url.protocol === 'https:') && !url.username && !url.password;
+    } catch {
+      validUrl = false;
+    }
+  }
+  return (
+    typeof value['id'] === 'string' &&
+    /^[A-Za-z0-9_-]{1,80}$/.test(value['id']) &&
+    typeof value['name'] === 'string' &&
+    value['name'].length > 0 &&
+    value['name'].length <= 80 &&
+    validUrl &&
+    typeof value['model'] === 'string' &&
+    value['model'].length > 0 &&
+    value['model'].length <= 200 &&
+    typeof value['timeoutMs'] === 'number' &&
+    Number.isInteger(value['timeoutMs']) &&
+    value['timeoutMs'] >= 1_000 &&
+    value['timeoutMs'] <= 600_000 &&
+    typeof value['maxTokens'] === 'number' &&
+    Number.isInteger(value['maxTokens']) &&
+    value['maxTokens'] >= 64 &&
+    value['maxTokens'] <= 200_000 &&
+    typeof value['reasoningEnabled'] === 'boolean'
+  );
+}
+
+function validAiConfig(value: unknown): boolean {
+  if (!isRecord(value) || value['version'] !== 1) return false;
+  if (
+    typeof value['activeProfileId'] !== 'string' ||
+    !Array.isArray(value['profiles']) ||
+    value['profiles'].length < 1 ||
+    value['profiles'].length > 10 ||
+    !value['profiles'].every(validAiProfile) ||
+    typeof value['brainstormingPrompt'] !== 'string' ||
+    value['brainstormingPrompt'].length < 1 ||
+    value['brainstormingPrompt'].length > 20_000
+  ) {
+    return false;
+  }
+  const ids = value['profiles'].map((profile) => profile.id);
+  return new Set(ids).size === ids.length && ids.includes(value['activeProfileId']);
+}
+
+function validAiMessages(value: unknown): boolean {
+  return (
+    Array.isArray(value) &&
+    value.length <= 200 &&
+    value.every(
+      (message) =>
+        isRecord(message) &&
+        (message['role'] === 'user' || message['role'] === 'assistant') &&
+        typeof message['content'] === 'string' &&
+        message['content'].length <= 1_000_000,
+    )
+  );
+}
+
 function validateRequest<C extends IpcChannel>(channel: C, value: unknown): IpcRequests[C]['arg'] {
   const record = isRecord(value) ? value : null;
   let valid = false;
@@ -71,6 +140,7 @@ function validateRequest<C extends IpcChannel>(channel: C, value: unknown): IpcR
   switch (channel) {
     case 'dialog:pickOpen':
     case 'settings:get':
+    case 'ai:config:get':
     case 'autosave:pending':
       valid = value === undefined;
       break;
@@ -132,6 +202,48 @@ function validateRequest<C extends IpcChannel>(channel: C, value: unknown): IpcR
       break;
     case 'settings:patch':
       valid = record !== null;
+      break;
+    case 'ai:config:save':
+      valid =
+        record !== null &&
+        validAiConfig(record['config']) &&
+        Array.isArray(record['keyUpdates']) &&
+        record['keyUpdates'].length <= 10 &&
+        record['keyUpdates'].every(
+          (update) =>
+            isRecord(update) &&
+            typeof update['profileId'] === 'string' &&
+            /^[A-Za-z0-9_-]{1,80}$/.test(update['profileId']) &&
+            (update['key'] === null ||
+              (typeof update['key'] === 'string' && update['key'].length <= 20_000)),
+        );
+      break;
+    case 'ai:models:list':
+    case 'ai:connection:test':
+      valid =
+        record !== null &&
+        validAiProfile(record['profile']) &&
+        (record['apiKey'] === null ||
+          (typeof record['apiKey'] === 'string' && record['apiKey'].length <= 20_000));
+      break;
+    case 'ai:chat:start':
+      valid =
+        record !== null &&
+        typeof record['requestId'] === 'string' &&
+        /^[A-Za-z0-9_-]{1,100}$/.test(record['requestId']) &&
+        typeof record['profileId'] === 'string' &&
+        /^[A-Za-z0-9_-]{1,80}$/.test(record['profileId']) &&
+        (record['mode'] === 'factual' || record['mode'] === 'creative') &&
+        typeof record['systemPrompt'] === 'string' &&
+        record['systemPrompt'].length > 0 &&
+        record['systemPrompt'].length <= 20_000 &&
+        validAiMessages(record['messages']);
+      break;
+    case 'ai:chat:cancel':
+      valid =
+        record !== null &&
+        typeof record['requestId'] === 'string' &&
+        /^[A-Za-z0-9_-]{1,100}$/.test(record['requestId']);
       break;
     case 'autosave:write':
       valid =
@@ -394,6 +506,18 @@ export function registerIpcHandlers(): void {
 
     return next;
   });
+
+  handle('ai:config:get', () => getAiConfigView());
+  handle('ai:config:save', ({ config, keyUpdates }) => saveAiConfig(config, keyUpdates));
+  handle('ai:models:list', ({ profile, apiKey }) => listAiModels(profile, apiKey ?? undefined));
+  handle('ai:connection:test', ({ profile, apiKey }) =>
+    testAiConnection(profile, apiKey ?? undefined),
+  );
+  handle('ai:chat:start', (request, window) => {
+    if (!window) throw new Error('AI chat requires a renderer window');
+    startAiChat(window, request);
+  });
+  handle('ai:chat:cancel', ({ requestId }) => cancelAiChat(requestId));
 
   handle('autosave:write', ({ id, path, content, eol, mtimeMs }) =>
     writeAutosave(id, path, content, eol, mtimeMs),

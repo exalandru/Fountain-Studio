@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { EditorView } from '@codemirror/view';
-import type { AppData, SidebarTab, TimelineState } from '@shared/appdata/index.js';
+import type { AppData, BrainstormState, SidebarTab, TimelineState } from '@shared/appdata/index.js';
+import type { AiAttachment, AiAttachmentKind } from '@shared/ai/index.js';
+import { approximateTokens } from '@shared/ai/index.js';
 import type { AppSettings } from '@shared/ipc-contract.js';
 import { statisticsToCsv, statisticsToJson } from '@shared/stats/index.js';
 import { useAutosave } from './hooks/useAutosave.js';
@@ -10,6 +12,7 @@ import { useRecovery } from './hooks/useRecovery.js';
 import { useScreenplay } from './hooks/useScreenplay.js';
 import { useTranslator } from './hooks/useTranslator.js';
 import { PdfExportDialog } from './pdf/PdfExportDialog.js';
+import { AiSettingsDialog } from './ai/AiSettingsDialog.js';
 import type { NewDocumentStrings } from './store/documents.js';
 import { useDocuments } from './store/documents.js';
 import { CommandPalette } from './ui/CommandPalette.js';
@@ -29,6 +32,8 @@ export function App() {
   const [dark, setDark] = useState(() => window.matchMedia('(prefers-color-scheme: dark)').matches);
   const [status, setStatus] = useState<string | null>(null);
   const [pdfOpen, setPdfOpen] = useState(false);
+  const [aiSettingsOpen, setAiSettingsOpen] = useState(false);
+  const [aiSettingsRevision, setAiSettingsRevision] = useState(0);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [cursorPosition, setCursorPosition] = useState<{
     documentId: string | null;
@@ -96,6 +101,15 @@ export function App() {
     setStatus,
   });
   const openPdfDialog = useCallback(() => setPdfOpen(true), []);
+  const openAiSettings = useCallback(() => setAiSettingsOpen(true), []);
+  const openBrainstorm = useCallback(
+    () =>
+      updateAppData((data) => ({
+        ...data,
+        preview: { ...data.preview, visible: true, activeTab: 'brainstorm' },
+      })),
+    [updateAppData],
+  );
 
   // ── Settings and theme ─────────────────────────────────────────────────────
   useEffect(() => {
@@ -220,6 +234,8 @@ export function App() {
     openDialog,
     openPaths,
     onExportPdf: openPdfDialog,
+    onOpenAiSettings: openAiSettings,
+    onOpenBrainstorm: openBrainstorm,
     onToggleTimeline: toggleTimeline,
     onCommandPalette: () => setPaletteOpen(true),
     patchSettings,
@@ -243,6 +259,8 @@ export function App() {
       { id: 'view.toggleBoneyard', label: t('menu.view.showBoneyard') },
       { id: 'view.toggleSynopses', label: t('menu.view.showSynopses') },
       { id: 'view.toggleSections', label: t('menu.view.showSections') },
+      { id: 'ai.openBrainstorm', label: t('menu.ai.brainstorm'), shortcut: '⇧⌘B' },
+      { id: 'ai.openSettings', label: t('menu.ai.settings') },
     ],
     [t],
   );
@@ -294,7 +312,7 @@ export function App() {
     [updateAppData],
   );
   const setRightPanelTab = useCallback(
-    (activeTab: 'preview' | 'statistics') =>
+    (activeTab: 'preview' | 'statistics' | 'brainstorm') =>
       updateAppData((data) => ({
         ...data,
         preview: { ...data.preview, activeTab },
@@ -388,6 +406,62 @@ export function App() {
   );
   const closeTimeline = useCallback(() => updateTimeline({ visible: false }), [updateTimeline]);
   const showTimeline = useCallback(() => updateTimeline({ visible: true }), [updateTimeline]);
+  const updateBrainstorm = useCallback(
+    (brainstorm: BrainstormState) =>
+      updateAppData((data) => ({
+        ...data,
+        brainstorm,
+      })),
+    [updateAppData],
+  );
+  const createAiAttachment = useCallback(
+    (kind: AiAttachmentKind): AiAttachment | null => {
+      const current = store().active();
+      if (!current) return null;
+      let label: string;
+      let content: string;
+      if (kind === 'script') {
+        label = t('ai.attachment.script');
+        content = current.content;
+      } else if (kind === 'scene') {
+        const scene = analysis?.scenes.find((candidate) => candidate.id === activeSceneId);
+        if (!scene) return null;
+        label = `${t('ai.attachment.scene')} · ${scene.number} ${scene.heading}`;
+        content = current.content.slice(scene.range.from, scene.range.to);
+      } else if (kind === 'selection') {
+        const selection = editorView.current?.state.selection.main;
+        if (!selection || selection.empty) return null;
+        label = t('ai.attachment.selection');
+        content = editorView.current?.state.sliceDoc(selection.from, selection.to) ?? '';
+      } else {
+        if (!analysis) return null;
+        label = t('ai.attachment.statistics');
+        content = statisticsToJson(analysis.statistics);
+      }
+      return {
+        id: `attachment-${crypto.randomUUID()}`,
+        kind,
+        label,
+        content,
+        approximateTokens: approximateTokens(content),
+      };
+    },
+    [activeSceneId, analysis, store, t],
+  );
+  const insertAiText = useCallback((content: string) => {
+    const view = editorView.current;
+    if (!view) return;
+    const selection = view.state.selection.main;
+    view.dispatch({
+      changes: { from: selection.from, to: selection.to, insert: content },
+      selection: { anchor: selection.from + content.length },
+    });
+    view.focus();
+  }, []);
+  const insertAiNote = useCallback(
+    (content: string) => insertAiText(`\n[[\n${content}\n]]\n`),
+    [insertAiText],
+  );
   const newDocument = useCallback(() => store().newDocument(stringsRef.current), [store]);
   const setActive = useCallback((id: string) => store().setActive(id), [store]);
 
@@ -417,6 +491,12 @@ export function App() {
         onResizePreview={resizePreview}
         onPreviewSync={setPreviewSync}
         onRightPanelTab={setRightPanelTab}
+        brainstormSettingsRevision={aiSettingsRevision}
+        onBrainstormState={updateBrainstorm}
+        onCreateAiAttachment={createAiAttachment}
+        onAiInsert={insertAiText}
+        onAiNote={insertAiNote}
+        onOpenAiSettings={openAiSettings}
         onExportStats={(format) => void exportStats(format)}
         onMinutesPerPage={(value) => void patchSettings({ minutesPerPage: value })}
         onClosePreview={closePreview}
@@ -442,6 +522,12 @@ export function App() {
           }}
           onError={(error) => setStatus(t('status.exportFailed', { error }))}
           onClose={() => setPdfOpen(false)}
+        />
+      ) : null}
+      {aiSettingsOpen ? (
+        <AiSettingsDialog
+          onSaved={() => setAiSettingsRevision((revision) => revision + 1)}
+          onClose={() => setAiSettingsOpen(false)}
         />
       ) : null}
       {paletteOpen ? (
