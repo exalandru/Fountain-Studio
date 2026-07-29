@@ -45,6 +45,26 @@ test('a feature-length preview stays virtualised and syncs both scroll direction
     }, screenplay);
 
     await expect(page.locator('.statusbar')).toContainText('300 scenes');
+    const widths = await page.evaluate(() => {
+      const width = (selector: string) =>
+        Math.round(document.querySelector(selector)?.getBoundingClientRect().width ?? 0);
+      return {
+        viewport: window.innerWidth,
+        workspace: width('.workspace'),
+        document: width('.workspace-document'),
+        layout: width('.workspace-layout'),
+        editor: width('.workspace-editor'),
+        codeMirror: width('.cm-editor'),
+        timeline: width('.timeline'),
+        timelineClient: document.querySelector('.timeline-track')?.clientWidth ?? 0,
+        timelineScroll: document.querySelector('.timeline-track')?.scrollWidth ?? 0,
+      };
+    });
+    for (const key of ['workspace', 'document', 'layout', 'codeMirror', 'timeline'] as const) {
+      expect(widths[key], JSON.stringify(widths)).toBeLessThanOrEqual(widths.viewport + 1);
+    }
+    expect(widths.timelineScroll).toBeGreaterThan(widths.timelineClient);
+
     const papers = page.locator('.preview-paper');
     expect(await papers.count()).toBeLessThanOrEqual(7);
 
