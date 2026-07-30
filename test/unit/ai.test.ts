@@ -51,6 +51,24 @@ describe('AI configuration', () => {
     });
   });
 
+  it('adopts a declared provider and falls back to OpenAI otherwise', () => {
+    const config = sanitizeAiConfig({
+      activeProfileId: 'anthropic',
+      profiles: [
+        // Written before multi-provider support: no `provider` field at all.
+        { ...DEFAULT_AI_PROFILE, id: 'legacy', provider: undefined },
+        { ...DEFAULT_AI_PROFILE, id: 'anthropic', provider: 'anthropic' },
+        { ...DEFAULT_AI_PROFILE, id: 'bogus', provider: 'cohere' },
+      ],
+    });
+
+    expect(config.profiles.map((profile) => [profile.id, profile.provider])).toEqual([
+      ['legacy', 'openai'],
+      ['anthropic', 'anthropic'],
+      ['bogus', 'openai'],
+    ]);
+  });
+
   it('keeps unique bounded profiles and a valid active profile', () => {
     const config = sanitizeAiConfig({
       profiles: [

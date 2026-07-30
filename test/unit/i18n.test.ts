@@ -61,6 +61,12 @@ describe('catalogues', () => {
       'timeline.zoom',
       'timeline.intExt',
       'toolbar.focus',
+      // Provider names are brands, identical in every locale.
+      'ai.settings.provider.openai',
+      'ai.settings.provider.anthropic',
+      'ai.settings.provider.google',
+      'ai.settings.provider.ollama',
+      'ai.settings.provider.mistral',
     ];
     const identical = keys.filter((key) => {
       const a = en[key];

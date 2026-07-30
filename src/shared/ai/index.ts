@@ -1,9 +1,13 @@
 /**
  * Pure AI contracts and prompt helpers.
  *
- * No provider SDK is used: every endpoint is accessed through the OpenAI-compatible
- * `/v1/models` and `/v1/chat/completions` surface by the main process.
+ * No provider SDK is used: each connection profile names a provider, and the matching
+ * adapter in `./providers` describes its requests and parses its stream frames. The main
+ * process performs the transport.
  */
+
+import type { AiProviderKind } from './providers/types.js';
+import { DEFAULT_PROVIDER, isProviderKind } from './providers/types.js';
 
 const LEGACY_BRAINSTORMING_PROMPT = `Tu es un assistant d’écriture spécialisé dans le scénario.
 Tu aides l’auteur à explorer la dramaturgie, la structure, les personnages, les enjeux et les dialogues.
@@ -29,6 +33,7 @@ Forme des réponses :
 export interface AiConnectionProfile {
   id: string;
   name: string;
+  provider: AiProviderKind;
   baseUrl: string;
   model: string;
   timeoutMs: number;
@@ -61,6 +66,7 @@ export interface AiKeyUpdate {
 export const DEFAULT_AI_PROFILE: Readonly<AiConnectionProfile> = {
   id: 'default',
   name: 'OpenAI',
+  provider: DEFAULT_PROVIDER,
   baseUrl: 'https://api.openai.com',
   model: 'gpt-5',
   timeoutMs: 60_000,
@@ -122,6 +128,10 @@ export function sanitizeAiConfig(raw: unknown): AiConfig {
           typeof profile['name'] === 'string' && profile['name'].trim()
             ? profile['name'].trim().slice(0, 80)
             : `Profile ${index + 1}`,
+        // Profiles written before multi-provider support carry no `provider`, and an
+        // unknown value must not disable a working connection: both fall back to the
+        // OpenAI-compatible protocol the app has always spoken.
+        provider: isProviderKind(profile['provider']) ? profile['provider'] : DEFAULT_PROVIDER,
         baseUrl: safeUrl(profile['baseUrl'], DEFAULT_AI_PROFILE.baseUrl),
         model:
           typeof profile['model'] === 'string' && profile['model'].trim()

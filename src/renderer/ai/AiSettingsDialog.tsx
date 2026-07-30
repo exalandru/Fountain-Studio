@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { AiConfig, AiConfigView, AiConnectionProfile, AiKeyUpdate } from '@shared/ai/index.js';
 import { DEFAULT_AI_PROFILE, sanitizeAiConfig } from '@shared/ai/index.js';
+import type { AiProviderKind } from '@shared/ai/providers/index.js';
+import { PROVIDER_KINDS, PROVIDER_PRESETS } from '@shared/ai/providers/index.js';
+import type { MessageKey } from '@shared/i18n/types.js';
 import { useTranslator } from '../hooks/useTranslator.js';
 
 interface AiSettingsDialogProps {
@@ -8,11 +11,27 @@ interface AiSettingsDialogProps {
   onSaved: () => void;
 }
 
+const PROVIDER_LABEL: Readonly<Record<AiProviderKind, MessageKey>> = {
+  openai: 'ai.settings.provider.openai',
+  anthropic: 'ai.settings.provider.anthropic',
+  google: 'ai.settings.provider.google',
+  ollama: 'ai.settings.provider.ollama',
+  mistral: 'ai.settings.provider.mistral',
+};
+
 function profileId(): string {
   return `profile-${crypto.randomUUID()}`;
 }
 
-/** Provider-neutral OpenAI-compatible connection settings. */
+/**
+ * Replaces a field with the new provider's preset only when it still holds the previous
+ * provider's default: a URL or model the author typed themselves is never overwritten.
+ */
+function retarget(current: string, previousDefault: string, nextDefault: string): string {
+  return !current.trim() || current === previousDefault ? nextDefault : current;
+}
+
+/** Multi-provider connection settings; one profile targets one provider. */
 export function AiSettingsDialog({ onClose, onSaved }: AiSettingsDialogProps) {
   const { t } = useTranslator();
   const dialogRef = useRef<HTMLElement | null>(null);
@@ -71,24 +90,56 @@ export function AiSettingsDialog({ onClose, onSaved }: AiSettingsDialogProps) {
     setFeedback(null);
   };
 
-  const addProfile = () => {
-    const id = profileId();
+  /** Switching provider re-targets the endpoint and model, then invalidates the model list. */
+  const changeProvider = (next: AiProviderKind) => {
     setConfig((current) =>
       current
         ? {
             ...current,
-            activeProfileId: id,
-            profiles: [
-              ...current.profiles,
-              {
-                ...DEFAULT_AI_PROFILE,
-                id,
-                name: t('ai.settings.newProfile'),
-              },
-            ],
+            profiles: current.profiles.map((profile) => {
+              if (profile.id !== current.activeProfileId) return profile;
+              const previous = PROVIDER_PRESETS[profile.provider];
+              const preset = PROVIDER_PRESETS[next];
+              return {
+                ...profile,
+                provider: next,
+                baseUrl: retarget(profile.baseUrl, previous.defaultBaseUrl, preset.defaultBaseUrl),
+                model: retarget(profile.model, previous.defaultModel, preset.defaultModel),
+              };
+            }),
           }
         : current,
     );
+    setModels([]);
+    setFeedback(null);
+  };
+
+  const addProfile = () => {
+    const id = profileId();
+    setConfig((current) => {
+      if (!current) return current;
+      // A new profile continues with the provider being configured rather than snapping
+      // back to OpenAI.
+      const provider =
+        current.profiles.find((profile) => profile.id === current.activeProfileId)?.provider ??
+        DEFAULT_AI_PROFILE.provider;
+      const preset = PROVIDER_PRESETS[provider];
+      return {
+        ...current,
+        activeProfileId: id,
+        profiles: [
+          ...current.profiles,
+          {
+            ...DEFAULT_AI_PROFILE,
+            id,
+            name: t('ai.settings.newProfile'),
+            provider,
+            baseUrl: preset.defaultBaseUrl,
+            model: preset.defaultModel,
+          },
+        ],
+      };
+    });
     setModels([]);
   };
 
@@ -223,6 +274,22 @@ export function AiSettingsDialog({ onClose, onSaved }: AiSettingsDialogProps) {
 
             <div className="ai-settings-grid">
               <label>
+                <span>{t('ai.settings.provider')}</span>
+                <select
+                  value={activeProfile.provider}
+                  onChange={(event) => changeProvider(event.target.value as AiProviderKind)}
+                >
+                  {PROVIDER_KINDS.map((kind) => (
+                    <option key={kind} value={kind}>
+                      {t(PROVIDER_LABEL[kind])}
+                    </option>
+                  ))}
+                </select>
+                {activeProfile.provider === 'openai' ? (
+                  <small className="ai-field-note">{t('ai.settings.providerCompatibleHint')}</small>
+                ) : null}
+              </label>
+              <label>
                 <span>{t('ai.settings.profileName')}</span>
                 <input
                   value={activeProfile.name}
@@ -261,7 +328,9 @@ export function AiSettingsDialog({ onClose, onSaved }: AiSettingsDialogProps) {
               </fieldset>
               <label>
                 <span>
-                  {t('ai.settings.apiKey')}
+                  {PROVIDER_PRESETS[activeProfile.provider].apiKeyRequired
+                    ? t('ai.settings.apiKey')
+                    : t('ai.settings.apiKeyOptional')}
                   {activeView?.hasApiKey && !removedKeys.has(activeProfile.id)
                     ? ` — ${t('ai.settings.keyConfigured')}`
                     : ''}
@@ -339,6 +408,9 @@ export function AiSettingsDialog({ onClose, onSaved }: AiSettingsDialogProps) {
                 />
                 <span>{t('ai.settings.disableReasoning')}</span>
               </label>
+              {activeProfile.provider === 'google' && activeProfile.reasoningEnabled ? (
+                <small className="ai-field-note">{t('ai.settings.googleReasoningHint')}</small>
+              ) : null}
             </details>
 
             {!view.secureStorageAvailable ? (

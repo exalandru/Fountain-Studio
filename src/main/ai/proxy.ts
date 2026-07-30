@@ -1,11 +1,33 @@
 import type { BrowserWindow } from 'electron';
 import type { AiChatRequest, AiConnectionProfile, AiErrorCode } from '@shared/ai/index.js';
-import { modeTemperature } from '@shared/ai/index.js';
+import type {
+  AiProviderAdapter,
+  AiRequestPlan,
+  AiStreamFrame,
+  ProviderCapabilities,
+} from '@shared/ai/providers/index.js';
+import { providerAdapter } from '@shared/ai/providers/index.js';
 import { getAiApiKey, resolveAiProfile } from './settings.js';
 
 const requests = new Map<string, AbortController>();
-const reasoningCompatibility = new Map<string, boolean>();
-const nonReasoningCompatibility = new Map<string, boolean>();
+
+/**
+ * Optional request fields an endpoint has been observed to reject, remembered for the
+ * session. Keyed by provider, URL *and* model: two models behind the same URL rarely
+ * accept the same optional parameters.
+ */
+const supportedCapabilities = new Map<string, ProviderCapabilities>();
+
+const ALL_CAPABILITIES: ProviderCapabilities = {
+  reasoning: true,
+  disableReasoning: true,
+  temperature: true,
+};
+
+const CAPABILITY_KEYS = ['reasoning', 'disableReasoning', 'temperature'] as const;
+
+/** A degraded retry only ever drops fields, so three attempts exhaust the ladder. */
+const MAX_ATTEMPTS = 3;
 
 class HttpError extends Error {
   constructor(
@@ -16,23 +38,48 @@ class HttpError extends Error {
   }
 }
 
-function endpoint(baseUrl: string, path: '/v1/models' | '/v1/chat/completions'): string {
-  const base = baseUrl.replace(/\/+$/, '');
-  if (base.endsWith('/v1')) return `${base}${path.slice(3)}`;
-  return `${base}${path}`;
+function supportKey(profile: AiConnectionProfile): string {
+  return `${profile.provider}|${profile.baseUrl}|${profile.model}`;
 }
 
-function headers(apiKey: string): Record<string, string> {
+function knownSupport(profile: AiConnectionProfile): ProviderCapabilities {
+  return supportedCapabilities.get(supportKey(profile)) ?? ALL_CAPABILITIES;
+}
+
+/** Records only the fields this degradation actually turned off. */
+function rememberDegradation(
+  profile: AiConnectionProfile,
+  before: ProviderCapabilities,
+  after: ProviderCapabilities,
+): void {
+  const next = { ...knownSupport(profile) };
+  for (const key of CAPABILITY_KEYS) {
+    if (before[key] && !after[key]) next[key] = false;
+  }
+  supportedCapabilities.set(supportKey(profile), next);
+}
+
+/**
+ * What this request would ideally use, narrowed by what the endpoint has already
+ * refused. `request` is absent for the connection probe, which never asks for reasoning.
+ */
+function effectiveCapabilities(
+  profile: AiConnectionProfile,
+  request?: AiChatRequest,
+): ProviderCapabilities {
+  const support = knownSupport(profile);
+  const wantsReasoning = request
+    ? request.reasoning !== 'disabled' && profile.reasoningEnabled
+    : profile.reasoningEnabled;
   return {
-    Accept: 'application/json',
-    'Content-Type': 'application/json',
-    ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+    reasoning: wantsReasoning && support.reasoning,
+    disableReasoning: request?.reasoning === 'disabled' && support.disableReasoning,
+    temperature: support.temperature,
   };
 }
 
-async function fetchWithTimeout(
-  url: string,
-  init: RequestInit,
+async function fetchPlan(
+  plan: AiRequestPlan,
   timeoutMs: number,
   external?: AbortController,
 ): Promise<Response> {
@@ -42,7 +89,12 @@ async function fetchWithTimeout(
     timeoutMs,
   );
   try {
-    return await fetch(url, { ...init, signal: controller.signal });
+    return await fetch(plan.url, {
+      method: plan.method,
+      headers: plan.headers,
+      ...(plan.body === undefined ? {} : { body: plan.body }),
+      signal: controller.signal,
+    });
   } finally {
     clearTimeout(timeout);
   }
@@ -53,74 +105,66 @@ async function responseError(response: Response): Promise<never> {
   throw new HttpError(response.status, body);
 }
 
-/** OpenAI-compatible servers use both statuses for unsupported optional parameters. */
+/** Endpoints use both statuses to refuse an unsupported optional parameter. */
 function isParameterRejection(response: Response): boolean {
   return response.status === 400 || response.status === 422;
+}
+
+/**
+ * Sends a request, and on a parameter rejection asks the adapter which optional field to
+ * drop before retrying. The surviving capability set is returned so the caller can report
+ * what was actually used.
+ */
+async function sendWithDegradation(
+  adapter: AiProviderAdapter,
+  profile: AiConnectionProfile,
+  build: (capabilities: ProviderCapabilities) => AiRequestPlan,
+  initial: ProviderCapabilities,
+  controller?: AbortController,
+): Promise<{ response: Response; capabilities: ProviderCapabilities }> {
+  let capabilities = initial;
+  for (let attempt = 1; ; attempt += 1) {
+    const response = await fetchPlan(build(capabilities), profile.timeoutMs, controller);
+    if (response.ok || !isParameterRejection(response) || attempt >= MAX_ATTEMPTS) {
+      return { response, capabilities };
+    }
+    const body = (await response.text()).slice(0, 20_000);
+    const next = adapter.degrade(capabilities, response.status, body);
+    // The body is already consumed, so the rejection has to be raised here.
+    if (!next) throw new HttpError(response.status, body);
+    rememberDegradation(profile, capabilities, next);
+    capabilities = next;
+  }
 }
 
 export async function listAiModels(
   profile: AiConnectionProfile,
   apiKeyOverride?: string,
 ): Promise<string[]> {
+  const adapter = providerAdapter(profile.provider);
   const apiKey = apiKeyOverride ?? (await getAiApiKey(profile.id));
-  const response = await fetchWithTimeout(
-    endpoint(profile.baseUrl, '/v1/models'),
-    { method: 'GET', headers: headers(apiKey) },
-    profile.timeoutMs,
-  );
+  const response = await fetchPlan(adapter.modelsRequest(profile, apiKey), profile.timeoutMs);
   if (!response.ok) return responseError(response);
-  const json = (await response.json()) as unknown;
-  if (
-    typeof json !== 'object' ||
-    json === null ||
-    !Array.isArray((json as { data?: unknown }).data)
-  ) {
-    return [];
-  }
-  return (json as { data: unknown[] }).data
-    .flatMap((item) =>
-      typeof item === 'object' && item !== null && typeof (item as { id?: unknown }).id === 'string'
-        ? [(item as { id: string }).id]
-        : [],
-    )
-    .sort((left, right) => left.localeCompare(right));
+  return adapter.parseModels((await response.json()) as unknown);
 }
 
 export async function testAiConnection(
   profile: AiConnectionProfile,
   apiKeyOverride?: string,
 ): Promise<{ latencyMs: number; model: string }> {
+  const adapter = providerAdapter(profile.provider);
   const apiKey = apiKeyOverride ?? (await getAiApiKey(profile.id));
   const started = performance.now();
-  const request = (reasoning: boolean) =>
-    fetchWithTimeout(
-      endpoint(profile.baseUrl, '/v1/chat/completions'),
-      {
-        method: 'POST',
-        headers: headers(apiKey),
-        body: JSON.stringify({
-          model: profile.model,
-          messages: [{ role: 'user', content: 'Réponds uniquement : OK' }],
-          temperature: 0,
-          max_tokens: 4,
-          stream: false,
-          ...(reasoning ? { reasoning_effort: 'high' } : {}),
-        }),
-      },
-      profile.timeoutMs,
-    );
-  const useReasoning =
-    profile.reasoningEnabled && reasoningCompatibility.get(profile.baseUrl) !== false;
-  let response = await request(useReasoning);
-  if (isParameterRejection(response) && useReasoning) {
-    reasoningCompatibility.set(profile.baseUrl, false);
-    response = await request(false);
-  }
+  const { response } = await sendWithDegradation(
+    adapter,
+    profile,
+    (capabilities) => adapter.probeRequest(profile, apiKey, capabilities),
+    effectiveCapabilities(profile),
+  );
   if (!response.ok) return responseError(response);
-  const json = (await response.json()) as { model?: unknown };
   return {
     latencyMs: Math.max(0, Math.round(performance.now() - started)),
-    model: typeof json.model === 'string' ? json.model : profile.model,
+    model: adapter.parseProbe((await response.json()) as unknown, profile.model),
   };
 }
 
@@ -130,7 +174,8 @@ function classifyError(error: unknown): { code: AiErrorCode; message: string } {
     if (error.status === 401 || error.status === 403) {
       return { code: 'unauthorized', message: 'The API key was refused by the endpoint.' };
     }
-    if (error.status === 429) {
+    // 529 is Anthropic's overload status; both mean « come back shortly ».
+    if (error.status === 429 || error.status === 529) {
       return { code: 'rateLimit', message: 'The endpoint rate limit was reached.' };
     }
     if (
@@ -162,64 +207,54 @@ function classifyError(error: unknown): { code: AiErrorCode; message: string } {
   return { code: 'unknown', message: error instanceof Error ? error.message : String(error) };
 }
 
-interface AiDelta {
-  content: string;
-  reasoning: boolean;
+interface StreamOutcome {
+  contentReceived: boolean;
+  reasoningReceived: boolean;
+  /** An error the provider reported inside the stream rather than by HTTP status. */
+  error?: string;
 }
 
-function extractDelta(data: string): AiDelta {
-  try {
-    const json = JSON.parse(data) as {
-      choices?: Array<{
-        delta?: { content?: unknown; reasoning?: unknown; reasoning_details?: unknown };
-        message?: { content?: unknown; reasoning?: unknown; reasoning_details?: unknown };
-      }>;
-    };
-    const choice = json.choices?.[0];
-    const content = choice?.delta?.content ?? choice?.message?.content;
-    const reasoning = choice?.delta?.reasoning ?? choice?.message?.reasoning;
-    const reasoningDetails = choice?.delta?.reasoning_details ?? choice?.message?.reasoning_details;
-    return {
-      content: typeof content === 'string' ? content : '',
-      reasoning:
-        (typeof reasoning === 'string' && reasoning.length > 0) ||
-        (Array.isArray(reasoningDetails) && reasoningDetails.length > 0),
-    };
-  } catch {
-    return { content: '', reasoning: false };
-  }
-}
-
+/**
+ * Decodes a provider stream. Server-sent events are accumulated per event and flushed on
+ * the blank separator line; newline-delimited JSON is one complete object per line, with
+ * no prefix and no terminator.
+ */
 async function readStream(
   response: Response,
+  framing: AiProviderAdapter['framing'],
+  parseFrame: (data: string) => AiStreamFrame,
   onChunk: (chunk: string) => void,
   onReasoning: () => void,
-): Promise<{ contentReceived: boolean; reasoningReceived: boolean }> {
-  let contentReceived = false;
-  let reasoningReceived = false;
+): Promise<StreamOutcome> {
+  const outcome: StreamOutcome = { contentReceived: false, reasoningReceived: false };
   const accept = (data: string) => {
-    const delta = extractDelta(data);
-    if (delta.reasoning && !reasoningReceived) {
-      reasoningReceived = true;
+    const frame = parseFrame(data);
+    if (frame.error && outcome.error === undefined) outcome.error = frame.error;
+    if (frame.reasoning && !outcome.reasoningReceived) {
+      outcome.reasoningReceived = true;
       onReasoning();
     }
-    if (delta.content) {
-      contentReceived = true;
-      onChunk(delta.content);
+    if (frame.content) {
+      outcome.contentReceived = true;
+      onChunk(frame.content);
     }
   };
-  const contentType = response.headers.get('content-type') ?? '';
-  if (!contentType.includes('text/event-stream')) {
+
+  // A server that ignored `stream` answers with a single JSON body.
+  if (
+    framing === 'sse' &&
+    !(response.headers.get('content-type') ?? '').includes('text/event-stream')
+  ) {
     accept(await response.text());
-    return { contentReceived, reasoningReceived };
+    return outcome;
   }
-  if (!response.body) return { contentReceived, reasoningReceived };
+  if (!response.body) return outcome;
 
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
   let dataLines: string[] = [];
-  const flush = () => {
+  const flushEvent = () => {
     if (dataLines.length === 0) return false;
     const data = dataLines.join('\n');
     dataLines = [];
@@ -234,52 +269,19 @@ async function readStream(
     const lines = buffer.split(/\r?\n/);
     buffer = done ? '' : (lines.pop() ?? '');
     for (const line of lines) {
-      if (line === '') {
-        if (flush()) return { contentReceived, reasoningReceived };
+      if (framing === 'ndjson') {
+        if (line.trim()) accept(line);
+      } else if (line === '') {
+        if (flushEvent()) return outcome;
       } else if (line.startsWith('data:')) {
         dataLines.push(line.slice(5).trimStart());
       }
     }
     if (done) {
-      flush();
-      return { contentReceived, reasoningReceived };
+      if (framing === 'sse') flushEvent();
+      return outcome;
     }
   }
-}
-
-async function chatResponse(
-  profile: AiConnectionProfile,
-  apiKey: string,
-  request: AiChatRequest,
-  controller: AbortController,
-  reasoning: boolean,
-  reasoningDisabled: boolean,
-  includeNonReasoningHints: boolean,
-): Promise<Response> {
-  const body: Record<string, unknown> = {
-    model: profile.model,
-    messages: [
-      {
-        role: 'system',
-        content: reasoningDisabled ? `${request.systemPrompt}\n/no_think` : request.systemPrompt,
-      },
-      ...request.messages,
-    ],
-    temperature: request.temperature ?? modeTemperature(request.mode),
-    max_tokens: profile.maxTokens,
-    stream: true,
-  };
-  if (includeNonReasoningHints) {
-    body['reasoning_effort'] = 'none';
-    body['chat_template_kwargs'] = { enable_thinking: false };
-  }
-  if (reasoning) body['reasoning_effort'] = 'high';
-  return fetchWithTimeout(
-    endpoint(profile.baseUrl, '/v1/chat/completions'),
-    { method: 'POST', headers: headers(apiKey), body: JSON.stringify(body) },
-    profile.timeoutMs,
-    controller,
-  );
 }
 
 export function startAiChat(window: BrowserWindow, request: AiChatRequest): void {
@@ -287,89 +289,52 @@ export function startAiChat(window: BrowserWindow, request: AiChatRequest): void
   const controller = new AbortController();
   requests.set(request.requestId, controller);
 
+  const send = <T>(channel: string, payload: T) => {
+    if (!window.isDestroyed()) window.webContents.send(channel, payload);
+  };
+
   void (async () => {
     try {
       const profile = await resolveAiProfile(request.profileId);
+      const adapter = providerAdapter(profile.provider);
       const apiKey = await getAiApiKey(profile.id);
-      const compatibility = reasoningCompatibility.get(profile.baseUrl);
-      let useReasoning =
-        request.reasoning !== 'disabled' && profile.reasoningEnabled && compatibility !== false;
-      const reasoningDisabled = request.reasoning === 'disabled';
-      let includeNonReasoningHints =
-        request.reasoning === 'disabled' &&
-        nonReasoningCompatibility.get(profile.baseUrl) !== false;
-      let response = await chatResponse(
+      const { response, capabilities } = await sendWithDegradation(
+        adapter,
         profile,
-        apiKey,
-        request,
+        (current) => adapter.chatRequest(profile, apiKey, request, current),
+        effectiveCapabilities(profile, request),
         controller,
-        useReasoning,
-        reasoningDisabled,
-        includeNonReasoningHints,
       );
-      if (isParameterRejection(response) && useReasoning) {
-        reasoningCompatibility.set(profile.baseUrl, false);
-        useReasoning = false;
-        response = await chatResponse(
-          profile,
-          apiKey,
-          request,
-          controller,
-          false,
-          reasoningDisabled,
-          includeNonReasoningHints,
-        );
-      } else if (isParameterRejection(response) && includeNonReasoningHints) {
-        nonReasoningCompatibility.set(profile.baseUrl, false);
-        includeNonReasoningHints = false;
-        response = await chatResponse(
-          profile,
-          apiKey,
-          request,
-          controller,
-          false,
-          reasoningDisabled,
-          false,
-        );
-      }
       if (!response.ok) await responseError(response);
 
       const stream = await readStream(
         response,
-        (chunk) => {
-          if (!window.isDestroyed()) {
-            window.webContents.send('ai:chunk', { requestId: request.requestId, chunk });
-          }
-        },
-        () => {
-          if (!window.isDestroyed()) {
-            window.webContents.send('ai:reasoning', { requestId: request.requestId });
-          }
-        },
+        adapter.framing,
+        (data) => adapter.parseFrame(data),
+        (chunk) => send('ai:chunk', { requestId: request.requestId, chunk }),
+        () => send('ai:reasoning', { requestId: request.requestId }),
       );
-      if (!stream.contentReceived) {
-        if (!window.isDestroyed()) {
-          window.webContents.send('ai:error', {
-            requestId: request.requestId,
-            code: 'emptyResponse',
-            message: stream.reasoningReceived
-              ? 'The model used its generation budget for reasoning without producing a final answer. Increase max_tokens and try again.'
-              : 'The endpoint completed the request without returning any text.',
-          });
-        }
+      if (stream.error !== undefined) {
+        send('ai:error', {
+          requestId: request.requestId,
+          code: 'unknown' satisfies AiErrorCode,
+          message: stream.error,
+        });
         return;
       }
-      if (!window.isDestroyed()) {
-        window.webContents.send('ai:done', {
+      if (!stream.contentReceived) {
+        send('ai:error', {
           requestId: request.requestId,
-          reasoningUsed: useReasoning,
+          code: 'emptyResponse' satisfies AiErrorCode,
+          message: stream.reasoningReceived
+            ? 'The model used its generation budget for reasoning without producing a final answer. Increase max_tokens and try again.'
+            : 'The endpoint completed the request without returning any text.',
         });
+        return;
       }
+      send('ai:done', { requestId: request.requestId, reasoningUsed: capabilities.reasoning });
     } catch (error) {
-      const classified = classifyError(error);
-      if (!window.isDestroyed()) {
-        window.webContents.send('ai:error', { requestId: request.requestId, ...classified });
-      }
+      send('ai:error', { requestId: request.requestId, ...classifyError(error) });
     } finally {
       requests.delete(request.requestId);
     }

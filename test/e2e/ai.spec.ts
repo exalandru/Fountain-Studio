@@ -1,4 +1,5 @@
 import { createServer } from 'node:http';
+import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -13,6 +14,10 @@ interface CapturedRequest {
   path: string;
   body: Record<string, unknown> | null;
   authorization: string | undefined;
+  /** Each provider authenticates through a different header. */
+  apiKeyHeader: string | undefined;
+  googleKeyHeader: string | undefined;
+  anthropicVersion: string | undefined;
 }
 
 let app: ElectronApplication;
@@ -21,24 +26,184 @@ let userData: string;
 let screenplay: string;
 let baseUrl: string;
 let requests: CapturedRequest[] = [];
+
+function header(request: IncomingMessage, name: string): string | undefined {
+  const value = request.headers[name];
+  return Array.isArray(value) ? value[0] : value;
+}
+
+function sse(response: ServerResponse): void {
+  response.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache' });
+}
+
+/**
+ * Anthropic Messages endpoint. It refuses `temperature` exactly as current Claude models
+ * do, which exercises the degradation ladder and its memoisation.
+ */
+function anthropicResponse(response: ServerResponse, body: Record<string, unknown> | null): void {
+  if (body?.['temperature'] !== undefined) {
+    response.writeHead(400, { 'content-type': 'application/json' });
+    response.end(
+      JSON.stringify({
+        type: 'error',
+        error: {
+          type: 'invalid_request_error',
+          message: 'temperature: Extra inputs are not permitted',
+        },
+      }),
+    );
+    return;
+  }
+  if (body?.['stream'] === false) {
+    response.writeHead(200, { 'content-type': 'application/json' });
+    response.end(
+      JSON.stringify({
+        type: 'message',
+        model: 'claude-test-model',
+        content: [{ type: 'text', text: 'OK' }],
+      }),
+    );
+    return;
+  }
+  // Named events, thinking block first, and no `[DONE]` sentinel.
+  sse(response);
+  response.write(`event: message_start\ndata: ${JSON.stringify({ type: 'message_start' })}\n\n`);
+  response.write(
+    `data: ${JSON.stringify({
+      type: 'content_block_start',
+      index: 0,
+      content_block: { type: 'thinking', thinking: '' },
+    })}\n\n`,
+  );
+  response.write(
+    `data: ${JSON.stringify({
+      type: 'content_block_delta',
+      index: 0,
+      delta: { type: 'text_delta', text: 'Claude ' },
+    })}\n\n`,
+  );
+  response.write(
+    `data: ${JSON.stringify({
+      type: 'content_block_delta',
+      index: 0,
+      delta: { type: 'text_delta', text: 'native answer' },
+    })}\n\n`,
+  );
+  response.end(`data: ${JSON.stringify({ type: 'message_stop' })}\n\n`);
+}
+
+/** Gemini native endpoint; the model and the verb both live in the path. */
+function googleResponse(response: ServerResponse, path: string): void {
+  if (path.endsWith(':generateContent')) {
+    response.writeHead(200, { 'content-type': 'application/json' });
+    response.end(
+      JSON.stringify({
+        modelVersion: 'gemini-test-pro-001',
+        candidates: [{ content: { parts: [{ text: 'OK' }] } }],
+      }),
+    );
+    return;
+  }
+  sse(response);
+  response.write(
+    `data: ${JSON.stringify({ candidates: [{ content: { parts: [{ text: 'Gemini ' }] } }] })}\n\n`,
+  );
+  response.end(
+    `data: ${JSON.stringify({
+      candidates: [{ content: { parts: [{ text: 'native answer' }] }, finishReason: 'STOP' }],
+    })}\n\n`,
+  );
+}
+
+/** Ollama native endpoint: newline-delimited JSON, one object per line. */
+function ollamaResponse(response: ServerResponse, body: Record<string, unknown> | null): void {
+  if (body?.['stream'] === false) {
+    response.writeHead(200, { 'content-type': 'application/json' });
+    response.end(
+      JSON.stringify({ model: 'ollama-test:8b', message: { role: 'assistant', content: 'OK' } }),
+    );
+    return;
+  }
+  response.writeHead(200, { 'content-type': 'application/x-ndjson' });
+  for (const message of [
+    { role: 'assistant', content: '', thinking: 'pondering' },
+    { role: 'assistant', content: 'Ollama ' },
+    { role: 'assistant', content: 'native answer' },
+  ]) {
+    response.write(`${JSON.stringify({ model: 'ollama-test:8b', message, done: false })}\n`);
+  }
+  response.end(
+    `${JSON.stringify({
+      model: 'ollama-test:8b',
+      message: { role: 'assistant', content: '' },
+      done: true,
+    })}\n`,
+  );
+}
+
 const server = createServer((request, response) => {
   const chunks: Buffer[] = [];
   request.on('data', (chunk: Buffer) => chunks.push(chunk));
   request.on('end', () => {
     const raw = Buffer.concat(chunks).toString('utf8');
     const body = raw ? (JSON.parse(raw) as Record<string, unknown>) : null;
+    const apiKeyHeader = header(request, 'x-api-key');
     requests.push({
       path: request.url ?? '',
       body,
       authorization: request.headers.authorization,
+      apiKeyHeader,
+      googleKeyHeader: header(request, 'x-goog-api-key'),
+      anthropicVersion: header(request, 'anthropic-version'),
     });
+    const path = (request.url ?? '').split('?')[0] ?? '';
 
-    if (request.url === '/v1/models') {
+    if (path === '/v1/models') {
+      // Anthropic lists models at the same path with the same envelope; the auth header
+      // is what tells the two providers apart.
       response.writeHead(200, { 'content-type': 'application/json' });
-      response.end(JSON.stringify({ data: [{ id: 'test-model' }, { id: 'other-model' }] }));
+      response.end(
+        JSON.stringify({
+          data: apiKeyHeader
+            ? [{ id: 'claude-test-model' }]
+            : [{ id: 'test-model' }, { id: 'other-model' }],
+        }),
+      );
       return;
     }
-    if (request.url !== '/v1/chat/completions') {
+    if (path === '/v1/messages') {
+      anthropicResponse(response, body);
+      return;
+    }
+    if (path === '/v1beta/models') {
+      response.writeHead(200, { 'content-type': 'application/json' });
+      response.end(
+        JSON.stringify({
+          models: [
+            { name: 'models/gemini-test-pro', supportedGenerationMethods: ['generateContent'] },
+            { name: 'models/gemini-test-flash', supportedGenerationMethods: ['generateContent'] },
+            { name: 'models/embed-test', supportedGenerationMethods: ['embedContent'] },
+          ],
+        }),
+      );
+      return;
+    }
+    if (path.startsWith('/v1beta/models/')) {
+      googleResponse(response, path);
+      return;
+    }
+    if (path === '/api/tags') {
+      response.writeHead(200, { 'content-type': 'application/json' });
+      response.end(
+        JSON.stringify({ models: [{ name: 'ollama-test:8b', model: 'ollama-test:8b' }] }),
+      );
+      return;
+    }
+    if (path === '/api/chat') {
+      ollamaResponse(response, body);
+      return;
+    }
+    if (path !== '/v1/chat/completions') {
       response.writeHead(404).end();
       return;
     }
@@ -256,6 +421,56 @@ const server = createServer((request, response) => {
     response.end('data: [DONE]\n\n');
   });
 });
+
+interface CollectedAnswer {
+  content: string;
+  error: string | null;
+  reasoning: boolean;
+}
+
+/**
+ * Drives one streaming request through the real IPC proxy and collects what came back.
+ * Exercising the provider adapter and the stream decoder directly is far more precise
+ * than asserting on rendered UI.
+ */
+async function collectAnswer(prompt: string, requestId: string): Promise<CollectedAnswer> {
+  return page.evaluate(
+    async ({ prompt: text, requestId: id }) => {
+      const config = await window.quantum.invoke('ai:config:get', undefined);
+      return new Promise<CollectedAnswer>((resolve) => {
+        let content = '';
+        let reasoning = false;
+        const cleanups: Array<() => void> = [];
+        const finish = (error: string | null) => {
+          cleanups.forEach((cleanup) => cleanup());
+          resolve({ content, error, reasoning });
+        };
+        cleanups.push(
+          window.quantum.on('ai:reasoning', (event) => {
+            if (event.requestId === id) reasoning = true;
+          }),
+          window.quantum.on('ai:chunk', (event) => {
+            if (event.requestId === id) content += event.chunk;
+          }),
+          window.quantum.on('ai:done', (event) => {
+            if (event.requestId === id) finish(null);
+          }),
+          window.quantum.on('ai:error', (event) => {
+            if (event.requestId === id) finish(event.message);
+          }),
+        );
+        void window.quantum.invoke('ai:chat:start', {
+          requestId: id,
+          profileId: config.activeProfileId,
+          mode: 'factual',
+          systemPrompt: 'Plain text only.',
+          messages: [{ role: 'user', content: text }],
+        });
+      });
+    },
+    { prompt, requestId },
+  );
+}
 
 async function runCommand(command: string): Promise<void> {
   await app.evaluate(async ({ BrowserWindow }, name) => {
@@ -486,4 +701,119 @@ test('retries a Mistral-style 422 response without non-standard parameters', asy
   expect(attempts[1]?.body?.['chat_template_kwargs']).toBeUndefined();
   expect(attempts[1]?.body?.['reasoning_effort']).toBeUndefined();
   expect(JSON.stringify(attempts[1]?.body?.['messages'])).toContain('/no_think');
+});
+
+/**
+ * These run last: each iteration repoints the active profile at another provider, and the
+ * base URL deliberately stays on the local server (switching provider only re-targets a
+ * URL still holding the previous provider's default).
+ */
+test('speaks the Anthropic protocol, degrading temperature and remembering it', async () => {
+  requests = [];
+  await runCommand('ai.openSettings');
+  const dialog = page.locator('.ai-settings-dialog');
+  await expect(dialog).toBeVisible();
+  await dialog.getByLabel('Provider').selectOption('anthropic');
+  await expect(dialog.getByLabel('Base URL')).toHaveValue(baseUrl);
+
+  await dialog.getByRole('button', { name: 'List models' }).click();
+  await expect(dialog.locator('.ai-feedback')).toContainText('1 models found');
+  await dialog.getByRole('radio', { name: 'claude-test-model' }).check();
+  await dialog.getByRole('button', { name: 'Test connection' }).click();
+  await expect(dialog.locator('.ai-feedback')).toContainText('Connection successful');
+
+  // The probe is rejected over `temperature`, then retried without it.
+  const probes = requests.filter(
+    ({ path, body }) => path === '/v1/messages' && body?.['stream'] === false,
+  );
+  expect(probes).toHaveLength(2);
+  expect(probes[0]?.body?.['temperature']).toBe(0);
+  expect(probes[1]?.body?.['temperature']).toBeUndefined();
+  expect(probes[0]?.apiKeyHeader).toBe('SECRET_API_KEY_M5');
+  expect(probes[0]?.anthropicVersion).toBe('2023-06-01');
+  expect(probes[0]?.authorization).toBeUndefined();
+
+  await dialog.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(dialog).toBeHidden();
+
+  requests = [];
+  const answer = await collectAnswer('Anthropic native check', 'anthropic-native');
+  expect(answer).toEqual({ content: 'Claude native answer', error: null, reasoning: true });
+
+  const chats = requests.filter(
+    ({ path, body }) => path === '/v1/messages' && body?.['stream'] === true,
+  );
+  // A single attempt: the rejection observed during the probe is memoised per model.
+  expect(chats).toHaveLength(1);
+  expect(chats[0]?.body?.['temperature']).toBeUndefined();
+  expect(chats[0]?.body?.['system']).toBe('Plain text only.');
+  expect(chats[0]?.body?.['max_tokens']).toBeDefined();
+  expect(chats[0]?.body?.['thinking']).toEqual({ type: 'adaptive' });
+});
+
+test('speaks the native Gemini protocol', async () => {
+  requests = [];
+  await runCommand('ai.openSettings');
+  const dialog = page.locator('.ai-settings-dialog');
+  await expect(dialog).toBeVisible();
+  await dialog.getByLabel('Provider').selectOption('google');
+  await expect(dialog.getByLabel('Base URL')).toHaveValue(baseUrl);
+
+  await dialog.getByRole('button', { name: 'List models' }).click();
+  // The embedding-only model is filtered out.
+  await expect(dialog.locator('.ai-feedback')).toContainText('2 models found');
+  await dialog.getByRole('radio', { name: 'gemini-test-pro' }).check();
+  await dialog.getByRole('button', { name: 'Test connection' }).click();
+  await expect(dialog.locator('.ai-feedback')).toContainText('gemini-test-pro-001');
+  await dialog.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(dialog).toBeHidden();
+
+  requests = [];
+  const answer = await collectAnswer('Gemini native check', 'google-native');
+  // Gemini is not asked for its thoughts, so the reasoning indicator stays silent.
+  expect(answer).toEqual({ content: 'Gemini native answer', error: null, reasoning: false });
+
+  const chat = requests.find(({ path }) => path.includes(':streamGenerateContent'));
+  expect(chat?.path).toBe('/v1beta/models/gemini-test-pro:streamGenerateContent?alt=sse');
+  expect(chat?.googleKeyHeader).toBe('SECRET_API_KEY_M5');
+  expect(chat?.authorization).toBeUndefined();
+  expect(chat?.body?.['systemInstruction']).toEqual({ parts: [{ text: 'Plain text only.' }] });
+  expect(chat?.body?.['contents']).toEqual([
+    { role: 'user', parts: [{ text: 'Gemini native check' }] },
+  ]);
+  expect(chat?.body?.['generationConfig']).toMatchObject({
+    temperature: 0.2,
+    thinkingConfig: { thinkingBudget: -1 },
+  });
+});
+
+test('speaks the native Ollama protocol over newline-delimited JSON', async () => {
+  requests = [];
+  await runCommand('ai.openSettings');
+  const dialog = page.locator('.ai-settings-dialog');
+  await expect(dialog).toBeVisible();
+  await dialog.getByLabel('Provider').selectOption('ollama');
+  await expect(dialog.getByLabel('API key (optional)')).toBeVisible();
+
+  await dialog.getByRole('button', { name: 'List models' }).click();
+  await expect(dialog.locator('.ai-feedback')).toContainText('1 models found');
+  // Installed models come from the native tags endpoint, not from /v1/models.
+  expect(requests.some(({ path }) => path === '/api/tags')).toBe(true);
+  await dialog.getByRole('radio', { name: 'ollama-test:8b' }).check();
+  await dialog.getByRole('button', { name: 'Test connection' }).click();
+  await expect(dialog.locator('.ai-feedback')).toContainText('ollama-test:8b');
+  await dialog.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(dialog).toBeHidden();
+
+  requests = [];
+  const answer = await collectAnswer('Ollama native check', 'ollama-native');
+  expect(answer).toEqual({ content: 'Ollama native answer', error: null, reasoning: true });
+
+  const chat = requests.find(({ path, body }) => path === '/api/chat' && body?.['stream'] === true);
+  expect(chat?.body?.['think']).toBe(true);
+  expect(chat?.body?.['options']).toMatchObject({ temperature: 0.2 });
+  expect(chat?.body?.['messages']).toEqual([
+    { role: 'system', content: 'Plain text only.' },
+    { role: 'user', content: 'Ollama native check' },
+  ]);
 });

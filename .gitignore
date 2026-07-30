@@ -9,3 +9,6 @@ playwright-report/
 tsconfig.*.tsbuildinfo
 CDC.md
 PLAN.md
+PLAN_CONNECTORS.md
+FIXES.md
+QWEN.md

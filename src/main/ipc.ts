@@ -3,6 +3,7 @@ import type { IpcMainInvokeEvent } from 'electron';
 import { basename, isAbsolute, join } from 'node:path';
 import { parseAppData } from '@shared/appdata/index.js';
 import type { AiConnectionProfile } from '@shared/ai/index.js';
+import { isProviderKind } from '@shared/ai/providers/index.js';
 import type { DocumentSnapshot, IpcChannel, IpcRequests } from '@shared/ipc-contract.js';
 import type { Translator } from '@shared/i18n/index.js';
 import { clearAutosave, pendingAutosaves, writeAutosave } from './files/autosave.js';
@@ -85,6 +86,9 @@ function validAiProfile(value: unknown): value is AiConnectionProfile {
     typeof value['name'] === 'string' &&
     value['name'].length > 0 &&
     value['name'].length <= 80 &&
+    // Absent on profiles saved before multi-provider support; the sanitizer then
+    // resolves it to the OpenAI-compatible default.
+    (value['provider'] === undefined || isProviderKind(value['provider'])) &&
     validUrl &&
     typeof value['model'] === 'string' &&
     value['model'].length > 0 &&
