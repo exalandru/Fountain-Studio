@@ -4,6 +4,7 @@ import { basename, isAbsolute, join } from 'node:path';
 import { parseAppData } from '@shared/appdata/index.js';
 import type { AiConnectionProfile } from '@shared/ai/index.js';
 import { isProviderKind } from '@shared/ai/providers/index.js';
+import { isSnapshotId, MAX_SNAPSHOT_NAME } from '@shared/snapshots/index.js';
 import type { DocumentSnapshot, IpcChannel, IpcRequests } from '@shared/ipc-contract.js';
 import type { Translator } from '@shared/i18n/index.js';
 import { clearAutosave, pendingAutosaves, writeAutosave } from './files/autosave.js';
@@ -17,6 +18,13 @@ import { renderScreenplayPdf } from './pdf/render.js';
 import { addRecent, getSettings, getTranslator, patchSettings } from './store.js';
 import { cancelAiChat, listAiModels, startAiChat, testAiConnection } from './ai/proxy.js';
 import { getAiConfigView, saveAiConfig } from './ai/settings.js';
+import {
+  createSnapshot,
+  deleteSnapshot,
+  listSnapshots,
+  readSnapshot,
+  renameSnapshot,
+} from './files/snapshots.js';
 
 /**
  * IPC handler registration, typed by the shared contract.
@@ -66,6 +74,10 @@ function validPdfOptions(value: unknown): boolean {
     page(value['pageFrom']) &&
     page(value['pageTo'])
   );
+}
+
+function validSnapshotName(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length > 0 && value.length <= MAX_SNAPSHOT_NAME;
 }
 
 function validAiProfile(value: unknown): value is AiConnectionProfile {
@@ -200,6 +212,28 @@ function validateRequest<C extends IpcChannel>(channel: C, value: unknown): IpcR
         record['suggestedName'].length > 0 &&
         record['suggestedName'].length <= 255 &&
         validPdfOptions(record['options']);
+      break;
+    case 'snapshot:list':
+      valid = record !== null && validPath(record['path']);
+      break;
+    case 'snapshot:create':
+      valid =
+        record !== null &&
+        validPath(record['path']) &&
+        validSnapshotName(record['name']) &&
+        typeof record['content'] === 'string' &&
+        record['content'].length <= 100_000_000;
+      break;
+    case 'snapshot:read':
+    case 'snapshot:delete':
+      valid = record !== null && validPath(record['path']) && isSnapshotId(record['id']);
+      break;
+    case 'snapshot:rename':
+      valid =
+        record !== null &&
+        validPath(record['path']) &&
+        isSnapshotId(record['id']) &&
+        validSnapshotName(record['name']);
       break;
     case 'settings:patch':
       valid = record !== null;
@@ -541,6 +575,12 @@ export function registerIpcHandlers(): void {
     startAiChat(window, request);
   });
   handle('ai:chat:cancel', ({ requestId }) => cancelAiChat(requestId));
+
+  handle('snapshot:list', ({ path }) => listSnapshots(path));
+  handle('snapshot:create', ({ path, name, content }) => createSnapshot(path, name, content));
+  handle('snapshot:read', ({ path, id }) => readSnapshot(path, id));
+  handle('snapshot:rename', ({ path, id, name }) => renameSnapshot(path, id, name));
+  handle('snapshot:delete', ({ path, id }) => deleteSnapshot(path, id));
   handle('editor:contextAction', ({ action, value }, window) => {
     if (!window) return;
     const contents = window.webContents;

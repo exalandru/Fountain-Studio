@@ -61,6 +61,9 @@ describe('catalogues', () => {
       'timeline.zoom',
       'timeline.intExt',
       'toolbar.focus',
+      // “Versions” is the same word in both languages.
+      'menu.file.snapshots',
+      'snapshots.title',
       // Provider names are brands, identical in every locale.
       'ai.settings.provider.openai',
       'ai.settings.provider.anthropic',

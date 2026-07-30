@@ -77,6 +77,38 @@ describe('companion schema', () => {
     expect(parsed?.timeline.colorMode).toBe('timeOfDay');
   });
 
+  it('keeps voice findings per character, and bounds what a companion file may carry', () => {
+    const parsed = parseAppData(
+      JSON.stringify({
+        version: APP_DATA_VERSION,
+        voiceConsistency: {
+          ALICE: {
+            analyzedAt: 12,
+            items: [
+              {
+                id: 'v1',
+                type: 'voice',
+                severity: 'major',
+                description: 'Registre trop soutenu.',
+                references: [],
+              },
+            ],
+          },
+          // Nothing to key a sheet on, and a name no screenplay would hold.
+          '': { items: [] },
+          [`${'x'.repeat(400)}`]: { items: [] },
+          BOB: 'not an object',
+        },
+      }),
+    );
+
+    expect(parsed?.voiceConsistency['ALICE']?.items[0]?.type).toBe('voice');
+    expect(parsed?.voiceConsistency['ALICE']?.analyzedAt).toBe(12);
+    expect(parsed?.voiceConsistency['']).toBeUndefined();
+    expect(parsed?.voiceConsistency['BOB']).toBeUndefined();
+    expect(Object.keys(parsed?.voiceConsistency ?? {}).every((key) => key.length <= 200)).toBe(true);
+  });
+
   it('migrates removed Brainstorm and left-side memo tabs to the new panel layout', () => {
     const parsed = parseAppData(
       JSON.stringify({

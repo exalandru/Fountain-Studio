@@ -8,6 +8,7 @@ import type {
   AiErrorCode,
   AiKeyUpdate,
 } from './ai/index.js';
+import type { SnapshotMeta } from './snapshots/index.js';
 
 /**
  * Single IPC contract between the main process and the renderer.
@@ -156,6 +157,18 @@ export interface IpcRequests {
     result: ExportOutcome;
   };
 
+  'snapshot:list': { arg: { path: string }; result: SnapshotMeta[] };
+  'snapshot:create': {
+    arg: { path: string; name: string; content: string };
+    result: SnapshotMeta[];
+  };
+  'snapshot:read': { arg: { path: string; id: string }; result: string };
+  'snapshot:rename': {
+    arg: { path: string; id: string; name: string };
+    result: SnapshotMeta[];
+  };
+  'snapshot:delete': { arg: { path: string; id: string }; result: SnapshotMeta[] };
+
   'settings:get': { arg: void; result: AppSettings };
   'settings:patch': { arg: Partial<AppSettings>; result: AppSettings };
   'ai:config:get': { arg: void; result: AiConfigView };
@@ -258,6 +271,7 @@ export type MenuCommand =
   | 'file.save'
   | 'file.saveAs'
   | 'file.exportPdf'
+  | 'file.snapshots'
   | 'file.closeTab'
   | 'edit.find'
   | 'edit.replace'
@@ -278,6 +292,7 @@ export type MenuCommand =
   | 'ai.rewrite'
   | 'ai.renameCharacter'
   | 'ai.openInconsistencies'
+  | 'ai.openVoiceConsistency'
   | 'scene.renumber'
   | 'scene.removeNumbers'
   | 'help.about';

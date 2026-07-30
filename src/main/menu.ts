@@ -146,6 +146,11 @@ export async function buildMenu(): Promise<void> {
         },
         { type: 'separator' },
         {
+          label: t('menu.file.snapshots'),
+          click: () => send('file.snapshots'),
+        },
+        { type: 'separator' },
+        {
           label: t('menu.file.closeTab'),
           accelerator: 'CmdOrCtrl+W',
           click: () => send('file.closeTab'),
@@ -291,6 +296,10 @@ export async function buildMenu(): Promise<void> {
         {
           label: t('menu.ai.inconsistencies'),
           click: () => send('ai.openInconsistencies'),
+        },
+        {
+          label: t('menu.ai.voiceConsistency'),
+          click: () => send('ai.openVoiceConsistency'),
         },
         { type: 'separator' },
         { label: t('menu.ai.settings'), click: () => send('ai.openSettings') },

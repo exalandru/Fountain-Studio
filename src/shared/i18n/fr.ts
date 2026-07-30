@@ -32,6 +32,7 @@ export const fr: Catalog = {
   'menu.file.save': 'Enregistrer',
   'menu.file.saveAs': 'Enregistrer sous…',
   'menu.file.exportPdf': 'Exporter en PDF…',
+  'menu.file.snapshots': 'Versions…',
   'menu.file.closeTab': 'Fermer l’onglet',
 
   // ── Menu : Édition ───────────────────────────────────────────────────────
@@ -75,6 +76,7 @@ export const fr: Catalog = {
   'menu.ai.synonyms': 'Trouver des synonymes…',
   'menu.ai.renameCharacter': 'Renommer le personnage…',
   'menu.ai.inconsistencies': 'Rechercher les incohérences…',
+  'menu.ai.voiceConsistency': 'Vérifier la voix d’un personnage…',
 
   // ── Menu : Langue ────────────────────────────────────────────────────────
   'menu.language': 'Langue',
@@ -252,6 +254,48 @@ export const fr: Catalog = {
   'stats.exportCsv': 'Exporter en CSV…',
   'stats.exportJson': 'Exporter en JSON…',
 
+  // ── Instantanés et comparaison de versions ───────────────────────────────
+  'snapshots.title': 'Versions',
+  'snapshots.close': 'Fermer les versions',
+  'snapshots.done': 'Fermer',
+  'snapshots.list': 'Instantanés',
+  'snapshots.loading': 'Chargement des versions…',
+  'snapshots.empty': 'Aucun instantané. Prenez-en un pour pouvoir revenir à cet état du scénario.',
+  'snapshots.nameLabel': 'Nom de l’instantané',
+  'snapshots.namePlaceholder': 'avant de casser l’acte III',
+  'snapshots.take': 'Prendre un instantané',
+  'snapshots.rename': 'Renommer',
+  'snapshots.delete': 'Supprimer cet instantané',
+  'snapshots.renameLabel': 'Nouveau nom de cet instantané',
+  'snapshots.restore': 'Restaurer cette version',
+  'snapshots.meta': {
+    one: '{lines} lignes · {count} scène',
+    other: '{lines} lignes · {count} scènes',
+  },
+  'snapshots.comparedWith': 'Comparé au document courant',
+  'snapshots.identical': 'Cette version est identique au document courant.',
+  'snapshots.lineStats': '+{added} / −{removed} lignes',
+  'snapshots.scenesAdded': { one: '{count} scène ajoutée', other: '{count} scènes ajoutées' },
+  'snapshots.scenesRemoved': {
+    one: '{count} scène supprimée',
+    other: '{count} scènes supprimées',
+  },
+  'snapshots.scenesModified': {
+    one: '{count} scène modifiée',
+    other: '{count} scènes modifiées',
+  },
+  'snapshots.scenesMoved': { one: '{count} scène déplacée', other: '{count} scènes déplacées' },
+  'snapshots.coarse':
+    'Les deux versions ont trop peu en commun pour être alignées ligne à ligne : des blocs entiers sont présentés comme remplacés.',
+  'snapshots.created': 'Instantané « {name} » pris.',
+  'snapshots.restored': 'Version « {name} » restaurée — annuler ramène votre texte.',
+  'snapshots.saveFirst':
+    'Enregistrez d’abord le scénario : les instantanés se rangent à côté de son fichier.',
+  'snapshots.limitReached':
+    'Nombre maximal d’instantanés atteint. Supprimez-en un avant d’en prendre un autre.',
+  'snapshots.notFound': 'Le fichier de cet instantané est absent du dossier.',
+  'snapshots.failed': 'L’opération sur l’instantané a échoué : {error}',
+
   // ── Réglages IA ──────────────────────────────────────────────────────────
   'ai.settings.title': 'Réglages IA',
   'ai.settings.close': 'Fermer les réglages IA',
@@ -308,6 +352,7 @@ export const fr: Catalog = {
   'ai.error.network': 'Serveur inaccessible. Vérifiez son URL et votre connexion.',
   'ai.error.invalidRequest': 'Le serveur a refusé cette requête.',
   'ai.error.cancelled': 'La requête a été arrêtée.',
+  'ai.error.tooLong': 'Ce personnage parle trop pour être analysé en une seule passe.',
   'ai.error.unknown': 'La requête IA a échoué.',
   'ai.tools.contextual': 'Outils contextuels',
 
@@ -355,6 +400,15 @@ export const fr: Catalog = {
   'formatting.selectText': 'Sélectionnez du texte avant d’appliquer une mise en forme.',
   'consistency.title': 'Rapport d’incohérences',
   'consistency.close': 'Fermer l’analyse de cohérence',
+  'voice.title': 'Cohérence de voix',
+  'voice.subtitle':
+    'Relit toutes les répliques d’un personnage pour repérer les ruptures de registre et les répliques qui ne lui ressemblent pas.',
+  'voice.close': 'Fermer l’analyse de voix',
+  'voice.selectCharacter': 'Choisir un personnage…',
+  'voice.analyse': 'Analyser cette voix',
+  'voice.analysing': 'Analyse de la voix de {character}…',
+  'voice.selectFirst': 'Choisissez un personnage pour analyser sa voix.',
+  'voice.notAnalysed': 'Cette voix n’a pas encore été analysée.',
   'consistency.wholeScreenplay': 'Analyse complète du scénario',
   'consistency.elapsed': 'Temps écoulé : {minutes}:{seconds}',
   'consistency.shortTitle': 'Cohérence',
@@ -374,6 +428,7 @@ export const fr: Catalog = {
   'consistency.type.character': 'Personnage',
   'consistency.type.location': 'Lieu / géographie',
   'consistency.type.plot': 'Logique d’intrigue',
+  'consistency.type.voice': 'Voix du personnage',
   'consistency.type.dialogue': 'Dialogue contradictoire',
   'consistency.severity.all': 'Toutes les gravités',
   'consistency.severity.info': 'Information',

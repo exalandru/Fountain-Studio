@@ -329,6 +329,38 @@ const server = createServer((request, response) => {
       response.end('data: [DONE]\n\n');
       return;
     }
+    if (lastContent.includes('Analyse la cohérence de la voix')) {
+      response.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache' });
+      response.write(
+        `data: ${JSON.stringify({
+          choices: [
+            {
+              delta: {
+                content: JSON.stringify({
+                  items: [
+                    {
+                      type: 'voice',
+                      severity: 'major',
+                      description: 'ALICE suddenly speaks in a formal register.',
+                      references: [
+                        {
+                          sceneNumber: '1',
+                          heading: 'INT. LAB - NIGHT',
+                          quote: 'SECRET_SCENE_M5',
+                        },
+                      ],
+                      suggestion: 'Keep her clipped.',
+                    },
+                  ],
+                }),
+              },
+            },
+          ],
+        })}\n\n`,
+      );
+      response.end('data: [DONE]\n\n');
+      return;
+    }
     if (lastContent.includes('Analyse les incohérences')) {
       setTimeout(() => {
         response.writeHead(200, {
@@ -647,6 +679,57 @@ test('offers fast synonyms, renames a character and persists an inconsistency re
       }
     })
     .toBe('resolved');
+});
+
+test('analyses a character’s voice, and keeps the finding in the companion file', async () => {
+  requests = [];
+  await runCommand('ai.openVoiceConsistency');
+  const panel = page.locator('.consistency-dialog');
+  await expect(panel).toBeVisible();
+  await expect(panel.getByRole('heading', { name: 'Voice consistency' })).toBeVisible();
+
+  // Nothing to show until a character is chosen — the analysis is per voice.
+  await expect(panel.locator('.panel-placeholder')).toContainText('Choose a character');
+
+  // Earlier tests in this file rename the character, so the name is read from the chooser
+  // rather than assumed: what matters is that speaking characters are offered at all.
+  const chooser = panel.locator('.voice-controls select');
+  const speaker = await chooser.locator('option:not([value=""])').first().getAttribute('value');
+  expect(speaker).toBeTruthy();
+  await chooser.selectOption(speaker ?? '');
+
+  await panel.getByRole('button', { name: 'Analyse this voice' }).click();
+  const finding = panel.locator('.consistency-item');
+  await expect(finding).toHaveCount(1);
+  await expect(finding).toContainText('formal register');
+  // The type label comes from the shared consistency namespace, and the guard in
+  // parseInconsistencies must accept 'voice' or the finding never arrives at all.
+  await expect(finding.locator('.consistency-item-heading strong')).toHaveText('Character voice');
+  await expect(finding).toHaveClass(/severity-major/);
+
+  const prompt = requests.find(({ body }) =>
+    JSON.stringify(body?.['messages']).includes('Analyse la cohérence de la voix'),
+  );
+  // The context is built for one character, each speech tagged with the scene it sits in.
+  const sent = JSON.stringify(prompt?.body?.['messages']);
+  expect(sent).toContain(speaker);
+  // The scene number travels with the heading, so the model can quote a reference that
+  // actually resolves instead of inventing a number.
+  expect(sent).toContain('[1 · INT. LAB - NIGHT]');
+
+  // Findings are keyed by character in the companion file, so each voice keeps its own.
+  await expect
+    .poll(async () => {
+      const raw = await readFile(`${screenplay}.appdata.json`, 'utf8');
+      const data = JSON.parse(raw) as {
+        voiceConsistency?: Record<string, { items?: unknown[] }>;
+      };
+      return data.voiceConsistency?.[speaker ?? '']?.items?.length ?? 0;
+    })
+    .toBe(1);
+
+  await panel.getByRole('button', { name: 'Close voice analysis' }).click();
+  await expect(panel).toBeHidden();
 });
 
 test('retries a Mistral-style 422 response without non-standard parameters', async () => {

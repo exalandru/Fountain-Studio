@@ -13,8 +13,10 @@ interface FileCommandsOptions {
   openDialog: () => Promise<void>;
   openPaths: (paths: string[]) => Promise<void>;
   onExportPdf: () => void;
+  onOpenSnapshots: () => void;
   onOpenAiSettings: () => void;
   onOpenInconsistencies: () => void;
+  onOpenVoiceConsistency: () => void;
   onRewrite: () => void;
   onSynonyms: () => void;
   onRenameCharacter: () => void;
@@ -36,8 +38,10 @@ export function useFileCommands({
   openDialog,
   openPaths,
   onExportPdf,
+  onOpenSnapshots,
   onOpenAiSettings,
   onOpenInconsistencies,
+  onOpenVoiceConsistency,
   onRewrite,
   onSynonyms,
   onRenameCharacter,
@@ -61,6 +65,7 @@ export function useFileCommands({
         'file.save': () => void save({ forceDialog: false }),
         'file.saveAs': () => void save({ forceDialog: true }),
         'file.exportPdf': onExportPdf,
+        'file.snapshots': onOpenSnapshots,
         'file.closeTab': () => {
           const id = store().activeId;
           if (id) void closeTab(id);
@@ -92,6 +97,7 @@ export function useFileCommands({
         'ai.rewrite': onRewrite,
         'ai.renameCharacter': onRenameCharacter,
         'ai.openInconsistencies': onOpenInconsistencies,
+        'ai.openVoiceConsistency': onOpenVoiceConsistency,
         'scene.renumber': onRenumberScenes,
         'scene.removeNumbers': onRemoveSceneNumbers,
         'help.about': () => setStatus(t('status.about', { app: t('app.name'), version: '0.1.0' })),
@@ -104,8 +110,10 @@ export function useFileCommands({
       editorView,
       onCommandPalette,
       onExportPdf,
+      onOpenSnapshots,
       onOpenAiSettings,
       onOpenInconsistencies,
+      onOpenVoiceConsistency,
       onRewrite,
       onSynonyms,
       onRenameCharacter,

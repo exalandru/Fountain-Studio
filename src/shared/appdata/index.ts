@@ -56,6 +56,7 @@ export interface AppData {
   timeline: TimelineState;
   rewrite: RewriteState;
   inconsistencies: InconsistencyState;
+  voiceConsistency: Record<string, InconsistencyState>;
 }
 
 export const DEFAULT_APP_DATA: Readonly<AppData> = {
@@ -87,6 +88,7 @@ export const DEFAULT_APP_DATA: Readonly<AppData> = {
     items: [],
     analyzedAt: null,
   },
+  voiceConsistency: {},
 };
 
 export function createDefaultAppData(): AppData {
@@ -97,6 +99,7 @@ export function createDefaultAppData(): AppData {
     timeline: { ...DEFAULT_APP_DATA.timeline },
     rewrite: { ...DEFAULT_APP_DATA.rewrite },
     inconsistencies: { items: [], analyzedAt: null },
+    voiceConsistency: {},
   };
 }
 
@@ -116,6 +119,9 @@ const REWRITE_TONES = new Set<RewriteTone>([
   'custom',
 ]);
 
+/** More characters than any screenplay has speaking parts, and a hard stop on a bad file. */
+const MAX_VOICES = 300;
+
 function parseInconsistencyItems(value: unknown): AiInconsistency[] {
   if (!Array.isArray(value)) return [];
   return value.slice(0, 500).flatMap((candidate) => {
@@ -129,7 +135,8 @@ function parseInconsistencyItems(value: unknown): AiInconsistency[] {
         item['type'] !== 'character' &&
         item['type'] !== 'location' &&
         item['type'] !== 'plot' &&
-        item['type'] !== 'dialogue') ||
+        item['type'] !== 'dialogue' &&
+        item['type'] !== 'voice') ||
       (item['severity'] !== 'info' && item['severity'] !== 'minor' && item['severity'] !== 'major')
     ) {
       return [];
@@ -205,6 +212,10 @@ export function parseAppData(raw: string): AppData | null {
       typeof root['inconsistencies'] === 'object' && root['inconsistencies'] !== null
         ? (root['inconsistencies'] as Record<string, unknown>)
         : {};
+    const voiceConsistency =
+      typeof root['voiceConsistency'] === 'object' && root['voiceConsistency'] !== null
+        ? (root['voiceConsistency'] as Record<string, unknown>)
+        : {};
 
     if (typeof sidebar['visible'] === 'boolean') result.sidebar.visible = sidebar['visible'];
     if (
@@ -260,6 +271,20 @@ export function parseAppData(raw: string): AppData | null {
       Number.isFinite(inconsistencies['analyzedAt'])
     ) {
       result.inconsistencies.analyzedAt = inconsistencies['analyzedAt'];
+    }
+
+    // Findings are keyed by character name, which comes from the screenplay and so is
+    // bounded like every other string read here — a companion file is data on disk, not a
+    // trusted structure.
+    for (const [character, value] of Object.entries(voiceConsistency).slice(0, MAX_VOICES)) {
+      if (typeof value !== 'object' || value === null) continue;
+      const name = character.slice(0, 200);
+      if (name.length === 0) continue;
+      const state = value as Record<string, unknown>;
+      result.voiceConsistency[name] = {
+        items: parseInconsistencyItems(state['items']),
+        analyzedAt: typeof state['analyzedAt'] === 'number' ? state['analyzedAt'] : null,
+      };
     }
 
     return result;

@@ -19,11 +19,13 @@ import { useScreenplay } from './hooks/useScreenplay.js';
 import { useTranslator } from './hooks/useTranslator.js';
 import { PdfExportDialog } from './pdf/PdfExportDialog.js';
 import { AiSettingsDialog } from './ai/AiSettingsDialog.js';
+import { SnapshotDialog } from './snapshots/SnapshotDialog.js';
 import { RewriteDialog } from './ai/RewriteDialog.js';
 import type { RewriteSelection } from './ai/RewriteDialog.js';
 import { CharacterNameDialog } from './ai/CharacterNameDialog.js';
 import type { CharacterNameSelection } from './ai/CharacterNameDialog.js';
 import { InconsistencyPanel } from './ai/InconsistencyPanel.js';
+import { VoiceConsistencyPanel } from './ai/VoiceConsistencyPanel.js';
 import { fountainLexField } from './editor/fountain-highlight.js';
 import type { NewDocumentStrings } from './store/documents.js';
 import { useDocuments } from './store/documents.js';
@@ -47,6 +49,11 @@ export function App() {
   const [pdfOpen, setPdfOpen] = useState(false);
   const [aiSettingsOpen, setAiSettingsOpen] = useState(false);
   const [inconsistencyOpen, setInconsistencyOpen] = useState(false);
+
+
+
+  const [snapshotsOpen, setSnapshotsOpen] = useState(false);
+  const [voiceConsistencyOpen, setVoiceConsistencyOpen] = useState(false);
   const [, setAiSettingsRevision] = useState(0);
   const [rewriteSelection, setRewriteSelection] = useState<RewriteSelection | null>(null);
   const [characterNameSelection, setCharacterNameSelection] =
@@ -144,6 +151,8 @@ export function App() {
   const openPdfDialog = useCallback(() => setPdfOpen(true), []);
   const openAiSettings = useCallback(() => setAiSettingsOpen(true), []);
   const openInconsistencies = useCallback(() => setInconsistencyOpen(true), []);
+  const openVoiceConsistency = useCallback(() => setVoiceConsistencyOpen(true), []);
+  const openSnapshots = useCallback(() => setSnapshotsOpen(true), []);
   const openRewrite = useCallback(
     (initialTool: 'rewrite' | 'synonyms' = 'rewrite') => {
       const view = editorView.current;
@@ -340,8 +349,10 @@ export function App() {
     openDialog,
     openPaths,
     onExportPdf: openPdfDialog,
+    onOpenSnapshots: openSnapshots,
     onOpenAiSettings: openAiSettings,
     onOpenInconsistencies: openInconsistencies,
+    onOpenVoiceConsistency: openVoiceConsistency,
     onRewrite: openRewriteSelection,
     onSynonyms: openSynonyms,
     onRenameCharacter: openRenameCharacter,
@@ -397,6 +408,9 @@ export function App() {
       { id: 'file.open', label: t('menu.file.open'), shortcut: '⌘O' },
       { id: 'file.save', label: t('menu.file.save'), shortcut: '⌘S' },
       { id: 'file.exportPdf', label: t('menu.file.exportPdf'), shortcut: '⇧⌘E' },
+      { id: 'file.snapshots', label: t('menu.file.snapshots') },
+
+
       { id: 'edit.find', label: t('menu.edit.find'), shortcut: '⌘F' },
       { id: 'view.toggleTimeline', label: t('menu.view.showTimeline') },
       { id: 'view.toggleFocus', label: t('menu.view.focusMode'), shortcut: '⇧⌘F' },
@@ -410,6 +424,7 @@ export function App() {
       { id: 'ai.rewrite', label: t('menu.ai.rewrite'), shortcut: '⌥⌘R' },
       { id: 'ai.renameCharacter', label: t('menu.ai.renameCharacter') },
       { id: 'ai.openInconsistencies', label: t('menu.ai.inconsistencies') },
+      { id: 'ai.openVoiceConsistency', label: t('menu.ai.voiceConsistency') },
       { id: 'view.toggleFormattedMode', label: t('menu.view.formattedMode') },
     ],
     [t],
@@ -565,6 +580,18 @@ export function App() {
     (rewrite: RewriteState) => updateAppData((data) => ({ ...data, rewrite })),
     [updateAppData],
   );
+
+  // Each voice keeps its own findings, so the character is a key inside voiceConsistency —
+  // not a key of the companion file itself.
+  const updateVoiceConsistency = useCallback(
+    (characterName: string, state: InconsistencyState) =>
+      updateAppData((data) => ({
+        ...data,
+        voiceConsistency: { ...data.voiceConsistency, [characterName]: state },
+      })),
+    [updateAppData],
+  );
+
   const updateInconsistencies = useCallback(
     (inconsistencies: InconsistencyState) =>
       updateAppData((data) => ({ ...data, inconsistencies })),
@@ -721,6 +748,28 @@ export function App() {
           onClose={() => setPdfOpen(false)}
         />
       ) : null}
+      {snapshotsOpen && active ? (
+        <SnapshotDialog
+          path={active.path}
+          currentContent={active.content}
+          t={t}
+          onRestore={(content, name) => {
+            const view = editorView.current;
+            if (!view) return;
+            view.dispatch({
+              changes: { from: 0, to: view.state.doc.length, insert: content },
+              // Restoring must be its own undo step. Without this the history groups it
+              // with whatever edit came just before, so undoing appears to do nothing:
+              // it reverts both at once and lands on the very text the restore produced.
+              annotations: isolateHistory.of('full'),
+            });
+            view.focus();
+            setSnapshotsOpen(false);
+            setStatus(t('snapshots.restored', { name }));
+          }}
+          onClose={() => setSnapshotsOpen(false)}
+        />
+      ) : null}
       {aiSettingsOpen ? (
         <AiSettingsDialog
           onSaved={() => setAiSettingsRevision((revision) => revision + 1)}
@@ -739,6 +788,20 @@ export function App() {
             setInconsistencyOpen(false);
           }}
           onClose={() => setInconsistencyOpen(false)}
+        />
+      ) : null}
+
+      {voiceConsistencyOpen && active ? (
+        <VoiceConsistencyPanel
+          analysis={analysis}
+          state={active.appData.voiceConsistency}
+          t={t}
+          onStateChange={updateVoiceConsistency}
+          onSelectReference={(reference) => {
+            selectInconsistencyReference(reference);
+            setVoiceConsistencyOpen(false);
+          }}
+          onClose={() => setVoiceConsistencyOpen(false)}
         />
       ) : null}
       {rewriteSelection && active ? (

@@ -296,28 +296,22 @@ export function AiSettingsDialog({ onClose, onSaved }: AiSettingsDialogProps) {
           <div className="panel-placeholder">{t('ai.settings.loading')}</div>
         ) : (
           <div className="ai-settings-layout">
-            <div className="ai-profile-rail">
-              <ul
-                className="ai-profile-list"
-                aria-label={t('ai.settings.profileList')}
-                ref={railRef}
-              >
+            <div className="rail">
+              <ul className="rail-list" aria-label={t('ai.settings.profileList')} ref={railRef}>
                 {config.profiles.map((profile) => (
                   <li key={profile.id}>
                     <button
                       type="button"
-                      className={`ai-profile-row${
+                      className={`rail-row${
                         profile.id === config.activeProfileId ? ' is-current' : ''
                       }`}
                       aria-current={profile.id === config.activeProfileId ? 'true' : undefined}
                       onClick={() => selectProfile(profile.id)}
                     >
                       <ProviderBadge provider={profile.provider} />
-                      <span className="ai-profile-identity">
-                        <span className="ai-profile-name">{profile.name}</span>
-                        <span className="ai-profile-provider">
-                          {t(PROVIDER_LABEL[profile.provider])}
-                        </span>
+                      <span className="rail-identity">
+                        <span className="rail-name">{profile.name}</span>
+                        <span className="rail-detail">{t(PROVIDER_LABEL[profile.provider])}</span>
                       </span>
                     </button>
                   </li>
@@ -326,7 +320,7 @@ export function AiSettingsDialog({ onClose, onSaved }: AiSettingsDialogProps) {
 
               <button
                 type="button"
-                className="ai-profile-add"
+                className="rail-add"
                 disabled={config.profiles.length >= 10}
                 onClick={addProfile}
               >
@@ -341,7 +335,7 @@ export function AiSettingsDialog({ onClose, onSaved }: AiSettingsDialogProps) {
 
             <div className="ai-settings-pane">
               <div className="ai-pane-header">
-                <label className="ai-profile-name-field">
+                <label className="ai-name-field">
                   <span className="sr-only">{t('ai.settings.profileName')}</span>
                   <input
                     value={activeProfile.name}

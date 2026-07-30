@@ -34,6 +34,7 @@ export const en = {
   'menu.file.save': 'Save',
   'menu.file.saveAs': 'Save As…',
   'menu.file.exportPdf': 'Export PDF…',
+  'menu.file.snapshots': 'Versions…',
   'menu.file.closeTab': 'Close Tab',
 
   // ── Menu: Edit ───────────────────────────────────────────────────────────
@@ -77,6 +78,7 @@ export const en = {
   'menu.ai.synonyms': 'Find Synonyms…',
   'menu.ai.renameCharacter': 'Rename Character…',
   'menu.ai.inconsistencies': 'Find Inconsistencies…',
+  'menu.ai.voiceConsistency': 'Check a Character’s Voice…',
 
   // ── Menu: Language ───────────────────────────────────────────────────────
   'menu.language': 'Language',
@@ -253,6 +255,40 @@ export const en = {
   'stats.exportCsv': 'Export CSV…',
   'stats.exportJson': 'Export JSON…',
 
+  // ── Snapshots and version comparison ─────────────────────────────────────
+  'snapshots.title': 'Versions',
+  'snapshots.close': 'Close versions',
+  'snapshots.done': 'Close',
+  'snapshots.list': 'Snapshots',
+  'snapshots.loading': 'Loading versions…',
+  'snapshots.empty': 'No snapshot yet. Take one to be able to come back to this state.',
+  'snapshots.nameLabel': 'Snapshot name',
+  'snapshots.namePlaceholder': 'before breaking act III',
+  'snapshots.take': 'Take a snapshot',
+  'snapshots.rename': 'Rename',
+  'snapshots.delete': 'Delete this snapshot',
+  'snapshots.renameLabel': 'New name for this snapshot',
+  'snapshots.restore': 'Restore this version',
+  'snapshots.meta': {
+    one: '{lines} lines · {count} scene',
+    other: '{lines} lines · {count} scenes',
+  },
+  'snapshots.comparedWith': 'Compared with the current document',
+  'snapshots.identical': 'This version is identical to the current document.',
+  'snapshots.lineStats': '+{added} / −{removed} lines',
+  'snapshots.scenesAdded': { one: '{count} scene added', other: '{count} scenes added' },
+  'snapshots.scenesRemoved': { one: '{count} scene removed', other: '{count} scenes removed' },
+  'snapshots.scenesModified': { one: '{count} scene modified', other: '{count} scenes modified' },
+  'snapshots.scenesMoved': { one: '{count} scene moved', other: '{count} scenes moved' },
+  'snapshots.coarse':
+    'The two versions have too little in common to be aligned line by line: whole blocks are shown as replaced.',
+  'snapshots.created': 'Snapshot “{name}” taken.',
+  'snapshots.restored': 'Version “{name}” restored — undo brings your text back.',
+  'snapshots.saveFirst': 'Save the screenplay first: snapshots are stored beside its file.',
+  'snapshots.limitReached': 'Snapshot limit reached. Delete one before taking another.',
+  'snapshots.notFound': 'This snapshot’s file is missing from the folder.',
+  'snapshots.failed': 'Snapshot operation failed: {error}',
+
   // ── AI settings ──────────────────────────────────────────────────────────
   'ai.settings.title': 'AI Settings',
   'ai.settings.close': 'Close AI settings',
@@ -309,6 +345,7 @@ export const en = {
   'ai.error.network': 'The endpoint could not be reached. Check its URL and your connection.',
   'ai.error.invalidRequest': 'The endpoint rejected this request.',
   'ai.error.cancelled': 'The request was stopped.',
+  'ai.error.tooLong': 'This character speaks too much to be analysed in one pass.',
   'ai.error.unknown': 'The AI request failed.',
   'ai.tools.contextual': 'Contextual tools',
 
@@ -356,6 +393,15 @@ export const en = {
   'formatting.selectText': 'Select text before applying formatting.',
   'consistency.title': 'Inconsistency report',
   'consistency.close': 'Close consistency analysis',
+  'voice.title': 'Voice consistency',
+  'voice.subtitle':
+    'Reads every line a character speaks, looking for register shifts and lines that do not sound like them.',
+  'voice.close': 'Close voice analysis',
+  'voice.selectCharacter': 'Choose a character…',
+  'voice.analyse': 'Analyse this voice',
+  'voice.analysing': 'Analysing {character}’s voice…',
+  'voice.selectFirst': 'Choose a character to analyse their voice.',
+  'voice.notAnalysed': 'This voice has not been analysed yet.',
   'consistency.wholeScreenplay': 'Full screenplay analysis',
   'consistency.elapsed': 'Elapsed time: {minutes}:{seconds}',
   'consistency.shortTitle': 'Consistency',
@@ -376,6 +422,7 @@ export const en = {
   'consistency.type.location': 'Location / geography',
   'consistency.type.plot': 'Plot logic',
   'consistency.type.dialogue': 'Contradictory dialogue',
+  'consistency.type.voice': 'Character voice',
   'consistency.severity.all': 'All severities',
   'consistency.severity.info': 'Info',
   'consistency.severity.minor': 'Minor',

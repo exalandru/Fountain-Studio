@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { collapseToHunks, diffLines, diffScenes } from '../../src/shared/diff/index.js';
 import { analyzeForEditor } from '../../src/shared/fountain/editor-analysis.js';
 import { parse } from '../../src/shared/fountain/parse.js';
 
@@ -95,5 +96,54 @@ describe('performance on a 120-page screenplay', () => {
     expect(screenplay.scenes.length).toBeGreaterThan(200);
     expect(screenplay.characters.size).toBe(4);
     expect(screenplay.scenes.every((s) => s.declaredNumber !== undefined)).toBe(true);
+  });
+});
+
+describe('version comparison on a feature screenplay', () => {
+  const before = generateScreenplay(120);
+
+  it('compares two close versions well inside a dialog opening', () => {
+    // The everyday case: take a snapshot, rewrite one line, compare. Trimming the common
+    // prefix and suffix is what keeps this from being a six-thousand-line alignment.
+    const after = before.replace(
+      'and a second line for good measure.',
+      'and a rewritten second line.',
+    );
+    const started = performance.now();
+    const diff = diffLines(before, after);
+    const hunks = collapseToHunks(diff.lines);
+    const elapsed = performance.now() - started;
+
+    expect(diff.coarse).toBe(false);
+    expect(diff.added).toBeGreaterThan(0);
+    // Only the changed region reaches the view, not the whole document.
+    expect(hunks.length).toBeLessThan(20);
+    expect(elapsed).toBeLessThan(150);
+  });
+
+  it('stays bounded when the two versions have almost nothing in common', () => {
+    // The pathological case an exact alignment would choke on: 36 million cells.
+    const after = generateScreenplay(120).replace(/JULIE/g, 'CLARA').replace(/INT\./g, 'EXT.');
+    const started = performance.now();
+    const diff = diffLines(before, after);
+    const elapsed = performance.now() - started;
+
+    expect(diff.lines.length).toBeGreaterThan(0);
+    expect(elapsed).toBeLessThan(1_000);
+  });
+
+  it('summarises a feature by scene fast enough to open a dialog on', () => {
+    const after = before.replace(
+      'and a second line for good measure.',
+      'and a rewritten second line.',
+    );
+    const beforeAst = parse(before);
+    const afterAst = parse(after);
+    const started = performance.now();
+    const changes = diffScenes(beforeAst, afterAst);
+    const elapsed = performance.now() - started;
+
+    expect(changes.length).toBeGreaterThan(0);
+    expect(elapsed).toBeLessThan(50);
   });
 });

@@ -6,6 +6,7 @@
  * process performs the transport.
  */
 
+import type { Element } from '../fountain/ast.js';
 import type { AiProviderKind } from './providers/types.js';
 import { DEFAULT_PROVIDER, isProviderKind } from './providers/types.js';
 
@@ -315,7 +316,7 @@ export function parseShortSuggestions(raw: string, maximum = 10): string[] {
 }
 
 export type InconsistencyType =
-  'continuity' | 'chronology' | 'character' | 'location' | 'plot' | 'dialogue';
+  'continuity' | 'chronology' | 'character' | 'location' | 'plot' | 'dialogue' | 'voice';
 export type InconsistencySeverity = 'info' | 'minor' | 'major';
 export type InconsistencyStatus = 'open' | 'ignored' | 'resolved';
 
@@ -375,6 +376,7 @@ const INCONSISTENCY_TYPES = new Set<InconsistencyType>([
   'location',
   'plot',
   'dialogue',
+  'voice',
 ]);
 const INCONSISTENCY_SEVERITIES = new Set<InconsistencySeverity>(['info', 'minor', 'major']);
 
@@ -449,4 +451,59 @@ export function chunkScenes(scenes: Array<{ content: string }>, maximumTokens = 
   }
   if (current) chunks.push(current);
   return chunks;
+}
+
+export const VOICE_CONSISTENCY_SYSTEM_PROMPT = `Tu analyses la cohérence de la « voix » d’un seul personnage dans un scénario.
+La voix comprend le registre de langue, les tics et manies verbales, la longueur et le rythme des phrases, le vocabulaire propre au personnage, et sa manière d’attaquer ou d’esquiver.
+Une voix n’est pas un carcan : un personnage change légitimement de registre selon son interlocuteur, sous le coup de l’émotion, quand il ment ou quand il joue un rôle. Tu ne signales que les ruptures qu’aucune situation ne justifierait.
+On ne te fournit que ses répliques, sans l’action autour : si une rupture pourrait s’expliquer par un contexte dramatique que tu ne vois pas, tu te tais plutôt que de spéculer.
+Réponds exclusivement en JSON valide, sans Markdown ni commentaire.`;
+
+/** One scene's elements, with the identifiers a reference has to carry back. */
+export interface VoiceScene {
+  number: string;
+  heading: string;
+  elements: readonly Element[];
+}
+
+/**
+ * Every speech by one character, each tagged with the scene it belongs to.
+ *
+ * The scene *number* is part of the tag, not just the heading: the model is asked for a
+ * `sceneNumber` in every reference, and `parseInconsistencies` discards any reference that
+ * lacks one. Without the number in the context the model can only invent it, and the
+ * reference chip would then display a scene that does not exist.
+ *
+ * Parentheticals are kept: "(sèchement)" is part of how a character sounds, and dropping it
+ * would hide exactly the tonal breaks this analysis looks for.
+ */
+export function buildCharacterVoiceContext(
+  scenes: readonly VoiceScene[],
+  characterName: string,
+): string {
+  const chunks: string[] = [];
+  for (const scene of scenes) {
+    const tag = `[${scene.number} · ${scene.heading}]`;
+    for (const element of scene.elements) {
+      if (element.speaker !== characterName) continue;
+      if (element.kind === 'dialogue') {
+        chunks.push(`${tag}\n${characterName} : ${element.text}`);
+      } else if (element.kind === 'parenthetical') {
+        chunks.push(`${tag}\n${characterName} ${element.text}`);
+      }
+    }
+  }
+  return chunks.join('\n\n');
+}
+
+export function buildVoiceConsistencyPrompt(characterName: string, context: string): string {
+  return `Analyse la cohérence de la voix du personnage ${characterName}.
+Établis d’abord sa voix dominante sur l’ensemble de ses répliques, puis ne retiens que celles qui s’en écartent sans raison.
+Retourne {"items":[{"type":"voice","severity":"info|minor|major","description":"...","references":[{"sceneNumber":"...","heading":"...","quote":"..."}],"suggestion":"..."}]}.
+Chaque référence reprend le numéro ET le heading de scène tels qu’ils sont donnés entre crochets, et cite la réplique en cause mot pour mot.
+Une voix cohérente se répond {"items":[]} : c’est un résultat valable, pas un échec.
+
+<repliques>
+${context}
+</repliques>`;
 }
