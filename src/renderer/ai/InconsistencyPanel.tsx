@@ -100,7 +100,7 @@ export function InconsistencyPanel({
         messages: [{ role: 'user', content: prompt }],
       },
       (next) => {
-        if (next === 'reasoning') setPhase(t('ai.chat.reasoning'));
+        if (next === 'reasoning') setPhase(t('ai.request.reasoning'));
       },
     );
     requestRef.current = handle;
@@ -208,7 +208,7 @@ export function InconsistencyPanel({
                   <span />
                 </div>
                 <div>
-                  <strong>{phase || t('ai.chat.reasoning')}</strong>
+                  <strong>{phase || t('ai.request.reasoning')}</strong>
                   <small>
                     {t('consistency.elapsed', {
                       minutes: Math.floor(elapsedSeconds / 60),
@@ -217,7 +217,7 @@ export function InconsistencyPanel({
                   </small>
                 </div>
                 <button type="button" onClick={() => void stop()}>
-                  {t('ai.chat.stop')}
+                  {t('ai.request.stop')}
                 </button>
               </div>
             ) : (

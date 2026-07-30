@@ -112,10 +112,7 @@ function validAiConfig(value: unknown): boolean {
     !Array.isArray(value['profiles']) ||
     value['profiles'].length < 1 ||
     value['profiles'].length > 10 ||
-    !value['profiles'].every(validAiProfile) ||
-    typeof value['brainstormingPrompt'] !== 'string' ||
-    value['brainstormingPrompt'].length < 1 ||
-    value['brainstormingPrompt'].length > 20_000
+    !value['profiles'].every(validAiProfile)
   ) {
     return false;
   }

@@ -550,14 +550,6 @@ test('configures, tests and falls back on an OpenAI-compatible endpoint securely
   );
 });
 
-test('removes the generic brainstorming mode from the application menu', async () => {
-  const labels = await app.evaluate(({ Menu }) => {
-    const ai = Menu.getApplicationMenu()?.items.find((item) => item.label === 'AI');
-    return ai?.submenu?.items.map((item) => item.label) ?? [];
-  });
-  expect(labels).not.toContain('Brainstorm…');
-});
-
 test('offers fast synonyms, renames a character and persists an inconsistency report', async () => {
   requests = [];
   const editor = page.locator('.cm-content');

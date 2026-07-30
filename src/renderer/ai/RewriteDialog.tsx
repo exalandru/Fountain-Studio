@@ -182,7 +182,7 @@ export function RewriteDialog({
         {busy ? (
           <div className="rewrite-loading">
             <span className="ai-thinking-dot" />
-            {phase === 'reasoning' ? t('ai.chat.reasoning') : t('rewrite.generating')}
+            {phase === 'reasoning' ? t('ai.request.reasoning') : t('rewrite.generating')}
           </div>
         ) : null}
         {error ? <p className="ai-warning">{error}</p> : null}

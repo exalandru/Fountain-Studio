@@ -149,7 +149,3 @@ export async function getAiApiKey(profileId: string): Promise<string> {
     return '';
   }
 }
-
-export async function getBrainstormingPrompt(): Promise<string> {
-  return (await loadConfig()).brainstormingPrompt;
-}

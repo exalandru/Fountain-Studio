@@ -48,7 +48,8 @@ test('a connection profile saved before multi-provider support still works', asy
           reasoningEnabled: false,
         },
       ],
-      brainstormingPrompt: 'Prompt personnalisé conservé.',
+      // A field this version no longer knows about, left in on purpose.
+      brainstormingPrompt: 'Réglage retiré depuis.',
     }),
     'utf8',
   );
@@ -73,8 +74,8 @@ test('a connection profile saved before multi-provider support still works', asy
     expect(view.activeProfileId).toBe('legacy');
     expect(view.profiles[0]?.provider).toBe('openai');
     expect(view.profiles[0]?.model).toBe('legacy-model');
-    // A customised prompt is never overwritten by the migration.
-    expect(view.brainstormingPrompt).toBe('Prompt personnalisé conservé.');
+    // The retired brainstorming prompt is dropped rather than echoed back.
+    expect(view).not.toHaveProperty('brainstormingPrompt');
 
     const answer = await page.evaluate(
       async () =>
@@ -118,7 +119,6 @@ test('a connection profile saved before multi-provider support still works', asy
           version: 1,
           activeProfileId: config.activeProfileId,
           profiles: config.profiles.map(({ hasApiKey: _hasApiKey, ...profile }) => profile),
-          brainstormingPrompt: config.brainstormingPrompt,
         },
         keyUpdates: [],
       });
