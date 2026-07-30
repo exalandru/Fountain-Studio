@@ -293,6 +293,7 @@ export type MenuCommand =
   | 'ai.renameCharacter'
   | 'ai.openInconsistencies'
   | 'ai.openVoiceConsistency'
+  | 'ai.openRepetitions'
   | 'scene.renumber'
   | 'scene.removeNumbers'
   | 'help.about';

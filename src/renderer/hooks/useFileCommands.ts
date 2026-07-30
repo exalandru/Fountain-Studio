@@ -17,6 +17,7 @@ interface FileCommandsOptions {
   onOpenAiSettings: () => void;
   onOpenInconsistencies: () => void;
   onOpenVoiceConsistency: () => void;
+  onOpenRepetitions: () => void;
   onRewrite: () => void;
   onSynonyms: () => void;
   onRenameCharacter: () => void;
@@ -42,6 +43,7 @@ export function useFileCommands({
   onOpenAiSettings,
   onOpenInconsistencies,
   onOpenVoiceConsistency,
+  onOpenRepetitions,
   onRewrite,
   onSynonyms,
   onRenameCharacter,
@@ -98,6 +100,7 @@ export function useFileCommands({
         'ai.renameCharacter': onRenameCharacter,
         'ai.openInconsistencies': onOpenInconsistencies,
         'ai.openVoiceConsistency': onOpenVoiceConsistency,
+        'ai.openRepetitions': onOpenRepetitions,
         'scene.renumber': onRenumberScenes,
         'scene.removeNumbers': onRemoveSceneNumbers,
         'help.about': () => setStatus(t('status.about', { app: t('app.name'), version: '0.1.0' })),
@@ -114,6 +117,7 @@ export function useFileCommands({
       onOpenAiSettings,
       onOpenInconsistencies,
       onOpenVoiceConsistency,
+      onOpenRepetitions,
       onRewrite,
       onSynonyms,
       onRenameCharacter,

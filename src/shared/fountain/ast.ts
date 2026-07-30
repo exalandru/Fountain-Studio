@@ -77,6 +77,19 @@ export interface Element {
 
 export type IntExt = 'INT' | 'EXT' | 'EST' | 'INT/EXT';
 
+/**
+ * A scene's identifying fields together with its own elements.
+ *
+ * `ParseResponse` carries a flat element list and indexes into it, so consumers that need
+ * per-scene text rebuild this view. Analyses take it instead of the whole `Screenplay`,
+ * which keeps them testable from either side.
+ */
+export interface SceneView {
+  number: string;
+  heading: string;
+  elements: readonly Element[];
+}
+
 export interface Scene {
   id: string;
   /** Declared number (`#1A#`) when present, otherwise the 1-based ordinal as a string. */

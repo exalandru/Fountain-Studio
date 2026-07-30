@@ -77,6 +77,7 @@ export const fr: Catalog = {
   'menu.ai.renameCharacter': 'Renommer le personnage…',
   'menu.ai.inconsistencies': 'Rechercher les incohérences…',
   'menu.ai.voiceConsistency': 'Vérifier la voix d’un personnage…',
+  'menu.ai.repetitions': 'Rechercher les répétitions…',
 
   // ── Menu : Langue ────────────────────────────────────────────────────────
   'menu.language': 'Langue',
@@ -398,6 +399,37 @@ export const fr: Catalog = {
   'formatting.italic': 'Italique',
   'formatting.underline': 'Souligné',
   'formatting.selectText': 'Sélectionnez du texte avant d’appliquer une mise en forme.',
+  'repetition.title': 'Répétitions narratives',
+  'repetition.subtitle':
+    'Les mêmes mots deux fois, et la même scène deux fois. La première se mesure, la seconde se juge.',
+  'repetition.close': 'Fermer l’analyse des répétitions',
+  'repetition.scope': 'Où chercher',
+  'repetition.scope.all': 'Dialogues et action',
+  'repetition.scope.dialogue': 'Dialogues seulement',
+  'repetition.scope.action': 'Action seulement',
+  'repetition.none': 'Rien ne se répète mot pour mot. Reste la lecture structurelle.',
+  'repetition.truncated': 'les constats les plus faibles ont été écartés',
+  'repetition.signature': '{speaker}, {count} fois',
+  'repetition.spread': 'réparti dans le scénario, {count} fois',
+  'repetition.structuralTitle': 'Répétitions structurelles',
+  'repetition.structuralHint':
+    'Deux scènes qui font le même travail, un beat rejoué, une révélation révélée à nouveau. Celle-ci demande un modèle, et lit un résumé d’une ligne par scène.',
+  'repetition.analyseStructure': 'Chercher les répétitions structurelles',
+  'repetition.analysing': 'Lecture de la forme du scénario…',
+  'repetition.notAnalysed': 'La lecture structurelle n’a pas été lancée.',
+  'repetition.structuralEmpty': 'Aucune scène ne fait du surplace.',
+  'repetition.found': {
+    one: '{count} tournure répétée sur {words} mots',
+    other: '{count} tournures répétées sur {words} mots',
+  },
+  'repetition.meta': {
+    one: '{words} mots · {span} scène d’écart',
+    other: '{words} mots · {span} scènes d’écart',
+  },
+  'repetition.occurrences': {
+    one: 'Voir le {count} endroit où elle apparaît',
+    other: 'Voir les {count} endroits où elle apparaît',
+  },
   'consistency.title': 'Rapport d’incohérences',
   'consistency.close': 'Fermer l’analyse de cohérence',
   'voice.title': 'Cohérence de voix',
@@ -428,6 +460,7 @@ export const fr: Catalog = {
   'consistency.type.character': 'Personnage',
   'consistency.type.location': 'Lieu / géographie',
   'consistency.type.plot': 'Logique d’intrigue',
+  'consistency.type.repetition': 'Répétition narrative',
   'consistency.type.voice': 'Voix du personnage',
   'consistency.type.dialogue': 'Dialogue contradictoire',
   'consistency.severity.all': 'Toutes les gravités',

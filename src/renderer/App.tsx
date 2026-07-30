@@ -26,6 +26,7 @@ import { CharacterNameDialog } from './ai/CharacterNameDialog.js';
 import type { CharacterNameSelection } from './ai/CharacterNameDialog.js';
 import { InconsistencyPanel } from './ai/InconsistencyPanel.js';
 import { VoiceConsistencyPanel } from './ai/VoiceConsistencyPanel.js';
+import { RepetitionPanel } from './repetition/RepetitionPanel.js';
 import { fountainLexField } from './editor/fountain-highlight.js';
 import type { NewDocumentStrings } from './store/documents.js';
 import { useDocuments } from './store/documents.js';
@@ -54,6 +55,7 @@ export function App() {
 
   const [snapshotsOpen, setSnapshotsOpen] = useState(false);
   const [voiceConsistencyOpen, setVoiceConsistencyOpen] = useState(false);
+  const [repetitionsOpen, setRepetitionsOpen] = useState(false);
   const [, setAiSettingsRevision] = useState(0);
   const [rewriteSelection, setRewriteSelection] = useState<RewriteSelection | null>(null);
   const [characterNameSelection, setCharacterNameSelection] =
@@ -152,6 +154,7 @@ export function App() {
   const openAiSettings = useCallback(() => setAiSettingsOpen(true), []);
   const openInconsistencies = useCallback(() => setInconsistencyOpen(true), []);
   const openVoiceConsistency = useCallback(() => setVoiceConsistencyOpen(true), []);
+  const openRepetitions = useCallback(() => setRepetitionsOpen(true), []);
   const openSnapshots = useCallback(() => setSnapshotsOpen(true), []);
   const openRewrite = useCallback(
     (initialTool: 'rewrite' | 'synonyms' = 'rewrite') => {
@@ -353,6 +356,7 @@ export function App() {
     onOpenAiSettings: openAiSettings,
     onOpenInconsistencies: openInconsistencies,
     onOpenVoiceConsistency: openVoiceConsistency,
+    onOpenRepetitions: openRepetitions,
     onRewrite: openRewriteSelection,
     onSynonyms: openSynonyms,
     onRenameCharacter: openRenameCharacter,
@@ -425,6 +429,7 @@ export function App() {
       { id: 'ai.renameCharacter', label: t('menu.ai.renameCharacter') },
       { id: 'ai.openInconsistencies', label: t('menu.ai.inconsistencies') },
       { id: 'ai.openVoiceConsistency', label: t('menu.ai.voiceConsistency') },
+      { id: 'ai.openRepetitions', label: t('menu.ai.repetitions') },
       { id: 'view.toggleFormattedMode', label: t('menu.view.formattedMode') },
     ],
     [t],
@@ -592,6 +597,10 @@ export function App() {
     [updateAppData],
   );
 
+  const updateRepetitions = useCallback(
+    (repetitions: InconsistencyState) => updateAppData((data) => ({ ...data, repetitions })),
+    [updateAppData],
+  );
   const updateInconsistencies = useCallback(
     (inconsistencies: InconsistencyState) =>
       updateAppData((data) => ({ ...data, inconsistencies })),
@@ -802,6 +811,24 @@ export function App() {
             setVoiceConsistencyOpen(false);
           }}
           onClose={() => setVoiceConsistencyOpen(false)}
+        />
+      ) : null}
+
+      {repetitionsOpen && active ? (
+        <RepetitionPanel
+          analysis={analysis}
+          state={active.appData.repetitions}
+          t={t}
+          onStateChange={updateRepetitions}
+          onSelectRange={(range) => {
+            selectEditorRange(range);
+            setRepetitionsOpen(false);
+          }}
+          onSelectReference={(reference) => {
+            selectInconsistencyReference(reference);
+            setRepetitionsOpen(false);
+          }}
+          onClose={() => setRepetitionsOpen(false)}
         />
       ) : null}
       {rewriteSelection && active ? (

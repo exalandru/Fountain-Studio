@@ -329,6 +329,35 @@ const server = createServer((request, response) => {
       response.end('data: [DONE]\n\n');
       return;
     }
+    if (lastContent.includes('Repère les répétitions structurelles')) {
+      response.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache' });
+      response.write(
+        `data: ${JSON.stringify({
+          choices: [
+            {
+              delta: {
+                content: JSON.stringify({
+                  items: [
+                    {
+                      type: 'repetition',
+                      severity: 'minor',
+                      description: 'Scenes 1 and 2 both introduce the same threat.',
+                      references: [
+                        { sceneNumber: '1', heading: 'INT. LAB - NIGHT', quote: 'first pass' },
+                        { sceneNumber: '2', heading: 'INT. LAB - DAWN', quote: 'second pass' },
+                      ],
+                      suggestion: 'Cut the second, or let it land differently.',
+                    },
+                  ],
+                }),
+              },
+            },
+          ],
+        })}\n\n`,
+      );
+      response.end('data: [DONE]\n\n');
+      return;
+    }
     if (lastContent.includes('Analyse la cohérence de la voix')) {
       response.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache' });
       response.write(
@@ -729,6 +758,65 @@ test('analyses a character’s voice, and keeps the finding in the companion fil
     .toBe(1);
 
   await panel.getByRole('button', { name: 'Close voice analysis' }).click();
+  await expect(panel).toBeHidden();
+});
+
+test('measures literal repetition without a request, then asks about structure', async () => {
+  requests = [];
+  // A screenplay with one deliberate tic: the same line, twice, in two mouths.
+  const editor = page.locator('.cm-content');
+  await editor.click();
+  await page.keyboard.press('ControlOrMeta+a');
+  await page.keyboard.insertText(
+    'INT. LAB - NIGHT\n\nALICE\nWe never talk about the second door.\n\n' +
+      'EXT. STREET - DAY\n\nBORIS\nWe never talk about the second door.\n',
+  );
+  await expect(editor).toContainText('BORIS');
+
+  await runCommand('ai.openRepetitions');
+  const panel = page.locator('.consistency-dialog');
+  await expect(panel).toBeVisible();
+
+  // The literal half is computed from the AST, so it is there before any request is made.
+  const finding = panel.locator('.repetition-item');
+  await expect(finding).toHaveCount(1);
+  await expect(finding.locator('strong')).toHaveText('we never talk about the second door');
+  // Two mouths, so it reads as the writer's formula rather than a character's signature.
+  await expect(finding.locator('.repetition-badge')).toHaveClass(/is-spread/);
+  expect(requests).toHaveLength(0);
+
+  // Each occurrence takes the editor to the block it sits in.
+  await finding.getByRole('button', { name: /places it appears/ }).click();
+  await expect(panel.locator('.repetition-occurrences li')).toHaveCount(2);
+
+  // The structural half is a judgement, so it is asked for explicitly.
+  await expect(panel.locator('.repetition-structural-empty')).toContainText('has not been run');
+  await panel.getByRole('button', { name: 'Look for structural repetition' }).click();
+  const structural = panel.locator('.repetition-structural .consistency-item');
+  await expect(structural).toHaveCount(1);
+  await expect(structural).toContainText('same threat');
+  // 'repetition' has to be in both runtime guards, or the finding never arrives.
+  await expect(structural.locator('.consistency-item-heading strong')).toHaveText(
+    'Narrative repetition',
+  );
+
+  const prompt = requests.find(({ body }) =>
+    JSON.stringify(body?.['messages']).includes('Repère les répétitions structurelles'),
+  );
+  // The model reads a one-line digest per scene, not the screenplay.
+  const sent = JSON.stringify(prompt?.body?.['messages']);
+  expect(sent).toContain('INT. LAB - NIGHT');
+  expect(sent).not.toContain('second door');
+
+  await expect
+    .poll(async () => {
+      const raw = await readFile(`${screenplay}.appdata.json`, 'utf8');
+      const data = JSON.parse(raw) as { repetitions?: { items?: Array<{ type?: string }> } };
+      return data.repetitions?.items?.[0]?.type;
+    })
+    .toBe('repetition');
+
+  await panel.getByRole('button', { name: 'Close repetition analysis' }).click();
   await expect(panel).toBeHidden();
 });
 

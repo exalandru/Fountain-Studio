@@ -21,6 +21,6 @@ export { maskAnnotations } from './mask.js';
 export type { MaskResult } from './mask.js';
 export { isUpperCase, lexDocument, splitCharacter, splitLines } from './lexer.js';
 export type { LexedLine, LineKind } from './lexer.js';
-export { classifyTimeOfDay, countWords, parse, parseHeading } from './parse.js';
+export { classifyTimeOfDay, countWords, parse, parseHeading, tokenizeWords } from './parse.js';
 export { analyzeForEditor } from './editor-analysis.js';
 export type { EditorAnalysis } from './editor-analysis.js';

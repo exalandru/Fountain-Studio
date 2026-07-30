@@ -461,9 +461,19 @@ function indexCharacters(elements: Element[], scenes: Scene[]): Map<string, Char
   return characters;
 }
 
+/**
+ * The screenplay's words, as a single definition shared by every consumer.
+ *
+ * Letters, digits, apostrophes and hyphens: "aujourd’hui" and "porte-parole" are one word
+ * each, which is what a writer counting words means. Any analysis that tokenises text has
+ * to agree with the word count shown in the statistics, so it goes through here.
+ */
+export function tokenizeWords(text: string): string[] {
+  return text.match(/[\p{L}\p{N}'’-]+/gu) ?? [];
+}
+
 export function countWords(text: string): number {
-  const matches = text.match(/[\p{L}\p{N}'’-]+/gu);
-  return matches ? matches.length : 0;
+  return tokenizeWords(text).length;
 }
 
 function indexLocations(scenes: Scene[]): Map<string, LocationInfo> {

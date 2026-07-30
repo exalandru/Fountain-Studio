@@ -301,6 +301,10 @@ export async function buildMenu(): Promise<void> {
           label: t('menu.ai.voiceConsistency'),
           click: () => send('ai.openVoiceConsistency'),
         },
+        {
+          label: t('menu.ai.repetitions'),
+          click: () => send('ai.openRepetitions'),
+        },
         { type: 'separator' },
         { label: t('menu.ai.settings'), click: () => send('ai.openSettings') },
       ],

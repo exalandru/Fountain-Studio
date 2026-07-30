@@ -6,7 +6,7 @@
  * process performs the transport.
  */
 
-import type { Element } from '../fountain/ast.js';
+import type { SceneView } from '../fountain/ast.js';
 import type { AiProviderKind } from './providers/types.js';
 import { DEFAULT_PROVIDER, isProviderKind } from './providers/types.js';
 
@@ -316,7 +316,15 @@ export function parseShortSuggestions(raw: string, maximum = 10): string[] {
 }
 
 export type InconsistencyType =
-  'continuity' | 'chronology' | 'character' | 'location' | 'plot' | 'dialogue' | 'voice';
+
+  | 'continuity'
+  | 'chronology'
+  | 'character'
+  | 'location'
+  | 'plot'
+  | 'dialogue'
+  | 'voice'
+  | 'repetition';
 export type InconsistencySeverity = 'info' | 'minor' | 'major';
 export type InconsistencyStatus = 'open' | 'ignored' | 'resolved';
 
@@ -377,6 +385,7 @@ const INCONSISTENCY_TYPES = new Set<InconsistencyType>([
   'plot',
   'dialogue',
   'voice',
+  'repetition',
 ]);
 const INCONSISTENCY_SEVERITIES = new Set<InconsistencySeverity>(['info', 'minor', 'major']);
 
@@ -459,13 +468,6 @@ Une voix n’est pas un carcan : un personnage change légitimement de registre 
 On ne te fournit que ses répliques, sans l’action autour : si une rupture pourrait s’expliquer par un contexte dramatique que tu ne vois pas, tu te tais plutôt que de spéculer.
 Réponds exclusivement en JSON valide, sans Markdown ni commentaire.`;
 
-/** One scene's elements, with the identifiers a reference has to carry back. */
-export interface VoiceScene {
-  number: string;
-  heading: string;
-  elements: readonly Element[];
-}
-
 /**
  * Every speech by one character, each tagged with the scene it belongs to.
  *
@@ -478,7 +480,7 @@ export interface VoiceScene {
  * would hide exactly the tonal breaks this analysis looks for.
  */
 export function buildCharacterVoiceContext(
-  scenes: readonly VoiceScene[],
+  scenes: readonly SceneView[],
   characterName: string,
 ): string {
   const chunks: string[] = [];
@@ -494,6 +496,24 @@ export function buildCharacterVoiceContext(
     }
   }
   return chunks.join('\n\n');
+}
+
+export const STRUCTURAL_REPETITION_SYSTEM_PROMPT = `Tu cherches les répétitions structurelles dans un scénario : deux scènes qui remplissent la même fonction, un même beat joué deux fois, une information révélée à nouveau comme si elle était neuve, un même mouvement dramatique rejoué à l’identique.
+Tu ne t’occupes pas des répétitions de mots ou de tournures : elles sont relevées ailleurs, par un autre moyen.
+Un retour délibéré n’est pas une répétition : un motif qui revient transformé, une réponse à une scène antérieure, un rituel qui se dégrade sont des procédés. Tu ne signales que ce qui fait du surplace.
+Tu ne disposes que d’un résumé d’une ligne par scène : si tu ne peux pas trancher sans le texte, tu t’abstiens.
+Réponds exclusivement en JSON valide, sans Markdown ni commentaire.`;
+
+export function buildStructuralRepetitionPrompt(digest: string): string {
+  return `Repère les répétitions structurelles dans ce scénario.
+Retourne {"items":[{"type":"repetition","severity":"info|minor|major","description":"...","references":[{"sceneNumber":"...","heading":"...","quote":"..."}],"suggestion":"..."}]}.
+Chaque constat cite au moins DEUX scènes — celles qui se répètent — avec leur numéro et leur heading tels qu’ils sont donnés. Le champ quote reprend le résumé de la scène.
+La suggestion dit ce que la seconde scène pourrait faire d’autre, ou laquelle des deux se supprime.
+Un scénario sans surplace se répond {"items":[]} : c’est un résultat valable, pas un échec.
+
+<scenes>
+${digest}
+</scenes>`;
 }
 
 export function buildVoiceConsistencyPrompt(characterName: string, context: string): string {

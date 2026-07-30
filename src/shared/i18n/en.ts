@@ -79,6 +79,7 @@ export const en = {
   'menu.ai.renameCharacter': 'Rename Character…',
   'menu.ai.inconsistencies': 'Find Inconsistencies…',
   'menu.ai.voiceConsistency': 'Check a Character’s Voice…',
+  'menu.ai.repetitions': 'Find Repetitions…',
 
   // ── Menu: Language ───────────────────────────────────────────────────────
   'menu.language': 'Language',
@@ -391,6 +392,37 @@ export const en = {
   'formatting.italic': 'Italic',
   'formatting.underline': 'Underline',
   'formatting.selectText': 'Select text before applying formatting.',
+  'repetition.title': 'Narrative repetition',
+  'repetition.subtitle':
+    'The same words twice, and the same scene twice. The first is measured; the second is judged.',
+  'repetition.close': 'Close repetition analysis',
+  'repetition.scope': 'Where to look',
+  'repetition.scope.all': 'Dialogue and action',
+  'repetition.scope.dialogue': 'Dialogue only',
+  'repetition.scope.action': 'Action only',
+  'repetition.none': 'Nothing repeats word for word. Only the structural reading is left to do.',
+  'repetition.truncated': 'the weakest findings were left out',
+  'repetition.signature': '{speaker}, {count} times',
+  'repetition.spread': 'spread across the screenplay, {count} times',
+  'repetition.structuralTitle': 'Structural repetition',
+  'repetition.structuralHint':
+    'Two scenes doing the same job, a beat played twice, a revelation revealed again. This one needs a model, and reads a one-line summary of every scene.',
+  'repetition.analyseStructure': 'Look for structural repetition',
+  'repetition.analysing': 'Reading the shape of the screenplay…',
+  'repetition.notAnalysed': 'The structural reading has not been run.',
+  'repetition.structuralEmpty': 'No scene was found to be marking time.',
+  'repetition.found': {
+    one: '{count} repeated phrase in {words} words',
+    other: '{count} repeated phrases in {words} words',
+  },
+  'repetition.meta': {
+    one: '{words} words · {span} scene apart',
+    other: '{words} words · {span} scenes apart',
+  },
+  'repetition.occurrences': {
+    one: 'Show the {count} place it appears',
+    other: 'Show the {count} places it appears',
+  },
   'consistency.title': 'Inconsistency report',
   'consistency.close': 'Close consistency analysis',
   'voice.title': 'Voice consistency',
@@ -422,6 +454,7 @@ export const en = {
   'consistency.type.location': 'Location / geography',
   'consistency.type.plot': 'Plot logic',
   'consistency.type.dialogue': 'Contradictory dialogue',
+  'consistency.type.repetition': 'Narrative repetition',
   'consistency.type.voice': 'Character voice',
   'consistency.severity.all': 'All severities',
   'consistency.severity.info': 'Info',

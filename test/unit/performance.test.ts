@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { collapseToHunks, diffLines, diffScenes } from '../../src/shared/diff/index.js';
 import { analyzeForEditor } from '../../src/shared/fountain/editor-analysis.js';
 import { parse } from '../../src/shared/fountain/parse.js';
+import { findRepeatedPhrases } from '../../src/shared/repetition/index.js';
 
 /**
  * The specification requires fluid typing (< 16 ms) on a 120-page screenplay. Editor
@@ -145,5 +146,39 @@ describe('version comparison on a feature screenplay', () => {
 
     expect(changes.length).toBeGreaterThan(0);
     expect(elapsed).toBeLessThan(50);
+  });
+});
+
+describe('literal repetition on a feature screenplay', () => {
+  // Every scene of the generated screenplay reuses the same action paragraph and the same
+  // speech, which is the worst case for this analysis: hundreds of identical blocks, every
+  // window inside them repeating. A real screenplay gives it far less to chew on.
+  const scenes = parse(generateScreenplay(120)).scenes.map((scene) => ({
+    number: scene.number,
+    heading: scene.heading,
+    elements: scene.elements,
+  }));
+
+  it('scans a feature fast enough to open a dialog on', () => {
+    const started = performance.now();
+    const report = findRepeatedPhrases(scenes);
+    const elapsed = performance.now() - started;
+
+    expect(report.wordCount).toBeGreaterThan(15_000);
+    expect(elapsed).toBeLessThan(300);
+  });
+
+  it('names each repeated passage once, at full length, however many windows cover it', () => {
+    const report = findRepeatedPhrases(scenes);
+    // The document holds exactly two repeated passages. Anything more than a handful of
+    // findings means the overlapping windows were reported instead of the passage.
+    expect(report.phrases.length).toBeLessThan(5);
+    const longest = report.phrases.reduce((best, phrase) =>
+      phrase.length > best.length ? phrase : best,
+    );
+    expect(longest.length).toBeGreaterThan(10);
+    expect(longest.total).toBeGreaterThan(200);
+    // And the occurrence list stays bounded even at three hundred repeats.
+    expect(longest.occurrences.length).toBeLessThanOrEqual(30);
   });
 });

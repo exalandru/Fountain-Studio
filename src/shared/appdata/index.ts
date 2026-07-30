@@ -57,6 +57,7 @@ export interface AppData {
   rewrite: RewriteState;
   inconsistencies: InconsistencyState;
   voiceConsistency: Record<string, InconsistencyState>;
+  repetitions: InconsistencyState;
 }
 
 export const DEFAULT_APP_DATA: Readonly<AppData> = {
@@ -89,6 +90,10 @@ export const DEFAULT_APP_DATA: Readonly<AppData> = {
     analyzedAt: null,
   },
   voiceConsistency: {},
+  repetitions: {
+    items: [],
+    analyzedAt: null,
+  },
 };
 
 export function createDefaultAppData(): AppData {
@@ -100,6 +105,7 @@ export function createDefaultAppData(): AppData {
     rewrite: { ...DEFAULT_APP_DATA.rewrite },
     inconsistencies: { items: [], analyzedAt: null },
     voiceConsistency: {},
+    repetitions: { items: [], analyzedAt: null },
   };
 }
 
@@ -136,7 +142,8 @@ function parseInconsistencyItems(value: unknown): AiInconsistency[] {
         item['type'] !== 'location' &&
         item['type'] !== 'plot' &&
         item['type'] !== 'dialogue' &&
-        item['type'] !== 'voice') ||
+        item['type'] !== 'voice' &&
+        item['type'] !== 'repetition') ||
       (item['severity'] !== 'info' && item['severity'] !== 'minor' && item['severity'] !== 'major')
     ) {
       return [];
@@ -216,6 +223,10 @@ export function parseAppData(raw: string): AppData | null {
       typeof root['voiceConsistency'] === 'object' && root['voiceConsistency'] !== null
         ? (root['voiceConsistency'] as Record<string, unknown>)
         : {};
+    const repetitions =
+      typeof root['repetitions'] === 'object' && root['repetitions'] !== null
+        ? (root['repetitions'] as Record<string, unknown>)
+        : {};
 
     if (typeof sidebar['visible'] === 'boolean') result.sidebar.visible = sidebar['visible'];
     if (
@@ -271,6 +282,11 @@ export function parseAppData(raw: string): AppData | null {
       Number.isFinite(inconsistencies['analyzedAt'])
     ) {
       result.inconsistencies.analyzedAt = inconsistencies['analyzedAt'];
+    }
+
+    result.repetitions.items = parseInconsistencyItems(repetitions['items']);
+    if (typeof repetitions['analyzedAt'] === 'number' && Number.isFinite(repetitions['analyzedAt'])) {
+      result.repetitions.analyzedAt = repetitions['analyzedAt'];
     }
 
     // Findings are keyed by character name, which comes from the screenplay and so is
