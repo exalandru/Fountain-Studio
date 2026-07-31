@@ -22,6 +22,23 @@ export default tseslint.config(
     },
   },
   {
+    // The icon renderer is CommonJS because Electron runs it as a main script directly, so it
+    // needs the Node globals `no-undef` cannot infer and the `require` the TypeScript rules ban.
+    files: ['scripts/**/*.cjs'],
+    languageOptions: {
+      sourceType: 'commonjs',
+      globals: {
+        require: 'readonly',
+        module: 'writable',
+        process: 'readonly',
+        console: 'readonly',
+      },
+    },
+    rules: {
+      '@typescript-eslint/no-require-imports': 'off',
+    },
+  },
+  {
     // src/shared stays pure TypeScript: no Electron, Node or DOM dependency. This keeps
     // it portable between workers, main and renderer, and testable without a harness.
     files: ['src/shared/**/*.ts'],

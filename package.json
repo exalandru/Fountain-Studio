@@ -23,6 +23,7 @@
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "check:licenses": "tsx scripts/check-licenses.ts",
+    "icon:render": "electron scripts/render-icon.cjs",
     "package:dir": "electron-builder --dir --publish never",
     "build:mac": "npm run build && electron-builder --mac --publish never",
     "build:win": "npm run build && electron-builder --win --publish never",
