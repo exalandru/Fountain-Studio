@@ -132,9 +132,7 @@ test('dragging a card rewrites the screenplay, and one undo puts it back', async
 
   await dragCard(0, 2, 'right');
 
-  await expect
-    .poll(headings)
-    .toEqual(['EXT. RUE - JOUR', 'INT. CAVE - NUIT', 'INT. LABO - NUIT']);
+  await expect.poll(headings).toEqual(['EXT. RUE - JOUR', 'INT. CAVE - NUIT', 'INT. LABO - NUIT']);
   // The body followed its heading rather than staying behind.
   const moved = await screenplayText();
   expect(moved.indexOf('Alice observe')).toBeGreaterThan(moved.indexOf('Le noir complet.'));
@@ -142,9 +140,7 @@ test('dragging a card rewrites the screenplay, and one undo puts it back', async
   await expect(cards().nth(0).locator('.corkboard-number')).toHaveText('12');
 
   await page.keyboard.press('ControlOrMeta+z');
-  await expect
-    .poll(headings)
-    .toEqual(['INT. LABO - NUIT', 'EXT. RUE - JOUR', 'INT. CAVE - NUIT']);
+  await expect.poll(headings).toEqual(['INT. LABO - NUIT', 'EXT. RUE - JOUR', 'INT. CAVE - NUIT']);
   // And the board follows the document back. Left showing the order it had optimistically
   // drawn, the next gesture would be aimed at the wrong scene.
   await expect
@@ -156,16 +152,12 @@ test('a card moves with Alt and an arrow', async () => {
   await cards().nth(0).focus();
   await page.keyboard.press('Alt+ArrowRight');
 
-  await expect
-    .poll(headings)
-    .toEqual(['EXT. RUE - JOUR', 'INT. LABO - NUIT', 'INT. CAVE - NUIT']);
+  await expect.poll(headings).toEqual(['EXT. RUE - JOUR', 'INT. LABO - NUIT', 'INT. CAVE - NUIT']);
   await expect(page.locator('.status-message')).toContainText('position 2');
 
   // Undo reaches the editor even though a card holds the focus.
   await page.keyboard.press('ControlOrMeta+z');
-  await expect
-    .poll(headings)
-    .toEqual(['INT. LABO - NUIT', 'EXT. RUE - JOUR', 'INT. CAVE - NUIT']);
+  await expect.poll(headings).toEqual(['INT. LABO - NUIT', 'EXT. RUE - JOUR', 'INT. CAVE - NUIT']);
   await expect
     .poll(() => cards().locator('.corkboard-heading').allInnerTexts())
     .toEqual(['INT. LABO - NUIT', 'EXT. RUE - JOUR', 'INT. CAVE - NUIT']);

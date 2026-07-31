@@ -257,7 +257,10 @@ test('folds a place’s sub-locations into one sheet, and lets it be undone', as
   expect(city?.aliases?.[0]).toContain('MÉGALOPOLE - ');
 
   // And it can be taken back: the grouping page offers the freed name again.
-  await dialog.getByRole('button', { name: /^Stop covering/ }).first().click();
+  await dialog
+    .getByRole('button', { name: /^Stop covering/ })
+    .first()
+    .click();
   await expect(dialog.locator('.bible-aliases li')).toHaveCount(1);
   await expect(dialog.locator('.bible-facts')).toContainText('2 scenes');
 

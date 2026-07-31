@@ -1,7 +1,7 @@
 {
   "name": "quantum-draft",
   "productName": "Quantum Draft",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Application desktop d'écriture scénaristique au format Fountain, assistée par IA",
   "author": "Exalandru",
   "license": "UNLICENSED",

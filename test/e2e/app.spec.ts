@@ -383,7 +383,10 @@ test('formatted mode hides Fountain markers and exposes a floating format bar', 
     'aria-pressed',
     'true',
   );
-  await page.locator('.cm-line').filter({ hasText: /^word$/ }).dblclick();
+  await page
+    .locator('.cm-line')
+    .filter({ hasText: /^word$/ })
+    .dblclick();
   await toolbar.getByRole('button', { name: 'Bold' }).click();
   await toggle.click();
   await expect(editor).toContainText('**word**');

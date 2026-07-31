@@ -23,9 +23,7 @@ export function CommandPalette({ commands, onRun, onClose }: CommandPaletteProps
   const [selected, setSelected] = useState(0);
   const filtered = useMemo(() => {
     const needle = query.trim();
-    return needle
-      ? commands.filter((command) => foldedIncludes(command.label, needle))
-      : commands;
+    return needle ? commands.filter((command) => foldedIncludes(command.label, needle)) : commands;
   }, [commands, query]);
 
   useEffect(() => {

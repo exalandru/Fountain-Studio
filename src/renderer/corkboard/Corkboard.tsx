@@ -143,7 +143,8 @@ export const Corkboard = memo(function Corkboard({
 
   // A committed draft is dropped as soon as an analysis newer than the commit arrives: from
   // then on the document itself is the better answer.
-  const liveDraft = draft && (draft.committedAt === null || draft.committedAt === revision) ? draft : null;
+  const liveDraft =
+    draft && (draft.committedAt === null || draft.committedAt === revision) ? draft : null;
 
   const move = useCallback(
     (from: number, to: number) => {
@@ -275,12 +276,8 @@ export const Corkboard = memo(function Corkboard({
                 colour === null ? 'corkboard-plain' : `corkboard-${colour}`,
                 scene.id === activeSceneId ? 'is-current' : '',
                 drag?.moved && drag.index === position ? 'is-dragging' : '',
-                indicator?.index === position && indicator.side === 'left'
-                  ? 'is-drop-before'
-                  : '',
-                indicator?.index === position && indicator.side === 'right'
-                  ? 'is-drop-after'
-                  : '',
+                indicator?.index === position && indicator.side === 'left' ? 'is-drop-before' : '',
+                indicator?.index === position && indicator.side === 'right' ? 'is-drop-after' : '',
               ]
                 .filter(Boolean)
                 .join(' ')}

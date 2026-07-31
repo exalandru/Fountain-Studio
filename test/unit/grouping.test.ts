@@ -9,15 +9,8 @@ import { suggestLocationGroups } from '../../src/shared/bible/grouping.js';
 describe('grouping locations', () => {
   it('groups sub-locations under the place they name', () => {
     expect(
-      suggestLocationGroups([
-        'MÉGALOPOLE',
-        'MÉGALOPOLE - REMPARTS',
-        'MÉGALOPOLE - RUES',
-        'TOIT',
-      ]),
-    ).toEqual([
-      { parent: 'MÉGALOPOLE', children: ['MÉGALOPOLE - REMPARTS', 'MÉGALOPOLE - RUES'] },
-    ]);
+      suggestLocationGroups(['MÉGALOPOLE', 'MÉGALOPOLE - REMPARTS', 'MÉGALOPOLE - RUES', 'TOIT']),
+    ).toEqual([{ parent: 'MÉGALOPOLE', children: ['MÉGALOPOLE - REMPARTS', 'MÉGALOPOLE - RUES'] }]);
   });
 
   it('proposes a parent the screenplay never uses on its own', () => {
@@ -59,11 +52,7 @@ describe('grouping locations', () => {
   it('claims a location once, and prefers the author’s own hierarchy', () => {
     // TOUR DE MÉGALOPOLE could sit under either, but the dashed reading wins and nothing is
     // proposed twice.
-    const groups = suggestLocationGroups([
-      'MÉGALOPOLE',
-      'TOUR',
-      'MÉGALOPOLE - TOUR',
-    ]);
+    const groups = suggestLocationGroups(['MÉGALOPOLE', 'TOUR', 'MÉGALOPOLE - TOUR']);
     const children = groups.flatMap((group) => group.children);
     expect(new Set(children).size).toBe(children.length);
     expect(groups).toEqual([{ parent: 'MÉGALOPOLE', children: ['MÉGALOPOLE - TOUR'] }]);

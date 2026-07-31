@@ -612,7 +612,8 @@ export const en = {
   'pdf.revisionLockedPages': 'Locked page numbers',
   'pdf.revisionOnlyRevised': 'Revised pages only',
   'pdf.revisionDate': 'Revision date',
-  'pdf.revisionNote': 'Locked pages apply to this export. The preview panel keeps showing the natural flow.',
+  'pdf.revisionNote':
+    'Locked pages apply to this export. The preview panel keeps showing the natural flow.',
 
   // ── Production revisions ─────────────────────────────────────────────────
   'menu.edit.lockProduction': 'Lock for Production…',
@@ -632,7 +633,8 @@ export const en = {
   'revision.locked': 'Locked: {count} scenes numbered. Revision now on {colour}.',
   'revision.issued': '{colour} pages issued. The next revision is {next}.',
   'revision.unlocked': 'Production numbering unlocked. The numbers stay in the screenplay.',
-  'revision.saveFirst': 'Save the screenplay before locking it: a locked draft is kept beside the file.',
+  'revision.saveFirst':
+    'Save the screenplay before locking it: a locked draft is kept beside the file.',
   'revision.failed': 'Could not lock the screenplay: {error}',
   'revision.notLocked': 'Lock the screenplay for production first.',
   'revision.lettered': '{count} new scenes numbered. Locked numbers were left alone.',

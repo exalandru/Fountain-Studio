@@ -316,7 +316,6 @@ export function parseShortSuggestions(raw: string, maximum = 10): string[] {
 }
 
 export type InconsistencyType =
-
   | 'continuity'
   | 'chronology'
   | 'character'

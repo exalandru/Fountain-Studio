@@ -17,7 +17,7 @@ interface VoiceConsistencyPanelProps {
   /** `null` until the first analysis lands; the character list comes from it. */
   analysis: ParseResponse | null;
   /** One entry per character, so each voice keeps its own findings. */
-  state: Record<string, InconsistencyState>
+  state: Record<string, InconsistencyState>;
   t: Translator['t'];
   onStateChange: (characterName: string, state: InconsistencyState) => void;
   onSelectReference: (reference: { sceneNumber: string; heading: string }) => void;
@@ -189,7 +189,9 @@ export function VoiceConsistencyPanel({
             >
               <option value="">{t('voice.selectCharacter')}</option>
               {characters.map((char) => (
-                <option key={char} value={char}>{char}</option>
+                <option key={char} value={char}>
+                  {char}
+                </option>
               ))}
             </select>
 
@@ -228,7 +230,9 @@ export function VoiceConsistencyPanel({
               <div className="panel-placeholder">{t('voice.selectFirst')}</div>
             ) : currentItems.length === 0 ? (
               <div className="panel-placeholder">
-                {state[selectedCharacter]?.analyzedAt ? t('consistency.empty') : t('voice.notAnalysed')}
+                {state[selectedCharacter]?.analyzedAt
+                  ? t('consistency.empty')
+                  : t('voice.notAnalysed')}
               </div>
             ) : (
               currentItems.map((item: AiInconsistency) => (
@@ -254,7 +258,9 @@ export function VoiceConsistencyPanel({
                   ) : null}
                   <select
                     value={item.status}
-                    onChange={(event) => setStatus(item.id, event.target.value as InconsistencyStatus)}
+                    onChange={(event) =>
+                      setStatus(item.id, event.target.value as InconsistencyStatus)
+                    }
                   >
                     <option value="open">{t('consistency.status.open')}</option>
                     <option value="ignored">{t('consistency.status.ignored')}</option>

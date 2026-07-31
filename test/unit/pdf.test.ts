@@ -182,11 +182,7 @@ describe('PDF revisions', () => {
     );
     const current = source.replace('Une action de la scène 1.', `Une action.\n\n${added}`);
 
-    const flowing = await renderScreenplayPdf(
-      current,
-      revision({ lockedPages: false }),
-      RESOURCES,
-    );
+    const flowing = await renderScreenplayPdf(current, revision({ lockedPages: false }), RESOURCES);
     const locked = await renderScreenplayPdf(current, revision(), RESOURCES);
 
     // Pinning costs paper: a page whose content is fixed cannot absorb what spilled from the
@@ -231,7 +227,11 @@ describe('PDF revisions', () => {
 
   it('drops the header when the page itself carries the colour', async () => {
     const current = source.replace('Une action de la scène 1.', 'Une action réécrite.');
-    const rendered = await renderScreenplayPdf(current, revision({ colourMode: 'page' }), RESOURCES);
+    const rendered = await renderScreenplayPdf(
+      current,
+      revision({ colourMode: 'page' }),
+      RESOURCES,
+    );
     const pages = await pageTexts(rendered.bytes);
 
     expect(pages.some((page) => page.includes('RÉVISION'))).toBe(false);

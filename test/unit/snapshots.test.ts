@@ -240,7 +240,9 @@ describe('snapshot storage', () => {
     for (let index = 0; index < MAX_SNAPSHOTS; index++) {
       await createSnapshot(screenplay, `v${index}`, SOURCE);
     }
-    await expect(createSnapshot(screenplay, 'one too many', SOURCE)).rejects.toThrow('limitReached');
+    await expect(createSnapshot(screenplay, 'one too many', SOURCE)).rejects.toThrow(
+      'limitReached',
+    );
     expect(await listSnapshots(screenplay)).toHaveLength(MAX_SNAPSHOTS);
   });
 

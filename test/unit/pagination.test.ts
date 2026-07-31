@@ -180,7 +180,10 @@ describe('locked pages', () => {
     // Two pinned pages, and forty blocks crammed into the first — a page and a half of them.
     const source = blocks(60);
     const starts = [1, lineOf(source, 'Action 40.')];
-    const result = paginateScreenplay(parse(source), { format: 'letter', lockedPageStarts: starts });
+    const result = paginateScreenplay(parse(source), {
+      format: 'letter',
+      lockedPageStarts: starts,
+    });
 
     expect(result.pages.map((page) => page.number)).toEqual(['1', '1A', '2']);
     // Page 2 still starts where it was pinned: that is the whole point of the letter.
@@ -191,7 +194,10 @@ describe('locked pages', () => {
   it('leaves a page short rather than pulling the next page back', () => {
     const source = blocks(90);
     const starts = [1, lineOf(source, 'Action 4.'), lineOf(source, 'Action 60.')];
-    const result = paginateScreenplay(parse(source), { format: 'letter', lockedPageStarts: starts });
+    const result = paginateScreenplay(parse(source), {
+      format: 'letter',
+      lockedPageStarts: starts,
+    });
 
     // Page 1 holds four blocks and stops, half blank, exactly like an issued page that lost a
     // scene.

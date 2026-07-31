@@ -125,10 +125,7 @@ const MAX_IMAGE_BYTES = 2_000_000;
  * `data:` and not `file:` — which is also why every picture passes through here, where it
  * can be checked.
  */
-export async function readBibleImage(
-  screenplayPath: string,
-  id: string,
-): Promise<string | null> {
+export async function readBibleImage(screenplayPath: string, id: string): Promise<string | null> {
   try {
     const bytes = await readFile(join(bibleImagesDirectory(screenplayPath), bibleImageName(id)));
     return `${ACCEPTED_PREFIX}${bytes.toString('base64')}`;

@@ -5,7 +5,12 @@ import { parse } from '@shared/fountain/index.js';
 import type { PdfExportOptions } from '@shared/ipc-contract.js';
 import type { PaginationItem, ScreenplayPage } from '@shared/pagination/index.js';
 import { paginateScreenplay } from '@shared/pagination/index.js';
-import { REVISION_PAPER, alignLines, revisedElements, revisedLines } from '@shared/revision/index.js';
+import {
+  REVISION_PAPER,
+  alignLines,
+  revisedElements,
+  revisedLines,
+} from '@shared/revision/index.js';
 
 const LINE_HEIGHT = 12;
 const CHARACTER_WIDTH = 7.2;
@@ -362,7 +367,11 @@ function renderBodyPage(
  * the first keystroke. The locked draft is paginated here with the very same options, and the
  * diff moves its page starts onto the text as it is now.
  */
-function lockedPageStarts(baselineSource: string, current: string, options: PdfExportOptions): number[] {
+function lockedPageStarts(
+  baselineSource: string,
+  current: string,
+  options: PdfExportOptions,
+): number[] {
   const parsed = parse(baselineSource);
   const baseline = options.includeNotes ? withNotes(parsed) : parsed;
   const pagination = paginateScreenplay(baseline, {

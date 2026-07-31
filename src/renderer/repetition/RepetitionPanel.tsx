@@ -112,7 +112,9 @@ export function RepetitionPanel({
           mode: 'factual',
           temperature: 0.2,
           systemPrompt: STRUCTURAL_REPETITION_SYSTEM_PROMPT,
-          messages: [{ role: 'user', content: buildStructuralRepetitionPrompt(buildSceneDigest(scenes)) }],
+          messages: [
+            { role: 'user', content: buildStructuralRepetitionPrompt(buildSceneDigest(scenes)) },
+          ],
         },
         (next) => {
           if (next === 'reasoning') setPhase(t('ai.request.reasoning'));
@@ -212,9 +214,7 @@ export function RepetitionPanel({
                     type="button"
                     className="repetition-toggle"
                     aria-expanded={expanded === phrase.phrase}
-                    onClick={() =>
-                      setExpanded(expanded === phrase.phrase ? null : phrase.phrase)
-                    }
+                    onClick={() => setExpanded(expanded === phrase.phrase ? null : phrase.phrase)}
                   >
                     {t('repetition.occurrences', { count: phrase.occurrences.length })}
                   </button>

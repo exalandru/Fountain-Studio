@@ -86,10 +86,15 @@ describe('literal repetition', () => {
 
   it('keeps dialogue and action apart, and reports an action formula as spread', () => {
     const formula = find('pousse la porte et reste sur le seuil');
-    expect(formula).toMatchObject({ scope: 'action', total: 2, speakers: [], attribution: 'spread' });
-    expect(report.phrases.every((item) => item.scope === 'dialogue' || item.scope === 'action')).toBe(
-      true,
-    );
+    expect(formula).toMatchObject({
+      scope: 'action',
+      total: 2,
+      speakers: [],
+      attribution: 'spread',
+    });
+    expect(
+      report.phrases.every((item) => item.scope === 'dialogue' || item.scope === 'action'),
+    ).toBe(true);
   });
 
   it('ignores what repeats by design: headings, cues and transitions', () => {

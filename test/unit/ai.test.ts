@@ -278,9 +278,9 @@ describe('bible drafting', () => {
   it('drops empty and whitespace-only values rather than storing blanks', () => {
     // A blank field is the model saying the screenplay does not establish it, which must
     // leave the author's own field untouched rather than writing a space into it.
-    expect(parseBibleDraft('{"fields":{"role":"","wants":"   ","fears":"La nuit."}}', FIELDS)).toEqual(
-      { fears: 'La nuit.' },
-    );
+    expect(
+      parseBibleDraft('{"fields":{"role":"","wants":"   ","fears":"La nuit."}}', FIELDS),
+    ).toEqual({ fears: 'La nuit.' });
   });
 
   it('returns nothing on anything unusable, rather than throwing', () => {

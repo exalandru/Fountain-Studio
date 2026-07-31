@@ -458,8 +458,7 @@ export const fr: Catalog = {
   'bible.loading': 'Lecture de la bible…',
   'bible.saveFirst': 'Enregistrez d’abord le scénario : la bible est rangée à côté de lui.',
   'bible.list': 'Fiches',
-  'bible.empty':
-    'Aucune fiche. Nommez-en une ci-dessous — les noms du scénario sont proposés.',
+  'bible.empty': 'Aucune fiche. Nommez-en une ci-dessous — les noms du scénario sont proposés.',
   'bible.selectFirst': 'Choisissez une fiche, ou créez-en une.',
   'bible.nameLabel': 'Nom de la fiche',
   'bible.add': 'Nouvelle fiche',
@@ -620,7 +619,8 @@ export const fr: Catalog = {
   'pdf.revisionLockedPages': 'Numéros de page verrouillés',
   'pdf.revisionOnlyRevised': 'Pages révisées seulement',
   'pdf.revisionDate': 'Date de la révision',
-  'pdf.revisionNote': 'Les pages verrouillées valent pour cet export. Le panneau d’aperçu continue de montrer le flux naturel.',
+  'pdf.revisionNote':
+    'Les pages verrouillées valent pour cet export. Le panneau d’aperçu continue de montrer le flux naturel.',
 
   // ── Révisions de production ──────────────────────────────────────────────
   'menu.edit.lockProduction': 'Verrouiller pour la production…',
@@ -640,10 +640,12 @@ export const fr: Catalog = {
   'revision.locked': 'Verrouillé : {count} scènes numérotées. La révision passe en {colour}.',
   'revision.issued': 'Pages {colour} émises. La prochaine révision sera {next}.',
   'revision.unlocked': 'Numérotation déverrouillée. Les numéros restent dans le scénario.',
-  'revision.saveFirst': 'Enregistrez le scénario avant de le verrouiller : la version de référence est conservée à côté du fichier.',
+  'revision.saveFirst':
+    'Enregistrez le scénario avant de le verrouiller : la version de référence est conservée à côté du fichier.',
   'revision.failed': 'Verrouillage impossible : {error}',
   'revision.notLocked': 'Verrouillez d’abord le scénario pour la production.',
-  'revision.lettered': '{count} nouvelles scènes numérotées. Les numéros verrouillés n’ont pas bougé.',
+  'revision.lettered':
+    '{count} nouvelles scènes numérotées. Les numéros verrouillés n’ont pas bougé.',
   'revision.status': 'Révision {colour}',
   'revision.pdfHeader': 'Révision {colour} — {date}',
 };

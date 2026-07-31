@@ -104,9 +104,7 @@ test('locking numbers every scene and files the draft as a reference', async () 
   await expect(page.locator('.status-revision')).toContainText('Blue');
 
   // The reference is a real snapshot, kept beside the screenplay.
-  await expect
-    .poll(async () => (await companion()).revision?.snapshotId ?? null)
-    .toMatch(/^snap-/);
+  await expect.poll(async () => (await companion()).revision?.snapshotId ?? null).toMatch(/^snap-/);
   await runCommand('file.snapshots');
   const versions = page.locator('.snapshot-dialog');
   await expect(versions.locator('.rail-name')).toHaveText('Locked draft');
@@ -204,9 +202,7 @@ test('issuing a revision moves the colour on and re-bases the comparison', async
   await expect(page.locator('.status-message')).toContainText('Blue pages issued');
   await expect(page.locator('.status-revision')).toContainText('Pink');
   // Each revision is compared against the previous one, not against the first draft.
-  await expect
-    .poll(async () => (await companion()).revision?.snapshotId)
-    .not.toBe(before);
+  await expect.poll(async () => (await companion()).revision?.snapshotId).not.toBe(before);
   await expect.poll(async () => (await companion()).revision?.colour).toBe('pink');
 });
 

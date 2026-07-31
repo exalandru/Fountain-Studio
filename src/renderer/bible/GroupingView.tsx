@@ -86,7 +86,8 @@ export function GroupingView({
   );
 
   const sceneCount = (name: string): number =>
-    locations.find((location) => foldDiacritics(location.name) === foldDiacritics(name))?.count ?? 0;
+    locations.find((location) => foldDiacritics(location.name) === foldDiacritics(name))?.count ??
+    0;
 
   const sheetsOfKind = (kind: BibleEntryKind) =>
     entries.filter((entry) => entry.kind === kind).sort((a, b) => a.name.localeCompare(b.name));
@@ -169,9 +170,7 @@ export function GroupingView({
                     <li key={name}>
                       <span className="bible-unattached-name">{name}</span>
                       <label>
-                        <span className="sr-only">
-                          {t('bible.grouping.attachLabel', { name })}
-                        </span>
+                        <span className="sr-only">{t('bible.grouping.attachLabel', { name })}</span>
                         <select
                           value=""
                           disabled={busy}

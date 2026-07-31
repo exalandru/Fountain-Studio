@@ -153,7 +153,11 @@ describe('moving a scene', () => {
       'INT. A - JOUR',
     ]);
     // The title stayed where it was, and the scene that passed it belongs to it now.
-    expect(after.map((scene) => scene.sectionPath)).toEqual([['ACTE II'], ['ACTE II'], ['ACTE II']]);
+    expect(after.map((scene) => scene.sectionPath)).toEqual([
+      ['ACTE II'],
+      ['ACTE II'],
+      ['ACTE II'],
+    ]);
     expect(moved).toContain('# ACTE II');
   });
 
@@ -175,8 +179,7 @@ describe('moving a scene', () => {
   });
 
   it('carries a synopsis with its scene', () => {
-    const source =
-      'INT. A - JOUR\n= Alix hésite.\n\nUne action.\n\nINT. B - JOUR\n\nUne autre.\n';
+    const source = 'INT. A - JOUR\n= Alix hésite.\n\nUne action.\n\nINT. B - JOUR\n\nUne autre.\n';
     const after = parse(move(source, 0, 1)).scenes;
 
     expect(after[1]?.heading).toBe('INT. A - JOUR');
@@ -189,7 +192,11 @@ describe('moving a scene', () => {
     const moved = move(source, 0, 2);
 
     expect(moved).not.toMatch(/[^\r]\n/);
-    expect(parse(moved).scenes.map((scene) => scene.heading)).toEqual([THREE[1], THREE[2], THREE[0]]);
+    expect(parse(moved).scenes.map((scene) => scene.heading)).toEqual([
+      THREE[1],
+      THREE[2],
+      THREE[0],
+    ]);
   });
 
   it('keeps the title page and anything before the first scene in place', () => {

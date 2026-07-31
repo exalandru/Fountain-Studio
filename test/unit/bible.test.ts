@@ -54,15 +54,12 @@ describe('bible entry kinds are a closed set', () => {
 });
 
 describe('bible identifiers are stable and strict', () => {
-  it.each([
-    'bib-abc123',
-    'bib-a',
-    'bib-A_B-9',
-    'bib--test',
-    'some-id-within-length-limit',
-  ])('accepts %j as a valid ID', (value) => {
-    expect(isBibleId(value)).toBe(true);
-  });
+  it.each(['bib-abc123', 'bib-a', 'bib-A_B-9', 'bib--test', 'some-id-within-length-limit'])(
+    'accepts %j as a valid ID',
+    (value) => {
+      expect(isBibleId(value)).toBe(true);
+    },
+  );
 
   it.each([
     'bib with space',
@@ -109,9 +106,7 @@ describe('sanitizeBibleName collapses whitespace and bounds the length', () => {
   });
 
   it('bounds to MAX_NAME_LENGTH', () => {
-    expect(sanitizeBibleName('x'.repeat(MAX_NAME_LENGTH + 10))).toHaveLength(
-      MAX_NAME_LENGTH,
-    );
+    expect(sanitizeBibleName('x'.repeat(MAX_NAME_LENGTH + 10))).toHaveLength(MAX_NAME_LENGTH);
   });
 
   it('preserves empty for an all-whitespace string', () => {
@@ -135,7 +130,12 @@ describe('sanitizeBibleField bounds the length but keeps newlines', () => {
 describe('bibleFieldsFor returns the fixed set for each kind', () => {
   it('returns the character fields', () => {
     expect(bibleFieldsFor('character')).toEqual([
-      'role', 'wants', 'fears', 'arc', 'voice', 'background',
+      'role',
+      'wants',
+      'fears',
+      'arc',
+      'voice',
+      'background',
     ]);
   });
 
@@ -155,12 +155,8 @@ describe('bibleFieldsFor returns the fixed set for each kind', () => {
 describe('parseBible is tolerant of corruption', () => {
   it('returns an empty bible rather than throwing on garbage', () => {
     for (const raw of ['', 'not json', '{', '{{', null, undefined]) {
-      expect(() =>
-        parseBible(typeof raw === 'string' ? raw : String(raw)),
-      ).not.toThrow();
-      expect(
-        parseBible(typeof raw === 'string' ? raw : String(raw)).entries,
-      ).toEqual([]);
+      expect(() => parseBible(typeof raw === 'string' ? raw : String(raw))).not.toThrow();
+      expect(parseBible(typeof raw === 'string' ? raw : String(raw)).entries).toEqual([]);
     }
   });
 
@@ -304,8 +300,7 @@ describe('parseBible is tolerant of corruption', () => {
             aliases: [],
             image: null,
             fields: {
-              role: '  a role field value that is quite long '
-                .slice(0, MAX_FIELD_LENGTH),
+              role: '  a role field value that is quite long '.slice(0, MAX_FIELD_LENGTH),
             },
             draftedAt: null,
             updatedAt: 1_770_000_000_000,
@@ -366,9 +361,7 @@ describe('factsForEntry returns empty for object and concept kinds', () => {
   });
 
   it('concept yields []', () => {
-    expect(
-      factsForEntry({ kind: 'concept', name: 'Time Travel' }, input),
-    ).toEqual([]);
+    expect(factsForEntry({ kind: 'concept', name: 'Time Travel' }, input)).toEqual([]);
   });
 });
 
@@ -381,9 +374,7 @@ describe('factsForEntry returns empty for an unknown character', () => {
   };
 
   it('a non-existent character yields []', () => {
-    expect(factsForEntry({ kind: 'character', name: 'GHOST' }, input)).toEqual(
-      [],
-    );
+    expect(factsForEntry({ kind: 'character', name: 'GHOST' }, input)).toEqual([]);
   });
 });
 
@@ -426,10 +417,7 @@ describe('factsForEntry computes character facts', () => {
       ...input,
       scenes: [{ number: '42', heading: 'INT. ROOM', location: 'ROOM', elementIndexes: [0, 1] }],
     };
-    const facts = factsForEntry(
-      { kind: 'character', name: 'ALICE' },
-      singleScene,
-    );
+    const facts = factsForEntry({ kind: 'character', name: 'ALICE' }, singleScene);
     const firstScene = facts.find((f) => f.key === 'firstScene');
     const lastScene = facts.find((f) => f.key === 'lastScene');
     expect(firstScene?.value).toBe('42');
@@ -773,11 +761,7 @@ describe('location facts', () => {
 });
 
 describe('a sheet covers several names', () => {
-  const sheet = (
-    kind: 'character' | 'location',
-    name: string,
-    aliases: string[],
-  ): BibleEntry => ({
+  const sheet = (kind: 'character' | 'location', name: string, aliases: string[]): BibleEntry => ({
     id: `bib-${name}`,
     kind,
     name,
@@ -845,10 +829,10 @@ describe('a sheet covers several names', () => {
 
   it('stops offering a name that a sheet already covers', () => {
     // Otherwise the composer keeps proposing the sub-locations that were just grouped.
-    const result = reconcileBible(
-      [sheet('location', 'MÉGALOPOLE', ['MÉGALOPOLE - REMPARTS'])],
-      { characters: [], locations: ['MÉGALOPOLE', 'MÉGALOPOLE - REMPARTS', 'MÉGALOPOLE - RUES'] },
-    );
+    const result = reconcileBible([sheet('location', 'MÉGALOPOLE', ['MÉGALOPOLE - REMPARTS'])], {
+      characters: [],
+      locations: ['MÉGALOPOLE', 'MÉGALOPOLE - REMPARTS', 'MÉGALOPOLE - RUES'],
+    });
     expect(result.unseeded).toEqual([{ kind: 'location', name: 'MÉGALOPOLE - RUES' }]);
   });
 
@@ -857,7 +841,12 @@ describe('a sheet covers several names', () => {
       characters: [],
       locations: [],
       scenes: [
-        { number: '1', heading: 'EXT. MÉGALOPOLE - JOUR', location: 'MÉGALOPOLE', elementIndexes: [] },
+        {
+          number: '1',
+          heading: 'EXT. MÉGALOPOLE - JOUR',
+          location: 'MÉGALOPOLE',
+          elementIndexes: [],
+        },
         {
           number: '2',
           heading: 'EXT. MÉGALOPOLE - REMPARTS - NUIT',
@@ -876,7 +865,11 @@ describe('a sheet covers several names', () => {
     };
     expect(
       factsForEntry(
-        { kind: 'location', name: 'MÉGALOPOLE', aliases: ['MÉGALOPOLE - REMPARTS', 'MÉGALOPOLE - RUES'] },
+        {
+          kind: 'location',
+          name: 'MÉGALOPOLE',
+          aliases: ['MÉGALOPOLE - REMPARTS', 'MÉGALOPOLE - RUES'],
+        },
         input,
       ),
     ).toEqual([
@@ -902,7 +895,9 @@ describe('a sheet covers several names', () => {
         { kind: 'dialogue', text: 'Tard.', speaker: 'ALIX' },
       ],
     };
-    expect(factsForEntry({ kind: 'character', name: 'ALIX', aliases: ['LA FILLE'] }, input)).toEqual([
+    expect(
+      factsForEntry({ kind: 'character', name: 'ALIX', aliases: ['LA FILLE'] }, input),
+    ).toEqual([
       { key: 'scenes', count: 2 },
       { key: 'speeches', count: 6 },
       { key: 'words', count: 120 },
@@ -925,7 +920,12 @@ describe('a sheet covers several names', () => {
           location: 'RUE PRINCIPALE',
           elementIndexes: [],
         },
-        { number: '3', heading: 'EXT. GRANDE RUE - NUIT', location: 'GRANDE RUE', elementIndexes: [] },
+        {
+          number: '3',
+          heading: 'EXT. GRANDE RUE - NUIT',
+          location: 'GRANDE RUE',
+          elementIndexes: [],
+        },
       ],
       elements: [],
     };
@@ -969,8 +969,7 @@ describe('sheet pictures on disk', () => {
   let screenplay: string;
 
   /** The smallest valid WebP: a 1×1 lossy frame. */
-  const WEBP =
-    'data:image/webp;base64,UklGRhoAAABXRUJQVlA4TA0AAAAvAAAAEAcQERGIiP4HAA==';
+  const WEBP = 'data:image/webp;base64,UklGRhoAAABXRUJQVlA4TA0AAAAvAAAAEAcQERGIiP4HAA==';
 
   beforeEach(async () => {
     directory = await mkdtemp(join(tmpdir(), 'quantum-bible-image-'));

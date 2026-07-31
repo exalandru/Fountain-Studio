@@ -789,44 +789,44 @@ export function BiblePanel({ path, analysis, t, onClose }: BiblePanelProps) {
                   ) : null}
 
                   <div className="bible-heading">
-                  <div className="bible-identity">
-                    <button
-                      type="button"
-                      className="bible-avatar"
-                      disabled={busy}
-                      aria-label={t('bible.imageChange', { name: selected.name })}
-                      onClick={() => void chooseImage(selected)}
-                    >
-                      {pictures.get(selected.id) ? (
-                        <img src={pictures.get(selected.id) ?? ''} alt="" />
-                      ) : (
-                        <span>{initials(selected.name)}</span>
-                      )}
-                    </button>
-                    {pictures.get(selected.id) ? (
+                    <div className="bible-identity">
                       <button
                         type="button"
-                        className="bible-avatar-remove"
+                        className="bible-avatar"
                         disabled={busy}
-                        aria-label={t('bible.imageRemove')}
-                        onClick={() => void removeImage(selected)}
+                        aria-label={t('bible.imageChange', { name: selected.name })}
+                        onClick={() => void chooseImage(selected)}
                       >
-                        <span aria-hidden="true">×</span>
+                        {pictures.get(selected.id) ? (
+                          <img src={pictures.get(selected.id) ?? ''} alt="" />
+                        ) : (
+                          <span>{initials(selected.name)}</span>
+                        )}
                       </button>
-                    ) : null}
-                  </div>
-                  <label className="bible-name">
-                    <span className="sr-only">{t('bible.nameLabel')}</span>
-                    <input
-                      value={selected.name}
-                      maxLength={120}
-                      onChange={(event) => {
-                        update(selected.id, (entry) => ({ ...entry, name: event.target.value }));
-                        dirty.current = true;
-                      }}
-                      onBlur={flush}
-                    />
-                  </label>
+                      {pictures.get(selected.id) ? (
+                        <button
+                          type="button"
+                          className="bible-avatar-remove"
+                          disabled={busy}
+                          aria-label={t('bible.imageRemove')}
+                          onClick={() => void removeImage(selected)}
+                        >
+                          <span aria-hidden="true">×</span>
+                        </button>
+                      ) : null}
+                    </div>
+                    <label className="bible-name">
+                      <span className="sr-only">{t('bible.nameLabel')}</span>
+                      <input
+                        value={selected.name}
+                        maxLength={120}
+                        onChange={(event) => {
+                          update(selected.id, (entry) => ({ ...entry, name: event.target.value }));
+                          dirty.current = true;
+                        }}
+                        onBlur={flush}
+                      />
+                    </label>
                   </div>
 
                   {selected.aliases.length > 0 ? (
@@ -921,7 +921,6 @@ export function BiblePanel({ path, analysis, t, onClose }: BiblePanelProps) {
                       </label>
                     ))}
                   </div>
-
                 </>
               )}
             </div>

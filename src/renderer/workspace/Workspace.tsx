@@ -509,7 +509,9 @@ export function Workspace({
           </span>
         )}
         {revisionColour === null ? null : (
-          <span className="status-revision">{t('revision.status', { colour: revisionColour })}</span>
+          <span className="status-revision">
+            {t('revision.status', { colour: revisionColour })}
+          </span>
         )}
         <span className="status-message">{status}</span>
         {analysis && (

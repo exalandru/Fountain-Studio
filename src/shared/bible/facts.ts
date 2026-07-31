@@ -138,7 +138,7 @@ const MAX_CONTEXT_CHARACTERS = 12_000;
  *
  * Each passage is tagged `[number · heading]`, the same shape `buildCharacterVoiceContext`
  * uses, so a model asked for scene-consistent output has the scene number in front of it.
- */export function buildBibleContext(
+ */ export function buildBibleContext(
   entry: { kind: BibleEntryKind; name: string; aliases?: readonly string[] },
   scenes: readonly SceneView[],
   maxCharacters = MAX_CONTEXT_CHARACTERS,
@@ -176,7 +176,6 @@ const MAX_CONTEXT_CHARACTERS = 12_000;
 
     if (lines.length > 0) chunks.push(`${tag}\n${lines.join('\n')}`);
   }
-
 
   // Truncating on a passage boundary rather than mid-sentence: half a speech would make the
   // model draft from something the screenplay does not say.

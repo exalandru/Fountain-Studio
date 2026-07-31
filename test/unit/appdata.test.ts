@@ -129,7 +129,9 @@ describe('companion schema', () => {
     expect(parsed?.voiceConsistency['ALICE']?.analyzedAt).toBe(12);
     expect(parsed?.voiceConsistency['']).toBeUndefined();
     expect(parsed?.voiceConsistency['BOB']).toBeUndefined();
-    expect(Object.keys(parsed?.voiceConsistency ?? {}).every((key) => key.length <= 200)).toBe(true);
+    expect(Object.keys(parsed?.voiceConsistency ?? {}).every((key) => key.length <= 200)).toBe(
+      true,
+    );
   });
 
   it('migrates removed Brainstorm and left-side memo tabs to the new panel layout', () => {

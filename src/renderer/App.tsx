@@ -57,8 +57,6 @@ export function App() {
   const [aiSettingsOpen, setAiSettingsOpen] = useState(false);
   const [inconsistencyOpen, setInconsistencyOpen] = useState(false);
 
-
-
   const [snapshotsOpen, setSnapshotsOpen] = useState(false);
   const [voiceConsistencyOpen, setVoiceConsistencyOpen] = useState(false);
   const [repetitionsOpen, setRepetitionsOpen] = useState(false);
@@ -524,9 +522,7 @@ export function App() {
         ...data,
         revision: { snapshotId: created.id, lockedAt: created.createdAt, colour: 'blue' },
       }));
-      setStatus(
-        t('revision.locked', { count: scenes.length, colour: t('revision.colour.blue') }),
-      );
+      setStatus(t('revision.locked', { count: scenes.length, colour: t('revision.colour.blue') }));
     } catch (error) {
       setStatus(t('revision.failed', { error: error instanceof Error ? error.message : '' }));
     }
@@ -636,7 +632,6 @@ export function App() {
       { id: 'file.exportPdf', label: t('menu.file.exportPdf'), shortcut: '⇧⌘E' },
       { id: 'file.snapshots', label: t('menu.file.snapshots') },
       { id: 'file.bible', label: t('menu.file.bible') },
-
 
       { id: 'edit.find', label: t('menu.edit.find'), shortcut: '⌘F' },
       { id: 'scene.renumber', label: t('menu.edit.renumberScenes') },

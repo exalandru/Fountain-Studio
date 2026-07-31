@@ -275,7 +275,9 @@ export function SnapshotDialog({
                       </label>
                       <button
                         type="button"
-                        disabled={busy || draftName.trim() === selected.name || draftName.trim() === ''}
+                        disabled={
+                          busy || draftName.trim() === selected.name || draftName.trim() === ''
+                        }
                         onClick={() => void rename(selected.id)}
                       >
                         {t('snapshots.rename')}

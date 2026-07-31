@@ -359,7 +359,10 @@ export function parseAppData(raw: string): AppData | null {
     }
 
     result.repetitions.items = parseInconsistencyItems(repetitions['items']);
-    if (typeof repetitions['analyzedAt'] === 'number' && Number.isFinite(repetitions['analyzedAt'])) {
+    if (
+      typeof repetitions['analyzedAt'] === 'number' &&
+      Number.isFinite(repetitions['analyzedAt'])
+    ) {
       result.repetitions.analyzedAt = repetitions['analyzedAt'];
     }
 
