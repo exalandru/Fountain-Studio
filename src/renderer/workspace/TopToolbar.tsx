@@ -6,6 +6,7 @@ import type { Translator } from '@shared/i18n/index.js';
 const DEFAULT_EDITOR_FONT_SIZE = 15;
 
 type ToolbarIconName =
+  | 'corkboard'
   | 'consistency'
   | 'voice'
   | 'repetition'
@@ -28,6 +29,17 @@ type ToolbarIconName =
 function ToolbarIcon({ name }: { name: ToolbarIconName }) {
   let path: ReactNode;
   switch (name) {
+    case 'corkboard':
+      // Four cards pinned side by side: the board seen from a distance.
+      path = (
+        <>
+          <rect x="3.5" y="4.5" width="7" height="6" rx="1" />
+          <rect x="13.5" y="4.5" width="7" height="6" rx="1" />
+          <rect x="3.5" y="13.5" width="7" height="6" rx="1" />
+          <rect x="13.5" y="13.5" width="7" height="6" rx="1" />
+        </>
+      );
+      break;
     case 'consistency':
       path = (
         <>
@@ -214,8 +226,10 @@ function ToolbarButton({
 
 interface TopToolbarProps {
   settings: AppSettings;
+  corkboardVisible: boolean;
   t: Translator['t'];
   onSettingsChange: (patch: Partial<AppSettings>) => void;
+  onToggleCorkboard: () => void;
   onOpenInconsistencies: () => void;
   onOpenVoiceConsistency: () => void;
   onOpenRepetitions: () => void;
@@ -225,8 +239,10 @@ interface TopToolbarProps {
 /** Four compact groups: writing modes, visibility, theme and editor zoom. */
 export function TopToolbar({
   settings,
+  corkboardVisible,
   t,
   onSettingsChange,
+  onToggleCorkboard,
   onOpenInconsistencies,
   onOpenVoiceConsistency,
   onOpenRepetitions,
@@ -261,6 +277,13 @@ export function TopToolbar({
         />
       </div>
       <div className="topbar-group" role="group" aria-label={t('toolbar.writingModes')}>
+        <ToolbarButton
+          icon="corkboard"
+          label={t('corkboard.title')}
+          tooltip={t('corkboard.moveHint')}
+          active={corkboardVisible}
+          onClick={onToggleCorkboard}
+        />
         <ToolbarButton
           icon="focus"
           label={t('toolbar.focus')}

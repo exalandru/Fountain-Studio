@@ -60,6 +60,7 @@ export const en = {
   'menu.view.showSceneNumbers': 'Show Scene Numbers',
   'menu.view.formattedMode': 'Hide Fountain Markers',
   'menu.view.showTimeline': 'Show Timeline',
+  'menu.view.corkboard': 'Corkboard',
   'menu.view.increaseFont': 'Increase Font Size',
   'menu.view.decreaseFont': 'Decrease Font Size',
   'menu.view.focusMode': 'Focus Mode',
@@ -235,6 +236,23 @@ export const en = {
   'timeline.uniform': 'Uniform width',
   'timeline.zoom': 'Zoom',
   'timeline.other': 'Other',
+
+  // ── Corkboard ────────────────────────────────────────────────────────────
+  'corkboard.title': 'Corkboard',
+  'corkboard.show': 'Show corkboard',
+  'corkboard.close': 'Close corkboard',
+  'corkboard.empty': 'Add scene headings to build the board.',
+  'corkboard.colors': 'Colours',
+  'corkboard.colorNone': 'None',
+  'corkboard.cardWidth': 'Card size',
+  'corkboard.moveHint': 'Drag a card, or hold Alt and use the arrows.',
+  'corkboard.goToScene': 'Go to this scene in the script',
+  'corkboard.synopsisPlaceholder': 'What happens here…',
+  'corkboard.synopsisLabel': 'Synopsis of {heading}',
+  'corkboard.cardLabel': 'Scene {number}, {heading}, {eighths} pages',
+  'corkboard.moved': 'Scene {number} moved to position {position}.',
+  'corkboard.synopsisHidden':
+    'Synopsis saved. It stays hidden in the script until you turn on View › Show Synopses.',
 
   // ── Statistics ───────────────────────────────────────────────────────────
   'stats.title': 'Statistics',

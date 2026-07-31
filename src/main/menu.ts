@@ -238,6 +238,11 @@ export async function buildMenu(): Promise<void> {
           accelerator: 'CmdOrCtrl+Alt+T',
           click: () => send('view.toggleTimeline'),
         },
+        {
+          label: t('menu.view.corkboard'),
+          accelerator: 'CmdOrCtrl+Shift+B',
+          click: () => send('view.toggleCorkboard'),
+        },
         { type: 'separator' },
         {
           label: t('menu.view.increaseFont'),

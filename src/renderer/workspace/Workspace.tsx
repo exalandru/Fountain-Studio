@@ -3,6 +3,7 @@ import type { ParseResponse } from '@shared/analysis/index.js';
 import type { RightPanelTab } from '@shared/appdata/index.js';
 import type { Translator } from '@shared/i18n/index.js';
 import type { OpenDocument } from '../store/documents.js';
+import { Corkboard } from '../corkboard/Corkboard.js';
 import { Editor } from '../editor/Editor.js';
 import { Preview } from '../preview/index.js';
 import { Sidebar } from '../sidebar/index.js';
@@ -64,6 +65,13 @@ interface WorkspaceProps {
   onTimelineState: (patch: Partial<OpenDocument['appData']['timeline']>) => void;
   onCloseTimeline: () => void;
   onShowTimeline: () => void;
+  onCorkboardState: (patch: Partial<OpenDocument['appData']['corkboard']>) => void;
+  onToggleCorkboard: () => void;
+  onCloseCorkboard: () => void;
+  onMoveScene: (sceneId: string, targetSceneId: string) => void;
+  onEditSynopsis: (sceneId: string, text: string) => void;
+  onUndo: () => void;
+  onRedo: () => void;
 }
 
 type EditorParameters = Parameters<typeof Editor>[0];
@@ -114,6 +122,13 @@ export function Workspace({
   onTimelineState,
   onCloseTimeline,
   onShowTimeline,
+  onCorkboardState,
+  onToggleCorkboard,
+  onCloseCorkboard,
+  onMoveScene,
+  onEditSynopsis,
+  onUndo,
+  onRedo,
 }: WorkspaceProps) {
   return (
     <div className={`app${settings.focusMode ? ' focus-mode' : ''}`}>
@@ -186,8 +201,10 @@ export function Workspace({
 
         <TopToolbar
           settings={settings}
+          corkboardVisible={active?.appData.corkboard.visible ?? false}
           t={t}
           onSettingsChange={onSettingsChange}
+          onToggleCorkboard={onToggleCorkboard}
           onOpenInconsistencies={onOpenInconsistencies}
           onOpenVoiceConsistency={onOpenVoiceConsistency}
           onOpenRepetitions={onOpenRepetitions}
@@ -269,7 +286,24 @@ export function Workspace({
                   onScrollOffset={onEditorScroll}
                   onViewReady={onViewReady}
                 />
-                {settings.formattedMode ? (
+                {active.appData.corkboard.visible ? (
+                  <Corkboard
+                    analysis={analysis}
+                    state={active.appData.corkboard}
+                    activeSceneId={activeSceneId}
+                    t={t}
+                    onStateChange={onCorkboardState}
+                    onMoveScene={onMoveScene}
+                    onEditSynopsis={onEditSynopsis}
+                    onSelectRange={onSelectEditorRange}
+                    onUndo={onUndo}
+                    onRedo={onRedo}
+                    onClose={onCloseCorkboard}
+                  />
+                ) : null}
+                {/* Hidden behind the board: it acts on the editor's selection, which is not on
+                    screen, and it floats above everything else. */}
+                {settings.formattedMode && !active.appData.corkboard.visible ? (
                   <div
                     className="formatting-toolbar"
                     role="toolbar"

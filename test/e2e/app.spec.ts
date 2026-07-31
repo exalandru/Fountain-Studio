@@ -270,10 +270,11 @@ test('the right sidebar includes a compact Fountain cheat sheet', async () => {
 test('the top bar exposes writing modes, theme controls and the editor texture', async () => {
   await expect(page.locator('.topbar-group')).toHaveCount(5);
   const toolbarButtons = page.locator('.toolbar-icon-button');
-  // Eighteen since the analysis group gained voice, repetition and the bible beside the
-  // consistency report. The count is asserted so a button cannot appear by accident.
-  await expect(toolbarButtons).toHaveCount(18);
-  await expect(page.locator('.toolbar-tooltip')).toHaveCount(18);
+  // Nineteen: the analysis group holds voice, repetition and the bible beside the consistency
+  // report, and the writing modes hold the corkboard. The count is asserted so a button cannot
+  // appear by accident.
+  await expect(toolbarButtons).toHaveCount(19);
+  await expect(page.locator('.toolbar-tooltip')).toHaveCount(19);
   expect(
     await toolbarButtons.evaluateAll((buttons) =>
       buttons.every(

@@ -84,6 +84,16 @@
   --radius-lg: 12px;
   --radius-pill: 999px;
   --motion: 120ms ease;
+
+  /* Scene categories, shared by the timeline and the corkboard: the same scene must not be
+     blue on one and green on the other. Pastels rather than theme colours — they carry a
+     category, not a state, and they read the same in both themes. */
+  --scene-interior: #a9d1f2;
+  --scene-exterior: #acdcae;
+  --scene-mixed: #c8b9ea;
+  --scene-day: #f2d98f;
+  --scene-night: #9caeda;
+  --scene-other: #c9c7c2;
 }
 
 /*
@@ -1557,7 +1567,8 @@ body[data-theme='dark'] .preview-pane {
   white-space: nowrap;
 }
 
-.timeline-toolbar select {
+.timeline-toolbar select,
+.corkboard-toolbar select {
   padding: 3px 6px;
   border: none;
   border-radius: var(--radius-sm);
@@ -1627,27 +1638,27 @@ body[data-theme='dark'] .preview-pane {
 }
 
 .timeline-interior {
-  background: #a9d1f2;
+  background: var(--scene-interior);
 }
 
 .timeline-exterior {
-  background: #acdcae;
+  background: var(--scene-exterior);
 }
 
 .timeline-mixed {
-  background: #c8b9ea;
+  background: var(--scene-mixed);
 }
 
 .timeline-day {
-  background: #f2d98f;
+  background: var(--scene-day);
 }
 
 .timeline-night {
-  background: #9caeda;
+  background: var(--scene-night);
 }
 
 .timeline-other {
-  background: #c9c7c2;
+  background: var(--scene-other);
 }
 
 .timeline-active {
@@ -1673,6 +1684,237 @@ body[data-theme='dark'] .preview-pane {
 .timeline-empty {
   padding: 12px;
   color: var(--text-muted);
+}
+
+/* ── Corkboard ───────────────────────────────────────────────────────────── */
+
+/*
+ * The board lies over the writing column rather than replacing it. The editor stays mounted
+ * underneath — it applies every move and holds the undo history — and a mounted editor inside
+ * a `display: none` box measures itself as zero high, which it never recovers from cleanly.
+ *
+ * z-index 2 puts the board under the column's paper grain (z-index 3), so the same texture
+ * runs over the cards.
+ */
+.corkboard {
+  position: absolute;
+  z-index: 2;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+}
+
+.corkboard-toolbar {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 12px;
+  height: 34px;
+  padding: 4px 8px 4px 12px;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.corkboard-toolbar > strong {
+  color: var(--text);
+  font-size: 12px;
+}
+
+.corkboard-toolbar label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+
+.corkboard-size input {
+  width: 90px;
+}
+
+.corkboard-hint {
+  overflow: hidden;
+  margin-left: auto;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.corkboard-grid {
+  display: grid;
+  flex: 1;
+  align-content: start;
+  gap: 14px;
+  margin: 0;
+  padding: 4px 14px 16px;
+  overflow-y: auto;
+  grid-template-columns: repeat(auto-fill, minmax(var(--card-width, 240px), 1fr));
+  list-style: none;
+}
+
+.corkboard-card {
+  position: relative;
+  display: flex;
+  min-height: 156px;
+  flex-direction: column;
+  gap: 7px;
+  padding: 11px 11px 9px;
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+  box-shadow: var(--elev-1);
+  cursor: grab;
+  transition:
+    opacity var(--motion),
+    box-shadow var(--motion);
+}
+
+/* The category is a band along the top rather than the whole card: a pastel fill would
+   either fight the dark theme or force dark text on it, and the synopsis has to stay
+   readable. */
+.corkboard-card::before {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  height: 4px;
+  border-radius: var(--radius-md) var(--radius-md) 0 0;
+  background: var(--scene-color, transparent);
+  content: '';
+}
+
+.corkboard-interior {
+  --scene-color: var(--scene-interior);
+}
+
+.corkboard-exterior {
+  --scene-color: var(--scene-exterior);
+}
+
+.corkboard-mixed {
+  --scene-color: var(--scene-mixed);
+}
+
+.corkboard-day {
+  --scene-color: var(--scene-day);
+}
+
+.corkboard-night {
+  --scene-color: var(--scene-night);
+}
+
+.corkboard-other {
+  --scene-color: var(--scene-other);
+}
+
+.corkboard-card:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.corkboard-card.is-current {
+  box-shadow:
+    var(--elev-1),
+    inset 0 0 0 2px var(--tint-accent-strong);
+}
+
+.corkboard-card.is-dragging {
+  opacity: 0.45;
+  box-shadow: var(--elev-3);
+  cursor: grabbing;
+}
+
+/* The insertion bar sits in the gutter, so it points at a place between cards rather than
+   at a card. */
+.corkboard-card.is-drop-before::after,
+.corkboard-card.is-drop-after::after {
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  left: -9px;
+  width: 3px;
+  border-radius: var(--radius-pill);
+  background: var(--accent);
+  content: '';
+}
+
+.corkboard-card.is-drop-after::after {
+  right: -9px;
+  left: auto;
+}
+
+.corkboard-card-head {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  min-width: 0;
+}
+
+.corkboard-number {
+  flex: none;
+  padding: 1px 6px;
+  border-radius: var(--radius-pill);
+  background: var(--field);
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.corkboard-section {
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: 9px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.corkboard-heading {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-align: left;
+  cursor: pointer;
+}
+
+.corkboard-heading:hover {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+.corkboard-synopsis {
+  flex: 1;
+  min-height: 52px;
+  padding: 6px 7px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: var(--field);
+  color: var(--text);
+  font: inherit;
+  font-size: 11px;
+  line-height: 1.45;
+  resize: none;
+}
+
+.corkboard-synopsis::placeholder {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.corkboard-synopsis:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  outline-offset: 1px;
+}
+
+.corkboard-card-foot {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--text-muted);
+  font-size: 10px;
 }
 
 /* ── AST navigator ───────────────────────────────────────────────────────── */

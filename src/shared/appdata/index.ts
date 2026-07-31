@@ -39,6 +39,14 @@ export interface TimelineState {
   zoom: number;
 }
 
+export interface CorkboardState {
+  visible: boolean;
+  /** Card colour source. `none` gives a plain board, for a long screenplay. */
+  colorMode: 'intExt' | 'timeOfDay' | 'none';
+  /** Card width; the grid fits as many columns as the space allows. */
+  cardWidth: number;
+}
+
 export interface RewriteState {
   lastTone: RewriteTone;
   customStyle: string;
@@ -54,6 +62,7 @@ export interface AppData {
   sidebar: SidebarState;
   preview: PreviewState;
   timeline: TimelineState;
+  corkboard: CorkboardState;
   rewrite: RewriteState;
   inconsistencies: InconsistencyState;
   voiceConsistency: Record<string, InconsistencyState>;
@@ -81,6 +90,11 @@ export const DEFAULT_APP_DATA: Readonly<AppData> = {
     colorMode: 'intExt',
     zoom: 1,
   },
+  corkboard: {
+    visible: false,
+    colorMode: 'intExt',
+    cardWidth: 240,
+  },
   rewrite: {
     lastTone: 'neutral',
     customStyle: '',
@@ -102,6 +116,7 @@ export function createDefaultAppData(): AppData {
     sidebar: { ...DEFAULT_APP_DATA.sidebar },
     preview: { ...DEFAULT_APP_DATA.preview },
     timeline: { ...DEFAULT_APP_DATA.timeline },
+    corkboard: { ...DEFAULT_APP_DATA.corkboard },
     rewrite: { ...DEFAULT_APP_DATA.rewrite },
     inconsistencies: { items: [], analyzedAt: null },
     voiceConsistency: {},
@@ -211,6 +226,10 @@ export function parseAppData(raw: string): AppData | null {
       typeof root['timeline'] === 'object' && root['timeline'] !== null
         ? (root['timeline'] as Record<string, unknown>)
         : {};
+    const corkboard =
+      typeof root['corkboard'] === 'object' && root['corkboard'] !== null
+        ? (root['corkboard'] as Record<string, unknown>)
+        : {};
     const rewrite =
       typeof root['rewrite'] === 'object' && root['rewrite'] !== null
         ? (root['rewrite'] as Record<string, unknown>)
@@ -272,6 +291,20 @@ export function parseAppData(raw: string): AppData | null {
       result.timeline.zoom =
         clamp(timeline['zoom'] * 100, DEFAULT_APP_DATA.timeline.zoom * 100, 50, 250) / 100;
     }
+    if (typeof corkboard['visible'] === 'boolean') result.corkboard.visible = corkboard['visible'];
+    if (
+      corkboard['colorMode'] === 'intExt' ||
+      corkboard['colorMode'] === 'timeOfDay' ||
+      corkboard['colorMode'] === 'none'
+    ) {
+      result.corkboard.colorMode = corkboard['colorMode'];
+    }
+    result.corkboard.cardWidth = clamp(
+      corkboard['cardWidth'],
+      DEFAULT_APP_DATA.corkboard.cardWidth,
+      180,
+      420,
+    );
     if (REWRITE_TONES.has(rewrite['lastTone'] as RewriteTone)) {
       result.rewrite.lastTone = rewrite['lastTone'] as RewriteTone;
     }

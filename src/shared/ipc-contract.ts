@@ -300,6 +300,7 @@ export type MenuCommand =
   | 'view.increaseFont'
   | 'view.decreaseFont'
   | 'view.toggleTimeline'
+  | 'view.toggleCorkboard'
   | 'view.toggleFocus'
   | 'view.toggleTypewriter'
   | 'view.toggleFormattedMode'

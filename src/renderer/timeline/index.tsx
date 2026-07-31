@@ -1,7 +1,7 @@
 import { memo, useEffect, useRef } from 'react';
 import type { ParseResponse } from '@shared/analysis/index.js';
 import type { TimelineState } from '@shared/appdata/index.js';
-import { classifyTimeOfDay } from '@shared/fountain/index.js';
+import { sceneColor } from '../scene-color.js';
 import { useTranslator } from '../hooks/useTranslator.js';
 
 interface TimelineProps {
@@ -11,17 +11,6 @@ interface TimelineProps {
   onStateChange: (patch: Partial<TimelineState>) => void;
   onSelectRange: (range: { from: number; to: number }) => void;
   onClose: () => void;
-}
-
-function sceneColor(
-  scene: ParseResponse['scenes'][number],
-  mode: TimelineState['colorMode'],
-): string {
-  if (mode === 'timeOfDay') return classifyTimeOfDay(scene.timeOfDay);
-  if (scene.intExt === 'INT') return 'interior';
-  if (scene.intExt === 'EXT' || scene.intExt === 'EST') return 'exterior';
-  if (scene.intExt === 'INT/EXT') return 'mixed';
-  return 'other';
 }
 
 export const Timeline = memo(function Timeline({
@@ -119,7 +108,7 @@ export const Timeline = memo(function Timeline({
               key={scene.id}
               ref={active ? activeRef : null}
               type="button"
-              className={`timeline-scene timeline-${sceneColor(scene, state.colorMode)}${
+              className={`timeline-scene timeline-${sceneColor(scene, state.colorMode) ?? 'other'}${
                 active ? ' timeline-active' : ''
               }`}
               style={{ width }}

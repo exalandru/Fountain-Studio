@@ -25,6 +25,7 @@ interface FileCommandsOptions {
   onRenumberScenes: () => void;
   onRemoveSceneNumbers: () => void;
   onToggleTimeline: () => void;
+  onToggleCorkboard: () => void;
   onCommandPalette: () => void;
   patchSettings: (patch: Partial<AppSettings>) => Promise<void>;
   save: (options: { forceDialog: boolean }) => Promise<boolean>;
@@ -52,6 +53,7 @@ export function useFileCommands({
   onRenumberScenes,
   onRemoveSceneNumbers,
   onToggleTimeline,
+  onToggleCorkboard,
   onCommandPalette,
   patchSettings,
   save,
@@ -91,6 +93,7 @@ export function useFileCommands({
         'view.decreaseFont': () =>
           void patchSettings({ editorFontSize: Math.max(10, store().settings.editorFontSize - 1) }),
         'view.toggleTimeline': onToggleTimeline,
+        'view.toggleCorkboard': onToggleCorkboard,
         'view.toggleFocus': () => void patchSettings({ focusMode: !store().settings.focusMode }),
         'view.toggleTypewriter': () =>
           void patchSettings({ typewriterMode: !store().settings.typewriterMode }),
@@ -128,6 +131,7 @@ export function useFileCommands({
       onRenumberScenes,
       onRemoveSceneNumbers,
       onToggleTimeline,
+      onToggleCorkboard,
       openDialog,
       patchSettings,
       save,

@@ -1,14 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { isolateHistory } from '@codemirror/commands';
+import { isolateHistory, redo, undo } from '@codemirror/commands';
 import { EditorView } from '@codemirror/view';
 import type {
   AppData,
+  CorkboardState,
   InconsistencyState,
   RewriteState,
   RightPanelTab,
   SidebarTab,
   TimelineState,
 } from '@shared/appdata/index.js';
+import { planSceneMove, planSynopsisEdit } from '@shared/corkboard/index.js';
+import { parse } from '@shared/fountain/index.js';
 import type { AppSettings } from '@shared/ipc-contract.js';
 import { statisticsToCsv, statisticsToJson } from '@shared/stats/index.js';
 import { useAutosave } from './hooks/useAutosave.js';
@@ -349,6 +352,102 @@ export function App() {
       })),
     [updateAppData],
   );
+  const updateCorkboard = useCallback(
+    (patch: Partial<CorkboardState>) =>
+      updateAppData((data) => ({ ...data, corkboard: { ...data.corkboard, ...patch } })),
+    [updateAppData],
+  );
+  const closeCorkboard = useCallback(() => updateCorkboard({ visible: false }), [updateCorkboard]);
+  const toggleCorkboard = useCallback(
+    () =>
+      updateAppData((data) => ({
+        ...data,
+        corkboard: { ...data.corkboard, visible: !data.corkboard.visible },
+      })),
+    [updateAppData],
+  );
+
+  /**
+   * Undo and redo, reachable from the corkboard.
+   *
+   * The board takes focus away from the editor, and both of the usual routes go through it:
+   * CodeMirror's own keymap is bound to its content, and the native Edit menu's undo role acts
+   * on the focused editable. With a card focused neither fires, so a view that rewrites the
+   * document has to offer the way back itself.
+   */
+  const undoEdit = useCallback(() => {
+    const view = editorView.current;
+    if (view) undo(view);
+  }, []);
+  const redoEdit = useCallback(() => {
+    const view = editorView.current;
+    if (view) redo(view);
+  }, []);
+
+  /**
+   * Moving a scene, on the document the editor actually holds.
+   *
+   * Scenes are named by id rather than by position. The board draws from an analysis that lags
+   * the document by one worker round trip (~80 ms), so a gesture made in that window would
+   * carry a position that no longer means what it did — and would move the wrong scene. An id
+   * is content-derived and survives a move, so it resolves against the screenplay as it is.
+   *
+   * The screenplay is re-parsed here for the same reason: cutting at offsets from a stale parse
+   * would take the wrong slice of the author's text. Parsing 120 pages costs ~17 ms, paid once
+   * per drop.
+   */
+  const moveScene = useCallback(
+    (sceneId: string, targetSceneId: string) => {
+      const view = editorView.current;
+      if (!view) return;
+      const source = view.state.doc.toString();
+      const scenes = parse(source).scenes;
+      const fromIndex = scenes.findIndex((scene) => scene.id === sceneId);
+      const targetIndex = scenes.findIndex((scene) => scene.id === targetSceneId);
+      if (fromIndex < 0 || targetIndex < 0) return;
+      const plan = planSceneMove(source, scenes, fromIndex, targetIndex);
+      if (!plan) return;
+      view.dispatch({
+        changes: plan.changes,
+        selection: { anchor: plan.caret },
+        // One undo step: a move is one gesture, and reverting half of it would leave a
+        // screenplay with the scene in neither place.
+        annotations: isolateHistory.of('full'),
+      });
+      const scene = scenes[fromIndex];
+      if (scene) {
+        setStatus(t('corkboard.moved', { number: scene.number, position: targetIndex + 1 }));
+      }
+    },
+    [t],
+  );
+
+  const editSceneSynopsis = useCallback(
+    (sceneId: string, text: string) => {
+      const view = editorView.current;
+      if (!view) return;
+      const source = view.state.doc.toString();
+      const scene = parse(source).scenes.find((candidate) => candidate.id === sceneId);
+      if (!scene) return;
+      const heading = scene.elements[0];
+      const synopsis = scene.elements.find((element) => element.kind === 'synopsis');
+      const edit = planSynopsisEdit(
+        source,
+        {
+          headingTo: heading?.range.to ?? scene.range.from,
+          synopsis: synopsis ? { ...synopsis.range } : null,
+        },
+        text,
+      );
+      if (!edit) return;
+      view.dispatch({ changes: edit, annotations: isolateHistory.of('full') });
+      // A `=` line is only drawn in the editor when synopses are shown. Written while they are
+      // hidden, the line is really there and really saved, but invisible — which reads as lost.
+      if (!settings.showSynopses) setStatus(t('corkboard.synopsisHidden'));
+    },
+    [settings.showSynopses, t],
+  );
+
   const executeCommand = useFileCommands({
     closeTab,
     editorView,
@@ -403,6 +502,7 @@ export function App() {
       setStatus(t('status.sceneNumbersRemoved', { count: changes.length }));
     },
     onToggleTimeline: toggleTimeline,
+    onToggleCorkboard: toggleCorkboard,
     onCommandPalette: () => setPaletteOpen(true),
     patchSettings,
     save,
@@ -422,6 +522,7 @@ export function App() {
 
       { id: 'edit.find', label: t('menu.edit.find'), shortcut: '⌘F' },
       { id: 'view.toggleTimeline', label: t('menu.view.showTimeline') },
+      { id: 'view.toggleCorkboard', label: t('menu.view.corkboard'), shortcut: '⇧⌘B' },
       { id: 'view.toggleFocus', label: t('menu.view.focusMode'), shortcut: '⇧⌘F' },
       { id: 'view.toggleTypewriter', label: t('menu.view.typewriterMode'), shortcut: '⇧⌘T' },
       { id: 'view.toggleSceneNumbers', label: t('menu.view.showSceneNumbers') },
@@ -752,6 +853,13 @@ export function App() {
         onTimelineState={updateTimeline}
         onCloseTimeline={closeTimeline}
         onShowTimeline={showTimeline}
+        onCorkboardState={updateCorkboard}
+        onToggleCorkboard={toggleCorkboard}
+        onCloseCorkboard={closeCorkboard}
+        onMoveScene={moveScene}
+        onEditSynopsis={editSceneSynopsis}
+        onUndo={undoEdit}
+        onRedo={redoEdit}
       />
       {pdfOpen && active ? (
         <PdfExportDialog

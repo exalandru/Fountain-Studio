@@ -58,6 +58,7 @@ export const fr: Catalog = {
   'menu.view.showSceneNumbers': 'Afficher les numéros de scène',
   'menu.view.formattedMode': 'Masquer les balises Fountain',
   'menu.view.showTimeline': 'Afficher la timeline',
+  'menu.view.corkboard': 'Tableau de liège',
   'menu.view.increaseFont': 'Agrandir la police',
   'menu.view.decreaseFont': 'Réduire la police',
   'menu.view.focusMode': 'Mode focus',
@@ -234,6 +235,23 @@ export const fr: Catalog = {
   'timeline.uniform': 'Largeur uniforme',
   'timeline.zoom': 'Zoom',
   'timeline.other': 'Autre',
+
+  // ── Tableau de liège ─────────────────────────────────────────────────────
+  'corkboard.title': 'Tableau de liège',
+  'corkboard.show': 'Afficher le tableau de liège',
+  'corkboard.close': 'Fermer le tableau de liège',
+  'corkboard.empty': 'Ajoutez des en-têtes de scène pour construire le tableau.',
+  'corkboard.colors': 'Couleurs',
+  'corkboard.colorNone': 'Aucune',
+  'corkboard.cardWidth': 'Taille des cartes',
+  'corkboard.moveHint': 'Glissez une carte, ou maintenez Alt et utilisez les flèches.',
+  'corkboard.goToScene': 'Aller à cette scène dans le scénario',
+  'corkboard.synopsisPlaceholder': 'Ce qui se passe ici…',
+  'corkboard.synopsisLabel': 'Synopsis de {heading}',
+  'corkboard.cardLabel': 'Scène {number}, {heading}, {eighths} pages',
+  'corkboard.moved': 'Scène {number} déplacée en position {position}.',
+  'corkboard.synopsisHidden':
+    'Synopsis enregistré. Il reste invisible dans le scénario jusqu’à ce que vous activiez Affichage › Afficher les synopsis.',
 
   // ── Statistiques ─────────────────────────────────────────────────────────
   'stats.title': 'Statistiques',

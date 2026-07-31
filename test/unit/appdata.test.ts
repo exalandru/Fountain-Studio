@@ -28,6 +28,7 @@ describe('companion schema', () => {
     data.sidebar.activeTab = 'characters';
     data.timeline.colorMode = 'timeOfDay';
     data.timeline.zoom = 1.7;
+    data.corkboard = { visible: true, colorMode: 'none', cardWidth: 320 };
     data.rewrite = { lastTone: 'cinematic', customStyle: 'Sec et elliptique' };
     data.inconsistencies = {
       analyzedAt: 42,
@@ -65,6 +66,7 @@ describe('companion schema', () => {
         sidebar: { width: -100, filter: 'x'.repeat(300) },
         preview: { width: 10000 },
         timeline: { zoom: 99, colorMode: 'timeOfDay' },
+        corkboard: { cardWidth: 4, colorMode: 'rainbow', visible: 'yes' },
       }),
     );
 
@@ -75,6 +77,9 @@ describe('companion schema', () => {
     expect(parsed?.preview.activeTab).toBe('statistics');
     expect(parsed?.timeline.zoom).toBe(2.5);
     expect(parsed?.timeline.colorMode).toBe('timeOfDay');
+    expect(parsed?.corkboard.cardWidth).toBe(180);
+    expect(parsed?.corkboard.colorMode).toBe('intExt');
+    expect(parsed?.corkboard.visible).toBe(false);
   });
 
   it('keeps voice findings per character, and bounds what a companion file may carry', () => {
