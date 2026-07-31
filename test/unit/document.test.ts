@@ -19,7 +19,7 @@ import {
 let directory: string;
 
 beforeEach(async () => {
-  directory = await mkdtemp(join(tmpdir(), 'quantum-draft-doc-'));
+  directory = await mkdtemp(join(tmpdir(), 'fountain-studio-doc-'));
 });
 
 describe('line-ending detection and restitution', () => {

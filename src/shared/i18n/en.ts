@@ -13,8 +13,8 @@
  */
 export const en = {
   // ── Application ──────────────────────────────────────────────────────────
-  'app.name': 'Quantum Draft',
-  'window.title': '{name} — Quantum Draft',
+  'app.name': 'Fountain Studio',
+  'window.title': '{name} — Fountain Studio',
 
   // ── Menu: application (macOS) ────────────────────────────────────────────
   'menu.app.about': 'About {app}',

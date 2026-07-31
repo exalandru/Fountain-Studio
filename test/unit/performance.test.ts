@@ -13,7 +13,7 @@ import { findRepeatedPhrases } from '../../src/shared/repetition/index.js';
 
 /** ~120 pages of screenplay: 54 lines per page, realistic structure. */
 function generateScreenplay(pages: number): string {
-  const out: string[] = ['Title: Test de charge', 'Author: Quantum Draft', '', '# ACTE I', ''];
+  const out: string[] = ['Title: Test de charge', 'Author: Fountain Studio', '', '# ACTE I', ''];
 
   const characters = ['JULIE', 'MARC', 'LE GARDIEN', 'ÉLODIE'];
   const places = ['CUISINE', 'RUE PRINCIPALE', 'BUREAU', 'TOIT'];

@@ -42,7 +42,7 @@ async function runCommand(command: string): Promise<void> {
 }
 
 test.beforeAll(async () => {
-  userData = await mkdtemp(join(tmpdir(), 'quantum-draft-snapshots-'));
+  userData = await mkdtemp(join(tmpdir(), 'fountain-studio-snapshots-'));
   screenplay = join(userData, 'story.fountain');
   await writeFile(screenplay, ORIGINAL, 'utf8');
 

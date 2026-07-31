@@ -31,7 +31,7 @@ test('a connection profile saved before multi-provider support still works', asy
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
   const baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
 
-  const userData = await mkdtemp(join(tmpdir(), 'quantum-draft-ai-legacy-'));
+  const userData = await mkdtemp(join(tmpdir(), 'fountain-studio-ai-legacy-'));
   await writeFile(
     join(userData, 'ai-settings.json'),
     JSON.stringify({

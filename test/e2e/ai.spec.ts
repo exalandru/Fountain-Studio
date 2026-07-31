@@ -567,7 +567,7 @@ async function runCommand(command: string): Promise<void> {
 test.beforeAll(async () => {
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
   baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
-  userData = await mkdtemp(join(tmpdir(), 'quantum-draft-ai-'));
+  userData = await mkdtemp(join(tmpdir(), 'fountain-studio-ai-'));
   screenplay = join(userData, 'ai-story.fountain');
   await writeFile(
     screenplay,

@@ -80,7 +80,7 @@ async function dragCard(from: number, to: number, side: 'left' | 'right'): Promi
 }
 
 test.beforeAll(async () => {
-  userData = await mkdtemp(join(tmpdir(), 'quantum-draft-corkboard-'));
+  userData = await mkdtemp(join(tmpdir(), 'fountain-studio-corkboard-'));
   screenplay = join(userData, 'board.fountain');
   await writeFile(screenplay, ORIGINAL, 'utf8');
 

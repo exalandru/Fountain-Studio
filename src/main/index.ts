@@ -37,7 +37,7 @@ async function createWindow(): Promise<BrowserWindow> {
     minWidth: 860,
     minHeight: 560,
     show: false,
-    title: 'Quantum Draft',
+    title: 'Fountain Studio',
     backgroundColor: dark ? '#1c1c1e' : '#faf9f7',
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
     webPreferences: {

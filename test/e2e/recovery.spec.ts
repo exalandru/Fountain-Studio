@@ -12,7 +12,7 @@ import { expect, test } from '@playwright/test';
  * checking the work is offered back to the author.
  */
 test('a snapshot left by an interrupted session is reopened at startup', async () => {
-  const userData = await mkdtemp(join(tmpdir(), 'quantum-draft-crash-'));
+  const userData = await mkdtemp(join(tmpdir(), 'fountain-studio-crash-'));
   await mkdir(join(userData, 'autosave'), { recursive: true });
 
   const lost = 'INT. WORKSHOP - NIGHT\n\nThis text was never saved.\n';
@@ -65,7 +65,7 @@ test('a snapshot left by an interrupted session is reopened at startup', async (
 });
 
 test('a legacy recovery snapshot cannot overwrite an existing disk file silently', async () => {
-  const userData = await mkdtemp(join(tmpdir(), 'quantum-draft-recovery-conflict-'));
+  const userData = await mkdtemp(join(tmpdir(), 'fountain-studio-recovery-conflict-'));
   await mkdir(join(userData, 'autosave'), { recursive: true });
 
   const screenplayPath = join(userData, 'existing.fountain');

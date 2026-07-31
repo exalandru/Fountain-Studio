@@ -21,7 +21,7 @@ function longScreenplay(): string {
 }
 
 test('a feature-length preview stays virtualised and syncs both scroll directions', async () => {
-  const userData = await mkdtemp(join(tmpdir(), 'quantum-draft-preview-'));
+  const userData = await mkdtemp(join(tmpdir(), 'fountain-studio-preview-'));
   const screenplay = join(userData, 'feature.fountain');
   await writeFile(screenplay, longScreenplay(), 'utf8');
 

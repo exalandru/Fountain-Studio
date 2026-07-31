@@ -1,5 +1,5 @@
-appId: com.exalandru.quantumdraft
-productName: Quantum Draft
+appId: com.exalandru.fountainstudio
+productName: Fountain Studio
 directories:
   buildResources: build
   output: dist
@@ -9,14 +9,17 @@ artifactName: '${productName}-${version}-${os}-${arch}.${ext}'
 files:
   - out/**
   - resources/**
+  # The AGPL requires a copy of itself to travel with the program, so the licence ships inside
+  # the bundle rather than only living in the repository.
+  - LICENSE
   - THIRD-PARTY-NOTICES.md
   - '!**/*.map'
 asarUnpack:
   - resources/**
 fileAssociations:
   - ext: fountain
-    name: Scénario Fountain
-    description: Scénario au format Fountain
+    name: Fountain screenplay
+    description: Screenplay in the Fountain format
     role: Editor
 mac:
   icon: build/icon.png
@@ -38,4 +41,4 @@ linux:
     - AppImage
     - deb
   category: Office
-  synopsis: Éditeur de scénarios Fountain
+  synopsis: Fountain screenplay editor

@@ -5,7 +5,7 @@ import { _electron as electron } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 
 test('native window close snapshots all dirty tabs and honours cancellation', async () => {
-  const userData = await mkdtemp(join(tmpdir(), 'quantum-draft-close-'));
+  const userData = await mkdtemp(join(tmpdir(), 'fountain-studio-close-'));
   const env: Record<string, string> = {};
   for (const [key, value] of Object.entries(process.env)) {
     if (key !== 'ELECTRON_RUN_AS_NODE' && value !== undefined) env[key] = value;

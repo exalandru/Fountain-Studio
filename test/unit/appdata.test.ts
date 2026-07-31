@@ -18,7 +18,7 @@ import {
 let directory: string;
 
 beforeEach(async () => {
-  directory = await mkdtemp(join(tmpdir(), 'quantum-draft-appdata-'));
+  directory = await mkdtemp(join(tmpdir(), 'fountain-studio-appdata-'));
 });
 
 describe('companion schema', () => {

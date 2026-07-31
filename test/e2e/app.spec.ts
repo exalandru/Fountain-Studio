@@ -19,7 +19,7 @@ let userData: string;
 
 test.beforeAll(async () => {
   // Throwaway profile directory: tests must not touch the real settings.
-  userData = await mkdtemp(join(tmpdir(), 'quantum-draft-e2e-'));
+  userData = await mkdtemp(join(tmpdir(), 'fountain-studio-e2e-'));
 
   // Some development environments (VS Code extensions in particular) export
   // ELECTRON_RUN_AS_NODE=1. The binary would then start as plain Node and reject the

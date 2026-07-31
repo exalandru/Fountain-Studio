@@ -59,7 +59,7 @@ async function sidecar(): Promise<string> {
 }
 
 test.beforeAll(async () => {
-  userData = await mkdtemp(join(tmpdir(), 'quantum-draft-bible-'));
+  userData = await mkdtemp(join(tmpdir(), 'fountain-studio-bible-'));
   screenplay = join(userData, 'story.fountain');
   await writeFile(screenplay, ORIGINAL, 'utf8');
 

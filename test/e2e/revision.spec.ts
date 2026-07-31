@@ -57,7 +57,7 @@ async function companion(): Promise<{
 }
 
 test.beforeAll(async () => {
-  userData = await mkdtemp(join(tmpdir(), 'quantum-draft-revision-'));
+  userData = await mkdtemp(join(tmpdir(), 'fountain-studio-revision-'));
   screenplay = join(userData, 'rempart.fountain');
   await writeFile(screenplay, ORIGINAL, 'utf8');
 
