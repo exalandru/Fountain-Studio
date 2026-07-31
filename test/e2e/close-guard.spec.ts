@@ -17,7 +17,6 @@ test('native window close snapshots all dirty tabs and honours cancellation', as
     args: ['out/main/index.js', `--user-data-dir=${userData}`, '--lang=en-US'],
     env,
   });
-  let closed = false;
 
   try {
     const page = await app.firstWindow();
@@ -57,17 +56,25 @@ test('native window close snapshots all dirty tabs and honours cancellation', as
       dialog.showMessageBox = async () => ({ response: 1, checkboxChecked: false });
       BrowserWindow.getAllWindows()[0]?.close();
     });
+    // On Linux/Windows the process exits with the last window (`window-all-closed`),
+    // so evaluate may throw once there is nothing left to talk to — that is success.
     await expect
-      .poll(() => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length))
+      .poll(async () => {
+        try {
+          return await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length);
+        } catch {
+          return 0;
+        }
+      })
       .toBe(0);
-    await app.close();
-    closed = true;
   } finally {
-    if (!closed) {
+    try {
       await app.evaluate(({ dialog }) => {
         dialog.showMessageBox = async () => ({ response: 1, checkboxChecked: false });
       });
       await app.close();
+    } catch {
+      // Already gone after the approved close — nothing left to tear down.
     }
   }
 });
