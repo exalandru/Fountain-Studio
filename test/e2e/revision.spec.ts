@@ -156,8 +156,13 @@ test('the export dialog offers the revision only once the screenplay is locked',
     'rgb(207, 224, 245)',
   );
 
-  // The date defaults to the day the pages go out.
-  const today = new Date().toISOString().slice(0, 10);
+  // The date defaults to the day the pages go out (local calendar, not UTC).
+  const now = new Date();
+  const today = [
+    String(now.getFullYear()),
+    String(now.getMonth() + 1).padStart(2, '0'),
+    String(now.getDate()).padStart(2, '0'),
+  ].join('-');
   await expect(section.getByLabel('Revision date')).toHaveValue(today);
 });
 
