@@ -13,6 +13,7 @@
  */
 
 import type { Range } from '../fountain/index.js';
+import type { DocumentEdit } from '../text/index.js';
 
 /** The smallest input this module needs: a scene is a position, not an AST. */
 export interface SceneRange {
@@ -25,11 +26,7 @@ export interface SceneBlock {
   to: number;
 }
 
-export interface DocumentEdit {
-  from: number;
-  to: number;
-  insert: string;
-}
+export type { DocumentEdit };
 
 export interface SceneMovePlan {
   /** Edits in the coordinates of the original document, never overlapping. */

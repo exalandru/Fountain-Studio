@@ -3,11 +3,20 @@ import PDFDocument from 'pdfkit';
 import type { Element, Screenplay } from '@shared/fountain/index.js';
 import { parse } from '@shared/fountain/index.js';
 import type { PdfExportOptions } from '@shared/ipc-contract.js';
-import type { PaginationItem } from '@shared/pagination/index.js';
+import type { PaginationItem, ScreenplayPage } from '@shared/pagination/index.js';
 import { paginateScreenplay } from '@shared/pagination/index.js';
+import { REVISION_PAPER, alignLines, revisedElements, revisedLines } from '@shared/revision/index.js';
 
 const LINE_HEIGHT = 12;
 const CHARACTER_WIDTH = 7.2;
+
+/**
+ * Right margin column for revision asterisks.
+ *
+ * The scene-number column sits at `pageWidth - 102` and the page number at `- 108`, so this
+ * leaves the mark alone in the margin where a reader's eye looks for it.
+ */
+const MARK_X = 64;
 
 interface RenderedPdf {
   bytes: Uint8Array;
@@ -48,12 +57,38 @@ function withNotes(screenplay: Screenplay): Screenplay {
   };
 }
 
+/**
+ * Fills the sheet with the revision's paper colour.
+ *
+ * Drawn first, so the watermark and the text sit on top of it. White paints nothing: it is the
+ * absence of a revision, and a white rectangle on white would only make the file bigger.
+ */
+function paintPaper(document: PDFKit.PDFDocument, tint: string | null): void {
+  if (tint === null) return;
+  const { width, height } = document.page;
+  document.save();
+  document.rect(0, 0, width, height).fill(tint);
+  document.restore();
+}
+
+/** The paper colour an export asks for, or `null` when the pages stay white. */
+function paperTint(options: PdfExportOptions): string | null {
+  const revision = options.revision;
+  if (!revision || revision.colourMode === 'header' || revision.colour === 'white') return null;
+  return REVISION_PAPER[revision.colour];
+}
+
 function titleValues(screenplay: Screenplay, key: string): string[] {
   return screenplay.titlePage.fields.get(key) ?? [];
 }
 
-function renderTitlePage(document: PDFKit.PDFDocument, screenplay: Screenplay): void {
+function renderTitlePage(
+  document: PDFKit.PDFDocument,
+  screenplay: Screenplay,
+  tint: string | null,
+): void {
   document.addPage();
+  paintPaper(document, tint);
   const width = document.page.width;
   const height = document.page.height;
   const title = titleValues(screenplay, 'title');
@@ -164,6 +199,15 @@ function elementStyles(element: Element, forceBold: boolean, forceItalic: boolea
   );
 }
 
+/**
+ * Draws one rendered line, run by run, with its emphasis.
+ *
+ * Underlines are stroked here rather than through pdfkit's `underline` option. That option
+ * measures the rule from `options.textWidth`, which only the line wrapper fills in — and every
+ * run here is placed by hand with `lineBreak: false`, so the width comes out `undefined` and
+ * the rule is drawn to `NaN`, which fails the whole export. Any screenplay containing a single
+ * `_underlined_` word was unexportable.
+ */
 function renderStyledLine(
   document: PDFKit.PDFDocument,
   line: string,
@@ -171,6 +215,7 @@ function renderStyledLine(
   x: number,
   y: number,
   width: number,
+  colour: string,
   align?: 'center' | 'right',
 ): void {
   const characters = Array.from(line);
@@ -203,11 +248,22 @@ function renderStyledLine(
         : x;
   for (const run of runs) {
     document.font(fontName(run.style));
-    document.text(run.text, runX, y, {
-      lineBreak: false,
-      underline: run.style.underline,
-    });
-    runX += document.widthOfString(run.text);
+    const runWidth = document.widthOfString(run.text);
+    document.text(run.text, runX, y, { lineBreak: false });
+    if (run.style.underline) {
+      // pdfkit's own geometry, so the rule sits where the option would have put it.
+      const ruleWidth = document.currentLineHeight() < 10 ? 0.5 : 1;
+      const ruleY = y + document.currentLineHeight() - ruleWidth;
+      document.save();
+      document
+        .strokeColor(colour)
+        .lineWidth(ruleWidth)
+        .moveTo(runX, ruleY)
+        .lineTo(runX + runWidth, ruleY)
+        .stroke();
+      document.restore();
+    }
+    runX += runWidth;
   }
 }
 
@@ -224,14 +280,22 @@ function renderWatermark(document: PDFKit.PDFDocument, text: string): void {
 function renderBodyPage(
   document: PDFKit.PDFDocument,
   screenplay: Screenplay,
-  page: ReturnType<typeof paginateScreenplay>['pages'][number],
+  page: ScreenplayPage,
   options: PdfExportOptions,
+  revised: ReadonlySet<number>,
+  tint: string | null,
 ): void {
   document.addPage();
   const pageWidth = document.page.width;
+  paintPaper(document, tint);
   renderWatermark(document, options.watermark);
   document.opacity(1).font('CourierPrime').fontSize(12).fillColor('#111111');
-  document.text(String(page.index + 1), pageWidth - 108, 36, { width: 36, align: 'right' });
+  // The label, not the position: a locked page keeps its number, and what overflows it is 12A.
+  document.text(page.number, pageWidth - 108, 36, { width: 36, align: 'right' });
+  const revision = options.revision;
+  if (revision && revision.colourMode !== 'page' && revision.header.length > 0) {
+    document.text(revision.header, 72, 36, { width: pageWidth - 216, lineBreak: false });
+  }
 
   let y = 72;
   for (const item of page.items) {
@@ -254,7 +318,8 @@ function renderBodyPage(
       item.kind === 'character' ||
       item.kind === 'continued' ||
       (item.kind === 'scene_heading' && options.headingsBold);
-    document.fillColor(item.kind === 'note' ? '#666666' : '#111111');
+    const colour = item.kind === 'note' ? '#666666' : '#111111';
+    document.fillColor(colour);
     const element = item.elementIndex === null ? null : screenplay.elements[item.elementIndex];
     const plain = element?.inline.map((span) => span.text).join('') ?? item.text;
     const styles = element
@@ -264,6 +329,8 @@ function renderBodyPage(
           italic: item.kind === 'note',
           underline: false,
         }));
+    const marked =
+      revision?.marks === true && item.elementIndex !== null && revised.has(item.elementIndex);
     let styleOffset = Math.max(0, plain.indexOf(item.text));
     for (const line of item.lines) {
       const lineOffset = plain.indexOf(line, styleOffset);
@@ -275,12 +342,46 @@ function renderBodyPage(
         layout.x,
         y,
         layout.width,
+        colour,
         layout.align,
       );
+      if (marked) {
+        document.font('CourierPrime').fillColor('#111111');
+        document.text('*', pageWidth - MARK_X, y, { width: 10, lineBreak: false });
+      }
       styleOffset += Array.from(line).length;
       y += LINE_HEIGHT;
     }
   }
+}
+
+/**
+ * Where each page of the locked draft begins, expressed in lines of today's screenplay.
+ *
+ * Nothing is stored at lock time: a list of anchors written down then would have gone stale on
+ * the first keystroke. The locked draft is paginated here with the very same options, and the
+ * diff moves its page starts onto the text as it is now.
+ */
+function lockedPageStarts(baselineSource: string, current: string, options: PdfExportOptions): number[] {
+  const parsed = parse(baselineSource);
+  const baseline = options.includeNotes ? withNotes(parsed) : parsed;
+  const pagination = paginateScreenplay(baseline, {
+    format: options.format,
+    includeNotes: options.includeNotes,
+    includeSynopses: options.includeSynopses,
+  });
+  const alignment = alignLines(baselineSource, current);
+
+  return pagination.pages.map((page) => {
+    const first = page.items.find((item) => item.elementIndex !== null);
+    const element =
+      first?.elementIndex === undefined || first.elementIndex === null
+        ? null
+        : baseline.elements[first.elementIndex];
+    // `Element.line` is 0-based; a locked start counts from 1.
+    const line = (element?.line ?? 0) + 1;
+    return alignment.get(line) ?? line;
+  });
 }
 
 export async function renderScreenplayPdf(
@@ -290,17 +391,34 @@ export async function renderScreenplayPdf(
 ): Promise<RenderedPdf> {
   const original = parse(source);
   const screenplay = options.includeNotes ? withNotes(original) : original;
+  const revision = options.revision;
+  const baseline = revision?.baselineSource ?? '';
+  const revised =
+    revision && baseline.length > 0
+      ? revisedElements(screenplay.elements, revisedLines(baseline, source))
+      : new Set<number>();
+  const tint = paperTint(options);
+
   const pagination = paginateScreenplay(screenplay, {
     format: options.format,
     includeNotes: options.includeNotes,
     includeSynopses: options.includeSynopses,
+    ...(revision?.lockedPages === true && baseline.length > 0
+      ? { lockedPageStarts: lockedPageStarts(baseline, source, options) }
+      : {}),
   });
   const from = Math.min(pagination.pages.length, Math.max(1, options.pageFrom ?? 1));
   const to = Math.min(
     pagination.pages.length,
     Math.max(from, options.pageTo ?? pagination.pages.length),
   );
-  const pages = pagination.pages.slice(from - 1, to);
+  const selected = pagination.pages.slice(from - 1, to);
+  // Only the pages a reader needs to swap into their copy. The title page stays: a set of
+  // revised pages is still issued under a title.
+  const pages =
+    revision?.onlyRevisedPages === true && baseline.length > 0
+      ? selected.filter((page) => page.elementIndexes.some((index) => revised.has(index)))
+      : selected;
   const size = options.format === 'a4' ? 'A4' : 'LETTER';
   const document = new PDFDocument({ autoFirstPage: false, size, margin: 0, compress: true });
   document.registerFont('CourierPrime', fontPath(resourcesDirectory, 'CourierPrime-Regular.ttf'));
@@ -321,8 +439,8 @@ export async function renderScreenplayPdf(
     document.once('error', reject);
   });
 
-  if (original.titlePage.fields.size > 0) renderTitlePage(document, original);
-  for (const page of pages) renderBodyPage(document, screenplay, page, options);
+  if (original.titlePage.fields.size > 0) renderTitlePage(document, original, tint);
+  for (const page of pages) renderBodyPage(document, screenplay, page, options, revised, tint);
   document.end();
 
   const bytes = await complete;

@@ -9,6 +9,7 @@ import type {
   AiKeyUpdate,
 } from './ai/index.js';
 import type { SnapshotMeta } from './snapshots/index.js';
+import type { RevisionColour } from './revision/index.js';
 import type { Bible } from './bible/index.js';
 
 /**
@@ -59,6 +60,29 @@ export type ExportOutcome =
   | { status: 'cancelled' }
   | { status: 'error'; message: string };
 
+/**
+ * What a revision adds to an export.
+ *
+ * The header arrives already composed and translated: only the renderer knows the locale, and
+ * the words do not fall in the same order in both languages. The colour travels as an
+ * identifier rather than as a hex code, so nothing arbitrary coming across the IPC ends up in a
+ * fill colour — the main process resolves it through `REVISION_PAPER`.
+ */
+export interface PdfRevisionOptions {
+  /** The locked draft. Empty means there is nothing to compare against. */
+  baselineSource: string;
+  /** Composed header, e.g. “BLUE REVISED — 31/07/26”. */
+  header: string;
+  colour: RevisionColour;
+  /** Named header, tinted page, or both. */
+  colourMode: 'header' | 'page' | 'both';
+  /** Asterisks in the right margin, beside every revised line. */
+  marks: boolean;
+  /** Pin the pages of the locked draft: what overflows becomes 12A rather than moving 13. */
+  lockedPages: boolean;
+  onlyRevisedPages: boolean;
+}
+
 export interface PdfExportOptions {
   format: 'letter' | 'a4';
   sceneNumbers: 'none' | 'left' | 'right' | 'both';
@@ -68,6 +92,7 @@ export interface PdfExportOptions {
   watermark: string;
   pageFrom: number | null;
   pageTo: number | null;
+  revision: PdfRevisionOptions | null;
 }
 
 export interface PdfRenderRequest {
@@ -314,6 +339,9 @@ export type MenuCommand =
   | 'ai.openRepetitions'
   | 'scene.renumber'
   | 'scene.removeNumbers'
+  | 'revision.lock'
+  | 'revision.issue'
+  | 'revision.unlock'
   | 'help.about';
 
 export type IpcChannel = keyof IpcRequests;

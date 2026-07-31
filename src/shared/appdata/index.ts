@@ -1,4 +1,7 @@
 import type { AiInconsistency, RewriteTone } from '../ai/index.js';
+import type { RevisionColour } from '../revision/index.js';
+import { isRevisionColour } from '../revision/index.js';
+import { isSnapshotId } from '../snapshots/index.js';
 
 /**
  * Versioned schema for `<screenplay>.fountain.appdata.json`.
@@ -47,6 +50,21 @@ export interface CorkboardState {
   cardWidth: number;
 }
 
+/**
+ * Where a locked screenplay stands: what it is compared against, and which colour it is on.
+ *
+ * The reference is a snapshot rather than a copy kept here: the versions feature already stores
+ * screenplays, names them and shows them, and a second mechanism would only be a second thing to
+ * keep in step.
+ */
+export interface RevisionState {
+  /** Snapshot holding the locked draft, `null` while the screenplay is not locked. */
+  snapshotId: string | null;
+  lockedAt: number | null;
+  /** Colour of the revision being written now. */
+  colour: RevisionColour;
+}
+
 export interface RewriteState {
   lastTone: RewriteTone;
   customStyle: string;
@@ -63,6 +81,7 @@ export interface AppData {
   preview: PreviewState;
   timeline: TimelineState;
   corkboard: CorkboardState;
+  revision: RevisionState;
   rewrite: RewriteState;
   inconsistencies: InconsistencyState;
   voiceConsistency: Record<string, InconsistencyState>;
@@ -95,6 +114,11 @@ export const DEFAULT_APP_DATA: Readonly<AppData> = {
     colorMode: 'intExt',
     cardWidth: 240,
   },
+  revision: {
+    snapshotId: null,
+    lockedAt: null,
+    colour: 'blue',
+  },
   rewrite: {
     lastTone: 'neutral',
     customStyle: '',
@@ -117,6 +141,7 @@ export function createDefaultAppData(): AppData {
     preview: { ...DEFAULT_APP_DATA.preview },
     timeline: { ...DEFAULT_APP_DATA.timeline },
     corkboard: { ...DEFAULT_APP_DATA.corkboard },
+    revision: { ...DEFAULT_APP_DATA.revision },
     rewrite: { ...DEFAULT_APP_DATA.rewrite },
     inconsistencies: { items: [], analyzedAt: null },
     voiceConsistency: {},
@@ -230,6 +255,10 @@ export function parseAppData(raw: string): AppData | null {
       typeof root['corkboard'] === 'object' && root['corkboard'] !== null
         ? (root['corkboard'] as Record<string, unknown>)
         : {};
+    const revision =
+      typeof root['revision'] === 'object' && root['revision'] !== null
+        ? (root['revision'] as Record<string, unknown>)
+        : {};
     const rewrite =
       typeof root['rewrite'] === 'object' && root['rewrite'] !== null
         ? (root['rewrite'] as Record<string, unknown>)
@@ -305,6 +334,16 @@ export function parseAppData(raw: string): AppData | null {
       180,
       420,
     );
+    // A reference that is not a snapshot id is no reference at all: rather than trust it and
+    // read a path from it later, the screenplay reads as unlocked.
+    if (isSnapshotId(revision['snapshotId'])) {
+      result.revision.snapshotId = revision['snapshotId'];
+      if (typeof revision['lockedAt'] === 'number' && Number.isFinite(revision['lockedAt'])) {
+        result.revision.lockedAt = revision['lockedAt'];
+      }
+    }
+    if (isRevisionColour(revision['colour'])) result.revision.colour = revision['colour'];
+
     if (REWRITE_TONES.has(rewrite['lastTone'] as RewriteTone)) {
       result.rewrite.lastTone = rewrite['lastTone'] as RewriteTone;
     }

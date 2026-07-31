@@ -29,6 +29,7 @@ describe('companion schema', () => {
     data.timeline.colorMode = 'timeOfDay';
     data.timeline.zoom = 1.7;
     data.corkboard = { visible: true, colorMode: 'none', cardWidth: 320 };
+    data.revision = { snapshotId: 'snap-3f2a', lockedAt: 1_700_000_000_000, colour: 'pink' };
     data.rewrite = { lastTone: 'cinematic', customStyle: 'Sec et elliptique' };
     data.inconsistencies = {
       analyzedAt: 42,
@@ -67,6 +68,7 @@ describe('companion schema', () => {
         preview: { width: 10000 },
         timeline: { zoom: 99, colorMode: 'timeOfDay' },
         corkboard: { cardWidth: 4, colorMode: 'rainbow', visible: 'yes' },
+        revision: { snapshotId: '../escape', lockedAt: 12, colour: 'turquoise' },
       }),
     );
 
@@ -80,6 +82,22 @@ describe('companion schema', () => {
     expect(parsed?.corkboard.cardWidth).toBe(180);
     expect(parsed?.corkboard.colorMode).toBe('intExt');
     expect(parsed?.corkboard.visible).toBe(false);
+    // A reference that is not a snapshot id is no reference: the screenplay reads as unlocked
+    // rather than as locked against something that would later be turned into a path.
+    expect(parsed?.revision.snapshotId).toBeNull();
+    expect(parsed?.revision.lockedAt).toBeNull();
+    expect(parsed?.revision.colour).toBe('blue');
+  });
+
+  it('keeps a locked reference and its colour', () => {
+    const parsed = parseAppData(
+      JSON.stringify({
+        version: APP_DATA_VERSION,
+        revision: { snapshotId: 'snap-abc123', lockedAt: 99, colour: 'cherry' },
+      }),
+    );
+
+    expect(parsed?.revision).toEqual({ snapshotId: 'snap-abc123', lockedAt: 99, colour: 'cherry' });
   });
 
   it('keeps voice findings per character, and bounds what a companion file may carry', () => {

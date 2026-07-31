@@ -7,6 +7,7 @@ import type { AiConnectionProfile } from '@shared/ai/index.js';
 import { isProviderKind } from '@shared/ai/providers/index.js';
 import { isBibleId } from '@shared/bible/index.js';
 import { isSnapshotId, MAX_SNAPSHOT_NAME } from '@shared/snapshots/index.js';
+import { isRevisionColour } from '@shared/revision/index.js';
 import {
   deleteBibleImage,
   readBible,
@@ -61,6 +62,30 @@ function pdfResourcesDirectory(): string {
     : join(import.meta.dirname, '../../resources');
 }
 
+/**
+ * Revision options as they cross the IPC.
+ *
+ * The colour is checked against the known list rather than trusted: it selects a fill colour,
+ * and the one thing the main process must never do is paint with a string it was handed.
+ */
+function validPdfRevision(value: unknown): boolean {
+  if (value === null) return true;
+  if (!isRecord(value)) return false;
+  return (
+    typeof value['baselineSource'] === 'string' &&
+    value['baselineSource'].length <= 100_000_000 &&
+    typeof value['header'] === 'string' &&
+    value['header'].length <= 200 &&
+    isRevisionColour(value['colour']) &&
+    (value['colourMode'] === 'header' ||
+      value['colourMode'] === 'page' ||
+      value['colourMode'] === 'both') &&
+    typeof value['marks'] === 'boolean' &&
+    typeof value['lockedPages'] === 'boolean' &&
+    typeof value['onlyRevisedPages'] === 'boolean'
+  );
+}
+
 function validPdfOptions(value: unknown): boolean {
   if (!isRecord(value)) return false;
   const page = (candidate: unknown) =>
@@ -81,7 +106,8 @@ function validPdfOptions(value: unknown): boolean {
     typeof value['watermark'] === 'string' &&
     value['watermark'].length <= 200 &&
     page(value['pageFrom']) &&
-    page(value['pageTo'])
+    page(value['pageTo']) &&
+    validPdfRevision(value['revision'])
   );
 }
 

@@ -1,4 +1,5 @@
 import type { Element, ElementKind, Range, Screenplay } from '../fountain/index.js';
+import { pageLabel } from '../revision/index.js';
 
 /**
  * Lightweight page grouping used by the live M2 preview.
@@ -40,12 +41,28 @@ function characterLength(value: string): number {
   return Array.from(value).length;
 }
 
+/**
+ * The text of an element as it is actually printed.
+ *
+ * `Element.text` keeps the emphasis markers — `_underlined_`, `**bold**` — because the editor
+ * needs them. Paper does not: a page models what a reader sees, so wrapping and counting on the
+ * marker-bearing text would both over-count the lines and, in the PDF, print the markers.
+ * `Element.inline` is the same text with emphasis resolved, and it is what the renderer styles
+ * against, so using it here keeps the two in step character for character.
+ */
+function printedText(element: Element): string {
+  if (element.inline.length === 0) return element.text;
+  return element.inline.map((span) => span.text).join('');
+}
+
 /** Estimated paper lines occupied by one AST element in 12 pt Courier Prime. */
 export function estimateElementLines(element: Element): number {
   const width = WIDTH_BY_KIND[element.kind] ?? 61;
-  const wrapped = element.text.split('\n').reduce((total, line) => {
-    return total + Math.max(1, Math.ceil(characterLength(line) / width));
-  }, 0);
+  const wrapped = printedText(element)
+    .split('\n')
+    .reduce((total, line) => {
+      return total + Math.max(1, Math.ceil(characterLength(line) / width));
+    }, 0);
 
   // Distinct screenplay blocks retain the blank source line that separates them.
   const leading = ['dialogue', 'parenthetical', 'lyrics'].includes(element.kind) ? 0 : 1;
@@ -144,6 +161,13 @@ export interface ScreenplayPage {
   usedLines: number;
   range: Range;
   elementIndexes: number[];
+  /**
+   * The label a reader sees: `12`, or `12A` for a page that overflowed a locked one. Without
+   * locking it is always `String(index + 1)`.
+   */
+  number: string;
+  /** Index of the locked page this one opens, `null` for a page that overflowed. */
+  lockIndex: number | null;
 }
 
 export interface PaginationResult {
@@ -159,6 +183,14 @@ export interface PaginationOptions {
   includeSections?: boolean;
   includeSynopses?: boolean;
   includeNotes?: boolean;
+  /**
+   * Source lines (1-based) that must each open a page, in document order.
+   *
+   * This is how a production keeps page 12 on page 12: the pages of the locked draft are
+   * pinned, and only what no longer fits between two pins moves — onto `12A` rather than onto
+   * page 13. Absent, pagination flows from the top as it always has.
+   */
+  lockedPageStarts?: readonly number[];
 }
 
 function wrapLine(line: string, width: number): string[] {
@@ -180,7 +212,9 @@ function wrapLine(line: string, width: number): string[] {
 
 export function wrapElement(element: Element): string[] {
   const width = WIDTH_BY_KIND[element.kind] ?? 61;
-  return element.text.split('\n').flatMap((line) => wrapLine(line, width));
+  return printedText(element)
+    .split('\n')
+    .flatMap((line) => wrapLine(line, width));
 }
 
 function includedForProduction(element: Element, options: PaginationOptions): boolean {
@@ -189,6 +223,77 @@ function includedForProduction(element: Element, options: PaginationOptions): bo
   if (element.kind === 'section') return options.includeSections === true;
   if (element.kind === 'synopsis') return options.includeSynopses === true;
   return element.kind !== 'page_break';
+}
+
+/**
+ * Turns locked page starts, given as source lines, into the elements that must open a page.
+ *
+ * A locked start lands on the first element at or after its line: the line itself may have been
+ * deleted since, and what matters is where the page begins now, not that the exact line survived.
+ *
+ * Two starts can resolve to the same element once a page's whole content is cut. Only the first
+ * keeps the element — the earlier page keeps the text, and the later number simply does not
+ * appear in the issued set, which is the truth of a page that was cut.
+ */
+function resolveAnchors(
+  elements: readonly Element[],
+  starts: readonly number[],
+): Map<number, number> {
+  const anchors = new Map<number, number>();
+  if (starts.length === 0) return anchors;
+
+  const taken = new Set<number>();
+  let search = 0;
+  starts.forEach((start, lockIndex) => {
+    // `Element.line` is 0-based; a locked start counts from 1.
+    const target = start - 1;
+    while (search < elements.length && (elements[search]?.line ?? 0) < target) search++;
+    if (search >= elements.length) return;
+    if (taken.has(search)) return;
+    taken.add(search);
+    anchors.set(search, lockIndex);
+  });
+  return anchors;
+}
+
+/**
+ * Gives every page the label a reader sees.
+ *
+ * A page that opens a locked one takes its number. A page that overflowed between two locked
+ * ones takes a letter — `12A` — so that page 13 stays page 13. Past the last locked page there
+ * is nothing left to protect, so the numbering simply carries on in integers: those are pages
+ * added at the end, and nobody is holding a later one.
+ */
+function labelPages(pages: ScreenplayPage[], lockedCount: number): void {
+  const lastLocked = pages.reduce(
+    (last, page, index) => (page.lockIndex === null ? last : index),
+    -1,
+  );
+  let base = 0;
+  let overflow = 0;
+  let sequential = lockedCount;
+
+  pages.forEach((page, index) => {
+    if (page.lockIndex !== null) {
+      base = page.lockIndex + 1;
+      overflow = 0;
+      page.number = String(base);
+      return;
+    }
+    // Before the first locked page, or past the last one: plain numbers. `base` of zero would
+    // otherwise produce a nonsense `0A`.
+    if (base === 0) {
+      page.number = String(index + 1);
+      return;
+    }
+    if (index > lastLocked) {
+      sequential++;
+      page.number = String(sequential);
+      return;
+    }
+    overflow++;
+    page.number = pageLabel(base, overflow);
+  });
 }
 
 /**
@@ -212,6 +317,10 @@ export function paginateScreenplay(
     for (const element of scene.elements) sceneByElement.set(element.id, sceneIndex);
   });
 
+  const anchors = resolveAnchors(screenplay.elements, options.lockedPageStarts ?? []);
+  /** The locked page the page being built opens, if any. */
+  let currentLock: number | null = null;
+
   const flush = () => {
     if (items.length === 0) return;
     const real = items.filter(
@@ -228,9 +337,13 @@ export function paginateScreenplay(
         to: real.at(-1)?.range.to ?? real[0]?.range.from ?? 0,
       },
       elementIndexes: indexes,
+      // Filled in once every page is known: a label depends on what comes after it.
+      number: '',
+      lockIndex: currentLock,
     });
     items = [];
     usedLines = 0;
+    currentLock = null;
   };
 
   const remaining = () => linesPerPage - usedLines;
@@ -264,6 +377,12 @@ export function paginateScreenplay(
       continue;
     }
     if (!includedForProduction(element, options)) continue;
+
+    const anchor = anchors.get(index);
+    if (anchor !== undefined) {
+      flush();
+      currentLock = anchor;
+    }
 
     const sceneIndex = sceneByElement.get(element.id) ?? null;
     const lines = wrapElement(element);
@@ -359,8 +478,11 @@ export function paginateScreenplay(
       usedLines: 0,
       range: { from: 0, to: 0 },
       elementIndexes: [],
+      number: '1',
+      lockIndex: null,
     });
   }
+  labelPages(pages, anchors.size);
 
   const scenePages = screenplay.scenes.map((_scene, sceneIndex) => {
     const page = pages.find((candidate) =>

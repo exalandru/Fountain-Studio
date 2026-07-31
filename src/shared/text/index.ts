@@ -1,14 +1,31 @@
 /**
- * Text comparison that ignores what a reader ignores when they search.
+ * Text primitives shared across features: comparison that ignores accents, and the shape of
+ * an edit to the document.
  *
- * Pure TypeScript (PLAN.md §3.1). Someone hunting for "megalopole" means MÉGALOPOLE, and
- * someone typing "eleve" means ÉLÈVE: a search that fails on an accent is a search that
- * fails, and on a French screenplay it fails constantly.
+ * Pure TypeScript (PLAN.md §3.1).
+ *
+ * On folding: someone hunting for "megalopole" means MÉGALOPOLE, and someone typing "eleve"
+ * means ÉLÈVE — a search that fails on an accent is a search that fails, and on a French
+ * screenplay it fails constantly.
  *
  * Folding is for *searching*, never for *identity*. Deciding whether two names denote the
  * same character is a different question — RENE and RENÉ may well be two people — so
  * anything comparing names for identity keeps its accents and asks the author instead.
  */
+
+/**
+ * A replacement of one span of the document, in the coordinates of the text it was computed
+ * from.
+ *
+ * Lives here rather than inside a feature because two of them now produce edits — the
+ * corkboard moves scenes, the revision pass numbers them — and both hand them to the same
+ * editor. A caller applies a batch in one transaction, which is what makes it one undo step.
+ */
+export interface DocumentEdit {
+  from: number;
+  to: number;
+  insert: string;
+}
 
 /**
  * Uppercase, accents removed.

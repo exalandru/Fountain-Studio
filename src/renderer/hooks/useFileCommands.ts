@@ -24,6 +24,9 @@ interface FileCommandsOptions {
   onRenameCharacter: () => void;
   onRenumberScenes: () => void;
   onRemoveSceneNumbers: () => void;
+  onLockProduction: () => void;
+  onIssueRevision: () => void;
+  onUnlockProduction: () => void;
   onToggleTimeline: () => void;
   onToggleCorkboard: () => void;
   onCommandPalette: () => void;
@@ -52,6 +55,9 @@ export function useFileCommands({
   onRenameCharacter,
   onRenumberScenes,
   onRemoveSceneNumbers,
+  onLockProduction,
+  onIssueRevision,
+  onUnlockProduction,
   onToggleTimeline,
   onToggleCorkboard,
   onCommandPalette,
@@ -109,6 +115,9 @@ export function useFileCommands({
         'ai.openRepetitions': onOpenRepetitions,
         'scene.renumber': onRenumberScenes,
         'scene.removeNumbers': onRemoveSceneNumbers,
+        'revision.lock': onLockProduction,
+        'revision.issue': onIssueRevision,
+        'revision.unlock': onUnlockProduction,
         'help.about': () => setStatus(t('status.about', { app: t('app.name'), version: '0.1.0' })),
       } satisfies Record<MenuCommand, () => void>;
 
@@ -130,6 +139,9 @@ export function useFileCommands({
       onRenameCharacter,
       onRenumberScenes,
       onRemoveSceneNumbers,
+      onLockProduction,
+      onIssueRevision,
+      onUnlockProduction,
       onToggleTimeline,
       onToggleCorkboard,
       openDialog,

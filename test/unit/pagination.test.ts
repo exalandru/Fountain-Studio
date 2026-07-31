@@ -137,3 +137,103 @@ describe('production screenplay pagination', () => {
     expect(paginateScreenplay(screenplay, { format: 'letter' }).pages.length).toBeGreaterThan(1);
   });
 });
+
+/**
+ * Locked pages are the promise that page 12 stays page 12 once a crew is holding it. Everything
+ * here is read the way a reader of the issued set reads it: by the label on the page.
+ */
+describe('locked pages', () => {
+  /** A screenplay of `count` action blocks, each one line long. */
+  const blocks = (count: number): string =>
+    Array.from({ length: count }, (_value, index) => `Action ${index}.`).join('\n\n');
+
+  /** 1-based source line of the block whose text is `Action n.`. */
+  const lineOf = (source: string, text: string): number =>
+    source.slice(0, source.indexOf(text)).split('\n').length;
+
+  it('labels pages by position when nothing is locked', () => {
+    // The guarantee that this whole feature costs nothing when it is not used.
+    const result = paginateScreenplay(parse(blocks(120)), { format: 'letter' });
+
+    expect(result.pages.length).toBeGreaterThan(2);
+    expect(result.pages.map((page) => page.number)).toEqual(
+      result.pages.map((page) => String(page.index + 1)),
+    );
+    expect(result.pages.every((page) => page.lockIndex === null)).toBe(true);
+  });
+
+  it('opens a page exactly where a locked start says', () => {
+    // A one-line block costs two lines once its blank line is counted, so thirty of them fill
+    // rather less than two Letter pages: the second page here exists because it was pinned.
+    const source = blocks(30);
+    const result = paginateScreenplay(parse(source), {
+      format: 'letter',
+      lockedPageStarts: [1, lineOf(source, 'Action 10.')],
+    });
+
+    expect(result.pages).toHaveLength(2);
+    expect(result.pages[1]?.items[0]?.text).toBe('Action 10.');
+    expect(result.pages.map((page) => page.number)).toEqual(['1', '2']);
+  });
+
+  it('sends what overflows a locked page onto a lettered one, leaving the next number alone', () => {
+    // Two pinned pages, and forty blocks crammed into the first — a page and a half of them.
+    const source = blocks(60);
+    const starts = [1, lineOf(source, 'Action 40.')];
+    const result = paginateScreenplay(parse(source), { format: 'letter', lockedPageStarts: starts });
+
+    expect(result.pages.map((page) => page.number)).toEqual(['1', '1A', '2']);
+    // Page 2 still starts where it was pinned: that is the whole point of the letter.
+    const second = result.pages.find((page) => page.number === '2');
+    expect(second?.items[0]?.text).toBe('Action 40.');
+  });
+
+  it('leaves a page short rather than pulling the next page back', () => {
+    const source = blocks(90);
+    const starts = [1, lineOf(source, 'Action 4.'), lineOf(source, 'Action 60.')];
+    const result = paginateScreenplay(parse(source), { format: 'letter', lockedPageStarts: starts });
+
+    // Page 1 holds four blocks and stops, half blank, exactly like an issued page that lost a
+    // scene.
+    expect(result.pages[0]?.usedLines).toBeLessThan(PAGE_LINES.letter / 2);
+    expect(result.pages[1]?.number).toBe('2');
+  });
+
+  it('numbers pages added past the last locked one in plain integers', () => {
+    // Nothing follows them, so there is no later number to protect.
+    const source = blocks(120);
+    const result = paginateScreenplay(parse(source), {
+      format: 'letter',
+      lockedPageStarts: [1, lineOf(source, 'Action 25.')],
+    });
+
+    const labels = result.pages.map((page) => page.number);
+    expect(labels.slice(0, 2)).toEqual(['1', '2']);
+    expect(labels.slice(2)).toEqual(labels.slice(2).map((_label, index) => String(index + 3)));
+  });
+
+  it('ignores a locked start past the end of the screenplay', () => {
+    const result = paginateScreenplay(parse(blocks(10)), {
+      format: 'letter',
+      lockedPageStarts: [1, 9_000],
+    });
+
+    expect(result.pages).toHaveLength(1);
+    expect(result.pages[0]?.number).toBe('1');
+  });
+
+  it('drops the later of two starts that land on the same element', () => {
+    // A page whose content was entirely cut: the earlier page keeps the text, and the number
+    // that lost it simply does not appear in the issued set — rather than an empty page 2
+    // followed by a page 3 holding what page 2 used to hold.
+    const source = blocks(30);
+    const line = lineOf(source, 'Action 10.');
+    const result = paginateScreenplay(parse(source), {
+      format: 'letter',
+      lockedPageStarts: [1, line, line],
+    });
+
+    expect(result.pages.map((page) => page.number)).toEqual(['1', '2']);
+    expect(result.pages.every((page) => page.items.length > 0)).toBe(true);
+  });
+});

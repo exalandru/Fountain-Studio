@@ -12,6 +12,7 @@ import type {
 } from '@shared/appdata/index.js';
 import { planSceneMove, planSynopsisEdit } from '@shared/corkboard/index.js';
 import { parse } from '@shared/fountain/index.js';
+import { nextRevisionColour, planSceneNumbering } from '@shared/revision/index.js';
 import type { AppSettings } from '@shared/ipc-contract.js';
 import { statisticsToCsv, statisticsToJson } from '@shared/stats/index.js';
 import { useAutosave } from './hooks/useAutosave.js';
@@ -52,6 +53,7 @@ export function App() {
   const [dark, setDark] = useState(() => window.matchMedia('(prefers-color-scheme: dark)').matches);
   const [status, setStatus] = useState<string | null>(null);
   const [pdfOpen, setPdfOpen] = useState(false);
+  const [pdfDate, setPdfDate] = useState('');
   const [aiSettingsOpen, setAiSettingsOpen] = useState(false);
   const [inconsistencyOpen, setInconsistencyOpen] = useState(false);
 
@@ -155,7 +157,15 @@ export function App() {
     stringsRef,
     setStatus,
   });
-  const openPdfDialog = useCallback(() => setPdfOpen(true), []);
+  const openPdfDialog = useCallback(() => {
+    // The issue date of a revision is the day the pages go out, so it is read when the dialog
+    // opens — in an event handler, where reading a clock is legitimate, rather than during a
+    // render or from an effect.
+    const now = new Date();
+    const pad = (value: number) => String(value).padStart(2, '0');
+    setPdfDate(`${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`);
+    setPdfOpen(true);
+  }, []);
   const openAiSettings = useCallback(() => setAiSettingsOpen(true), []);
   const openInconsistencies = useCallback(() => setInconsistencyOpen(true), []);
   const openVoiceConsistency = useCallback(() => setVoiceConsistencyOpen(true), []);
@@ -448,6 +458,131 @@ export function App() {
     [settings.showSynopses, t],
   );
 
+  /** The revision this screenplay is on, or `null` while it is not locked. */
+  const revision = active?.appData.revision ?? null;
+  const locked = revision?.snapshotId != null;
+
+  /**
+   * Numbering the scenes.
+   *
+   * Locked, this only names the scenes that have no number — a run inserted before scene 2
+   * becomes A2, B2. Renumbering everything would rewrite the very numbers a crew is working
+   * from, which is why the command changes meaning rather than offering to do it anyway.
+   */
+  const numberScenes = useCallback(() => {
+    const view = editorView.current;
+    if (!view) return;
+    const source = view.state.doc.toString();
+    const mode = locked ? 'letters' : 'lock';
+    const edits = planSceneNumbering(source, parse(source).scenes, mode);
+    if (edits.length > 0) {
+      view.dispatch({ changes: edits, annotations: isolateHistory.of('full') });
+    }
+    view.focus();
+    setStatus(
+      locked
+        ? t('revision.lettered', { count: edits.length })
+        : t('status.scenesRenumbered', { count: parse(source).scenes.length }),
+    );
+  }, [locked, t]);
+
+  /**
+   * Takes a snapshot of the screenplay as it stands and returns it.
+   *
+   * The id is found by comparing the lists rather than by matching on the name: two versions may
+   * legitimately carry the same name, and the reference must point at exactly one of them.
+   */
+  const snapshotReference = useCallback(async (path: string, name: string, content: string) => {
+    const before = await window.quantum.invoke('snapshot:list', { path });
+    const after = await window.quantum.invoke('snapshot:create', { path, name, content });
+    return after.find((meta) => !before.some((previous) => previous.id === meta.id)) ?? null;
+  }, []);
+
+  const lockForProduction = useCallback(async () => {
+    const view = editorView.current;
+    const current = store().active();
+    if (!view || !current) return;
+    if (current.path === null) {
+      setStatus(t('revision.saveFirst'));
+      return;
+    }
+
+    const source = view.state.doc.toString();
+    const scenes = parse(source).scenes;
+    const edits = planSceneNumbering(source, scenes, 'lock');
+    if (edits.length > 0) {
+      view.dispatch({ changes: edits, annotations: isolateHistory.of('full') });
+    }
+    // Read back after the dispatch: the locked draft has to be the numbered one, or every
+    // later comparison would report the numbering itself as a revision.
+    const numbered = view.state.doc.toString();
+
+    try {
+      const created = await snapshotReference(current.path, t('revision.lockName'), numbered);
+      if (!created) return;
+      updateAppData((data) => ({
+        ...data,
+        revision: { snapshotId: created.id, lockedAt: created.createdAt, colour: 'blue' },
+      }));
+      setStatus(
+        t('revision.locked', { count: scenes.length, colour: t('revision.colour.blue') }),
+      );
+    } catch (error) {
+      setStatus(t('revision.failed', { error: error instanceof Error ? error.message : '' }));
+    }
+  }, [snapshotReference, store, t, updateAppData]);
+
+  const issueRevision = useCallback(async () => {
+    const view = editorView.current;
+    const current = store().active();
+    if (!view || !current) return;
+    if (current.path === null || current.appData.revision.snapshotId === null) {
+      setStatus(t('revision.notLocked'));
+      return;
+    }
+
+    // The moment the pages go out is the moment a new scene must have a number.
+    const source = view.state.doc.toString();
+    const edits = planSceneNumbering(source, parse(source).scenes, 'letters');
+    if (edits.length > 0) {
+      view.dispatch({ changes: edits, annotations: isolateHistory.of('full') });
+    }
+    const issued = view.state.doc.toString();
+    const colour = current.appData.revision.colour;
+
+    try {
+      const created = await snapshotReference(
+        current.path,
+        t('revision.issueName', { colour: t(`revision.colour.${colour}`) }),
+        issued,
+      );
+      if (!created) return;
+      const next = nextRevisionColour(colour);
+      // Each revision is compared against the previous one, not against the first draft: what a
+      // reader needs marked is what changed since the pages they are holding.
+      updateAppData((data) => ({
+        ...data,
+        revision: { snapshotId: created.id, lockedAt: created.createdAt, colour: next },
+      }));
+      setStatus(
+        t('revision.issued', {
+          colour: t(`revision.colour.${colour}`),
+          next: t(`revision.colour.${next}`),
+        }),
+      );
+    } catch (error) {
+      setStatus(t('revision.failed', { error: error instanceof Error ? error.message : '' }));
+    }
+  }, [snapshotReference, store, t, updateAppData]);
+
+  const unlockProduction = useCallback(() => {
+    updateAppData((data) => ({
+      ...data,
+      revision: { ...data.revision, snapshotId: null, lockedAt: null },
+    }));
+    setStatus(t('revision.unlocked'));
+  }, [t, updateAppData]);
+
   const executeCommand = useFileCommands({
     closeTab,
     editorView,
@@ -463,27 +598,7 @@ export function App() {
     onRewrite: openRewriteSelection,
     onSynonyms: openSynonyms,
     onRenameCharacter: openRenameCharacter,
-    onRenumberScenes: () => {
-      const view = editorView.current;
-      if (!view) return;
-      const headings = view.state
-        .field(fountainLexField)
-        .lines.filter((line) => line.kind === 'scene_heading');
-      const changes = headings.flatMap((heading, index) => {
-        const source = view.state.sliceDoc(heading.from, heading.to);
-        const numbered = /\s+#[^#\r\n]+#\s*$/.test(source)
-          ? source.replace(/\s+#[^#\r\n]+#(\s*)$/, ` #${index + 1}#$1`)
-          : `${source.replace(/\s+$/, '')} #${index + 1}#${source.match(/\s+$/)?.[0] ?? ''}`;
-        return numbered === source
-          ? []
-          : [{ from: heading.from, to: heading.to, insert: numbered }];
-      });
-      if (changes.length > 0) {
-        view.dispatch({ changes, annotations: isolateHistory.of('full') });
-      }
-      view.focus();
-      setStatus(t('status.scenesRenumbered', { count: headings.length }));
-    },
+    onRenumberScenes: numberScenes,
     onRemoveSceneNumbers: () => {
       const view = editorView.current;
       if (!view) return;
@@ -501,6 +616,9 @@ export function App() {
       view.focus();
       setStatus(t('status.sceneNumbersRemoved', { count: changes.length }));
     },
+    onLockProduction: () => void lockForProduction(),
+    onIssueRevision: () => void issueRevision(),
+    onUnlockProduction: unlockProduction,
     onToggleTimeline: toggleTimeline,
     onToggleCorkboard: toggleCorkboard,
     onCommandPalette: () => setPaletteOpen(true),
@@ -521,6 +639,10 @@ export function App() {
 
 
       { id: 'edit.find', label: t('menu.edit.find'), shortcut: '⌘F' },
+      { id: 'scene.renumber', label: t('menu.edit.renumberScenes') },
+      { id: 'revision.lock', label: t('menu.edit.lockProduction') },
+      { id: 'revision.issue', label: t('menu.edit.issueRevision') },
+      { id: 'revision.unlock', label: t('menu.edit.unlockProduction') },
       { id: 'view.toggleTimeline', label: t('menu.view.showTimeline') },
       { id: 'view.toggleCorkboard', label: t('menu.view.corkboard'), shortcut: '⇧⌘B' },
       { id: 'view.toggleFocus', label: t('menu.view.focusMode'), shortcut: '⇧⌘F' },
@@ -819,6 +941,7 @@ export function App() {
         previewScrollPosition={previewScrollPosition}
         settings={settings}
         status={status}
+        revisionColour={locked && revision ? t(`revision.colour.${revision.colour}`) : null}
         t={t}
         onCloseTab={(id) => void closeTab(id)}
         onNewDocument={newDocument}
@@ -865,6 +988,9 @@ export function App() {
         <PdfExportDialog
           source={active.content}
           suggestedName={`${active.name.replace(/\.(fountain|txt)$/i, '')}.pdf`}
+          path={active.path}
+          revision={active.appData.revision}
+          issueDate={pdfDate}
           onExported={(path) => {
             setStatus(t('status.exported', { path }));
             setPdfOpen(false);

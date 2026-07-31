@@ -347,7 +347,12 @@ export interface SceneChange {
 
 /** A scene's content, independent of position and of surrounding whitespace. */
 function bodySignature(scene: Scene): string {
-  return scene.elements.map((element) => `${element.kind} ${element.text}`).join('');
+  // Escaped rather than written as raw bytes: a literal NUL in the file makes every tool
+  // that reads it decide it is binary — grep included, which then reports no matches at
+  // all — and a reader just sees a space where the separator is.
+  return scene.elements
+    .map((element) => `${element.kind}\u0000${element.text}`)
+    .join('\u0001');
 }
 
 /**

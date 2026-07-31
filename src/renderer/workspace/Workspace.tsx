@@ -31,6 +31,8 @@ interface WorkspaceProps {
   previewScrollPosition: ScrollPosition;
   settings: AppSettings;
   status: string | null;
+  /** Translated colour of the revision under way, or `null` when nothing is locked. */
+  revisionColour: string | null;
   t: Translator['t'];
   onCloseTab: (id: string) => void;
   onNewDocument: () => void;
@@ -88,6 +90,7 @@ export function Workspace({
   previewScrollPosition,
   settings,
   status,
+  revisionColour,
   t,
   onCloseTab,
   onNewDocument,
@@ -504,6 +507,9 @@ export function Workspace({
           <span className="status-warning">
             {t('status.warnings', { count: analysis.diagnostics.length })}
           </span>
+        )}
+        {revisionColour === null ? null : (
+          <span className="status-revision">{t('revision.status', { colour: revisionColour })}</span>
         )}
         <span className="status-message">{status}</span>
         {analysis && (
