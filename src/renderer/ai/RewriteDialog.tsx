@@ -122,6 +122,16 @@ export function RewriteDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Window-level Escape: the popover does not steal focus, so a key handler on the
+  // section itself would never see Escape once the user has clicked elsewhere.
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [onClose]);
+
   const busy = phase !== 'idle';
   const top = Math.min(window.innerHeight - 520, Math.max(60, selection.anchor?.y ?? 110));
   const left = Math.min(window.innerWidth - 540, Math.max(16, selection.anchor?.x ?? 180));
@@ -133,9 +143,6 @@ export function RewriteDialog({
       aria-modal="false"
       aria-label={t(tool === 'synonyms' ? 'rewrite.synonymsTitle' : 'rewrite.title')}
       style={{ top, left }}
-      onKeyDown={(event) => {
-        if (event.key === 'Escape') onClose();
-      }}
     >
       <header>
         <strong>{t(tool === 'synonyms' ? 'rewrite.synonymsTitle' : 'rewrite.title')}</strong>

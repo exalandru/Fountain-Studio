@@ -1,0 +1,6 @@
+# Normalize to LF in the repository and on checkout so Prettier's endOfLine:'lf'
+# check passes on Windows runners (where core.autocrlf would otherwise introduce CRLF).
+* text=auto eol=lf
+*.png binary
+*.ttf binary
+*.af binary

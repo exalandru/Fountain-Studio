@@ -844,7 +844,11 @@ test('asks for reports in the interface language, and never for rewrites', async
   expect(rewriteSystem).not.toContain('in French');
   expect(rewriteSystem).not.toContain('in English');
 
-  await page.keyboard.press('Escape');
+  // Close by class, not by label: this test leaves the interface in French until the
+  // last lines, so an English aria-label would miss. Escape alone used to miss too —
+  // the popover does not keep focus — but the button always works.
+  await rewrite.locator('.panel-close').click();
+  await expect(rewrite).toBeHidden();
   await page.evaluate(() => window.quantum.invoke('settings:patch', { language: 'en' }));
   await expect(page.locator('.statusbar')).toContainText('scene');
 });
