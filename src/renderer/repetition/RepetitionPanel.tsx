@@ -5,10 +5,10 @@ import type { AiInconsistency, InconsistencyStatus } from '@shared/ai/index.js';
 import {
   buildStructuralRepetitionPrompt,
   parseInconsistencies,
-  STRUCTURAL_REPETITION_SYSTEM_PROMPT,
+  structuralRepetitionSystemPrompt,
 } from '@shared/ai/index.js';
 import type { SceneView } from '@shared/fountain/ast.js';
-import type { Translator } from '@shared/i18n/index.js';
+import type { Locale, Translator } from '@shared/i18n/index.js';
 import type { RepeatedPhrase, RepetitionScope } from '@shared/repetition/index.js';
 import { buildSceneDigest, findRepeatedPhrases } from '@shared/repetition/index.js';
 import type { AiRequestHandle } from '../ai/request.js';
@@ -19,6 +19,7 @@ interface RepetitionPanelProps {
   /** Structural findings, which unlike the literal ones cost a request and so are kept. */
   state: InconsistencyState;
   t: Translator['t'];
+  locale: Locale;
   onStateChange: (state: InconsistencyState) => void;
   onSelectRange: (range: { from: number; to: number }) => void;
   onSelectReference: (reference: { sceneNumber: string; heading: string }) => void;
@@ -41,6 +42,7 @@ export function RepetitionPanel({
   analysis,
   state,
   t,
+  locale,
   onStateChange,
   onSelectRange,
   onSelectReference,
@@ -111,7 +113,7 @@ export function RepetitionPanel({
           profileId: config.activeProfileId,
           mode: 'factual',
           temperature: 0.2,
-          systemPrompt: STRUCTURAL_REPETITION_SYSTEM_PROMPT,
+          systemPrompt: structuralRepetitionSystemPrompt(locale),
           messages: [
             { role: 'user', content: buildStructuralRepetitionPrompt(buildSceneDigest(scenes)) },
           ],

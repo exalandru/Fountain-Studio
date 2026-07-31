@@ -261,7 +261,7 @@ const server = createServer((request, response) => {
       response.end('data: [DONE]\n\n');
       return;
     }
-    if (lastContent.includes('Propose jusqu’à dix synonymes')) {
+    if (lastContent.includes('Suggest up to ten synonyms')) {
       response.writeHead(200, { 'content-type': 'text/event-stream' });
       response.write(
         `data: ${JSON.stringify({
@@ -290,7 +290,7 @@ const server = createServer((request, response) => {
       response.end('data: [DONE]\n\n');
       return;
     }
-    if (lastContent.includes('noms alternatifs pour le personnage')) {
+    if (lastContent.includes('alternative names for the character')) {
       response.writeHead(200, { 'content-type': 'text/event-stream' });
       response.write(
         `data: ${JSON.stringify({
@@ -308,7 +308,7 @@ const server = createServer((request, response) => {
       response.end('data: [DONE]\n\n');
       return;
     }
-    if (lastContent.includes('Reformule le passage sélectionné')) {
+    if (lastContent.includes('Rewrite the selected passage')) {
       response.writeHead(200, {
         'content-type': 'text/event-stream',
         'cache-control': 'no-cache',
@@ -329,7 +329,7 @@ const server = createServer((request, response) => {
       response.end('data: [DONE]\n\n');
       return;
     }
-    if (lastContent.includes('Rédige la fiche de bible pour')) {
+    if (lastContent.includes('Draft the bible sheet for')) {
       response.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache' });
       response.write(
         `data: ${JSON.stringify({
@@ -354,7 +354,7 @@ const server = createServer((request, response) => {
       response.end('data: [DONE]\n\n');
       return;
     }
-    if (lastContent.includes('Repère les répétitions structurelles')) {
+    if (lastContent.includes('Find the structural repetitions')) {
       response.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache' });
       response.write(
         `data: ${JSON.stringify({
@@ -383,7 +383,7 @@ const server = createServer((request, response) => {
       response.end('data: [DONE]\n\n');
       return;
     }
-    if (lastContent.includes('Analyse la cohérence de la voix')) {
+    if (lastContent.includes('Analyse how consistent')) {
       response.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache' });
       response.write(
         `data: ${JSON.stringify({
@@ -415,7 +415,7 @@ const server = createServer((request, response) => {
       response.end('data: [DONE]\n\n');
       return;
     }
-    if (lastContent.includes('Analyse les incohérences')) {
+    if (lastContent.includes('Analyse the whole screenplay for inconsistencies')) {
       setTimeout(() => {
         response.writeHead(200, {
           'content-type': 'text/event-stream',
@@ -661,7 +661,7 @@ test('offers fast synonyms, renames a character and persists an inconsistency re
   await expect(rewrite.getByRole('button', { name: 'Rewrite', exact: true })).toHaveCount(0);
   await expect(rewrite.locator('.rewrite-variant')).toHaveCount(10);
   const synonymRequest = requests.find(({ body }) =>
-    JSON.stringify(body?.['messages']).includes('Propose jusqu’à dix synonymes'),
+    JSON.stringify(body?.['messages']).includes('Suggest up to ten synonyms'),
   );
   expect(synonymRequest?.body?.['reasoning_effort']).toBe('none');
   expect(synonymRequest?.body?.['chat_template_kwargs']).toEqual({ enable_thinking: false });
@@ -675,7 +675,7 @@ test('offers fast synonyms, renames a character and persists an inconsistency re
   await expect(rewrite.getByRole('button', { name: 'Synonyms', exact: true })).toHaveCount(0);
   await expect(rewrite.locator('.rewrite-variant')).toHaveCount(3);
   const rewriteRequest = requests.find(({ body }) =>
-    JSON.stringify(body?.['messages']).includes('Reformule le passage sélectionné'),
+    JSON.stringify(body?.['messages']).includes('Rewrite the selected passage'),
   );
   expect(rewriteRequest?.body?.['chat_template_kwargs']).toEqual({ enable_thinking: false });
   expect(rewriteRequest?.body?.['reasoning_effort']).toBe('none');
@@ -697,9 +697,10 @@ test('offers fast synonyms, renames a character and persists an inconsistency re
   await rename.getByRole('button', { name: 'Suggest alternative names' }).click();
   await expect(rename.getByText('EVELYN STONE')).toBeVisible();
   const nameRequest = requests.find(({ body }) =>
-    JSON.stringify(body?.['messages']).includes('noms alternatifs pour le personnage'),
+    JSON.stringify(body?.['messages']).includes('alternative names for the character'),
   );
-  expect(JSON.stringify(nameRequest?.body?.['messages'])).toContain('moins courants');
+  // The chosen style reached the model: 'rare' asks for real but uncommon names.
+  expect(JSON.stringify(nameRequest?.body?.['messages'])).toContain('markedly less common');
   expect(nameRequest?.body?.['chat_template_kwargs']).toEqual({ enable_thinking: false });
   expect(nameRequest?.body?.['reasoning_effort']).toBe('none');
   await rename.getByText('EVELYN STONE').click();
@@ -762,8 +763,13 @@ test('analyses a character’s voice, and keeps the finding in the companion fil
   await expect(finding).toHaveClass(/severity-major/);
 
   const prompt = requests.find(({ body }) =>
-    JSON.stringify(body?.['messages']).includes('Analyse la cohérence de la voix'),
+    JSON.stringify(body?.['messages']).includes('Analyse how consistent'),
   );
+  // The reader's language is stated explicitly, so a report never arrives in a language the
+  // panel around it does not speak. The quotes are exempted in the same breath.
+  const system = JSON.stringify(prompt?.body?.['messages']);
+  expect(system).toContain('in English');
+  expect(system).toContain('never translated');
   // The context is built for one character, each speech tagged with the scene it sits in.
   const sent = JSON.stringify(prompt?.body?.['messages']);
   expect(sent).toContain(speaker);
@@ -784,6 +790,63 @@ test('analyses a character’s voice, and keeps the finding in the companion fil
 
   await panel.getByRole('button', { name: 'Close voice analysis' }).click();
   await expect(panel).toBeHidden();
+});
+
+test('asks for reports in the interface language, and never for rewrites', async () => {
+  // The wiring, not the wording: a hardcoded locale would pass every unit test and still send
+  // English instructions to a French reader.
+  await page.evaluate(() => window.quantum.invoke('settings:patch', { language: 'fr' }));
+  requests = [];
+
+  await runCommand('ai.openVoiceConsistency');
+  const panel = page.locator('.consistency-dialog');
+  await expect(panel).toBeVisible();
+  const chooser = panel.locator('.voice-controls select');
+  const speaker = await chooser.locator('option:not([value=""])').first().getAttribute('value');
+  await chooser.selectOption(speaker ?? '');
+  // Located by class, not by label: the interface is in French for the length of this test.
+  await panel.locator('.ai-primary').click();
+  await expect(panel.locator('.consistency-item')).toHaveCount(1);
+
+  const report = requests.find(({ body }) =>
+    JSON.stringify(body?.['messages']).includes('Analyse how consistent'),
+  );
+  const reportSystem = JSON.stringify(report?.body?.['messages']);
+  // The instructions stay English — one prose to maintain — while the answer is asked for in
+  // the reader's language.
+  expect(reportSystem).toContain('You analyse how consistent');
+  expect(reportSystem).toContain('in French');
+  expect(reportSystem).not.toContain('in English');
+  await panel.locator('.panel-close').click();
+  await expect(panel).toBeHidden();
+
+  // And the case that separates this design from a naive translation: with the interface in
+  // French, a rewrite must still defer to the language of the excerpt rather than be pinned to
+  // either language — an English screenplay gets English variants under a French interface.
+  const editor = page.locator('.cm-content');
+  await editor.click();
+  await page.getByText('SECRET_SCENE_M5').first().dblclick();
+  await runCommand('ai.rewrite');
+  const rewrite = page.locator('.rewrite-popover');
+  await expect(rewrite).toBeVisible();
+  await expect
+    .poll(() =>
+      requests.some(({ body }) =>
+        JSON.stringify(body?.['messages']).includes('Rewrite the selected passage'),
+      ),
+    )
+    .toBe(true);
+  const rewriteRequest = requests.find(({ body }) =>
+    JSON.stringify(body?.['messages']).includes('Rewrite the selected passage'),
+  );
+  const rewriteSystem = JSON.stringify(rewriteRequest?.body?.['messages']);
+  expect(rewriteSystem).toContain('language of the excerpt');
+  expect(rewriteSystem).not.toContain('in French');
+  expect(rewriteSystem).not.toContain('in English');
+
+  await page.keyboard.press('Escape');
+  await page.evaluate(() => window.quantum.invoke('settings:patch', { language: 'en' }));
+  await expect(page.locator('.statusbar')).toContainText('scene');
 });
 
 test('measures literal repetition without a request, then asks about structure', async () => {
@@ -826,7 +889,7 @@ test('measures literal repetition without a request, then asks about structure',
   );
 
   const prompt = requests.find(({ body }) =>
-    JSON.stringify(body?.['messages']).includes('Repère les répétitions structurelles'),
+    JSON.stringify(body?.['messages']).includes('Find the structural repetitions'),
   );
   // The model reads a one-line digest per scene, not the screenplay.
   const sent = JSON.stringify(prompt?.body?.['messages']);
@@ -873,7 +936,7 @@ test('drafts a bible sheet into the empty fields only', async () => {
   await expect(dialog.locator('.bible-drafted-note')).toBeVisible();
 
   const prompt = requests.find(({ body }) =>
-    JSON.stringify(body?.['messages']).includes('Rédige la fiche de bible pour'),
+    JSON.stringify(body?.['messages']).includes('Draft the bible sheet for'),
   );
   // Extraction, not reasoning: thinking first is what made this time out on a local model.
   expect(prompt?.body?.['reasoning_effort']).toBe('none');

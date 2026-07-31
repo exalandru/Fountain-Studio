@@ -16,7 +16,12 @@ import {
   parseRewriteVariants,
   parseShortSuggestions,
   sanitizeAiConfig,
-  VOICE_CONSISTENCY_SYSTEM_PROMPT,
+  inconsistencySystemPrompt,
+  structuralRepetitionSystemPrompt,
+  voiceConsistencySystemPrompt,
+  REWRITE_SYSTEM_PROMPT,
+  SYNONYM_SYSTEM_PROMPT,
+  CHARACTER_NAMES_SYSTEM_PROMPT,
 } from '../../src/shared/ai/index.js';
 
 describe('AI configuration', () => {
@@ -97,9 +102,9 @@ describe('M6 structured AI helpers', () => {
       tone: 'dramatic',
       customStyle: '',
     });
-    expect(prompt).toContain('Type Fountain : dialogue');
-    expect(prompt).toContain('Personnage locuteur : ALICE');
-    expect(prompt).toContain('Plus dramatique');
+    expect(prompt).toContain('Fountain kind: dialogue');
+    expect(prompt).toContain('Speaking character: ALICE');
+    expect(prompt).toContain('More dramatic');
     expect(parseRewriteVariants('```json\n{"variants":["A","B","C","D"]}\n```')).toEqual([
       'A',
       'B',
@@ -204,9 +209,9 @@ Maintenant.
 
   it('gathers one character’s speeches, each tagged with its scene', () => {
     const context = buildCharacterVoiceContext(scenes, 'ALICE');
-    expect(context).toContain('[1 · INT. LABO - NUIT]\nALICE : Les serveurs tiennent.');
-    expect(context).toContain('[2 · EXT. RUE - JOUR]\nALICE : On y va.');
-    expect(context).toContain('[2 · EXT. RUE - JOUR]\nALICE : Maintenant.');
+    expect(context).toContain('[1 · INT. LABO - NUIT]\nALICE: Les serveurs tiennent.');
+    expect(context).toContain('[2 · EXT. RUE - JOUR]\nALICE: On y va.');
+    expect(context).toContain('[2 · EXT. RUE - JOUR]\nALICE: Maintenant.');
     // Another character's lines, and the action around them, are not this voice.
     expect(context).not.toContain('Pas longtemps.');
     expect(context).not.toContain('portière');
@@ -227,7 +232,7 @@ Maintenant.
 
   it('attributes every speech of a scene, not only the first', () => {
     const chunks = buildCharacterVoiceContext(scenes, 'ALICE').split('\n\n');
-    expect(chunks.at(-1)).toBe('[2 · EXT. RUE - JOUR]\nALICE : Maintenant.');
+    expect(chunks.at(-1)).toBe('[2 · EXT. RUE - JOUR]\nALICE: Maintenant.');
   });
 
   it('returns nothing for a character who never speaks', () => {
@@ -251,7 +256,7 @@ Maintenant.
     const prompt = buildVoiceConsistencyPrompt('ALICE', 'x');
     expect(prompt).toContain('{"items":[]}');
     // And the model must be told the variation it sees may be motivated.
-    expect(VOICE_CONSISTENCY_SYSTEM_PROMPT).toContain('légitimement');
+    expect(voiceConsistencySystemPrompt('en')).toContain('legitimately');
   });
 });
 
@@ -293,7 +298,112 @@ describe('bible drafting', () => {
   it('tells the model that a blank field is a valid answer', () => {
     // Without this the model invents a backstory, and an invention in a bible becomes a fact
     // the production works from.
-    expect(BIBLE_SYSTEM_PROMPT).toContain('chaîne vide');
-    expect(BIBLE_SYSTEM_PROMPT).toContain('Tu n’invente');
+    expect(BIBLE_SYSTEM_PROMPT).toContain('empty string');
+    expect(BIBLE_SYSTEM_PROMPT).toContain('not a failure');
+    expect(BIBLE_SYSTEM_PROMPT).toContain('invent');
+  });
+});
+
+/**
+ * The prompts are written in English whatever the interface language, and say explicitly which
+ * language to answer in. These tests guard the two things that would silently break that: a
+ * caveat lost in translation, and a language rule applied to the wrong kind of tool.
+ */
+describe('prompt language', () => {
+  it('names the reader\u2019s language in every report prompt', () => {
+    for (const build of [
+      inconsistencySystemPrompt,
+      voiceConsistencySystemPrompt,
+      structuralRepetitionSystemPrompt,
+    ]) {
+      expect(build('en')).toContain('in English');
+      expect(build('fr')).toContain('in French');
+      expect(build('fr')).not.toContain('in English');
+    }
+  });
+
+  it('keeps the quotes in the screenplay\u2019s own language', () => {
+    // Told only "answer in English", a model translates the quotations too — and a reference
+    // showing a line the screenplay does not contain is worse than no reference: the panel uses
+    // those quotes to jump into the text.
+    for (const build of [
+      inconsistencySystemPrompt,
+      voiceConsistencySystemPrompt,
+      structuralRepetitionSystemPrompt,
+    ]) {
+      expect(build('fr')).toContain('verbatim');
+      expect(build('fr')).toContain('never translated');
+    }
+  });
+
+  it('changes nothing but the language line between two locales', () => {
+    // Anything else that differed would be prose drifting apart between locales, which is the
+    // very thing one English source is meant to prevent.
+    for (const build of [
+      inconsistencySystemPrompt,
+      voiceConsistencySystemPrompt,
+      structuralRepetitionSystemPrompt,
+    ]) {
+      const strip = (locale: 'en' | 'fr') =>
+        build(locale)
+          .split('\n')
+          .filter((line) => !line.startsWith('Write every description'))
+          .join('\n');
+      expect(strip('en')).toBe(strip('fr'));
+    }
+  });
+
+  it('never pins a language on what goes back into the screenplay', () => {
+    // A French screenplay must get French rewrites under an English interface. These prompts
+    // therefore name no language: they defer to the excerpt.
+    for (const prompt of [
+      REWRITE_SYSTEM_PROMPT,
+      SYNONYM_SYSTEM_PROMPT,
+      CHARACTER_NAMES_SYSTEM_PROMPT,
+      BIBLE_SYSTEM_PROMPT,
+    ]) {
+      expect(prompt).not.toContain('in English');
+      expect(prompt).not.toContain('in French');
+    }
+    expect(REWRITE_SYSTEM_PROMPT).toContain('language of the excerpt');
+    expect(SYNONYM_SYSTEM_PROMPT).toContain('language of the excerpt');
+    expect(BIBLE_SYSTEM_PROMPT).toContain('language of the screenplay');
+  });
+
+  it('carries the restraint that keeps each analysis quiet', () => {
+    // Each of these clauses is what stops a tool from manufacturing findings. Translating the
+    // prompts could have flattened them into generic instructions, and no other test would have
+    // noticed the analyses turning chatty.
+    const voice = voiceConsistencySystemPrompt('en');
+    expect(voice).toContain('not a straitjacket');
+    expect(voice).toContain('no situation would justify');
+    expect(voice).toContain('rather than speculate');
+
+    const repetition = structuralRepetitionSystemPrompt('en');
+    expect(repetition).toContain('deliberate return is not a repetition');
+    expect(repetition).toContain('treading water');
+    expect(repetition).toContain('you abstain');
+
+    expect(inconsistencySystemPrompt('en')).toContain('backed by the passages');
+  });
+
+  it('holds no French left over from the translation', () => {
+    // A half-finished translation reads as deliberate bilingualism and confuses the model.
+    const prompts = [
+      REWRITE_SYSTEM_PROMPT,
+      SYNONYM_SYSTEM_PROMPT,
+      CHARACTER_NAMES_SYSTEM_PROMPT,
+      BIBLE_SYSTEM_PROMPT,
+      inconsistencySystemPrompt('fr'),
+      voiceConsistencySystemPrompt('fr'),
+      structuralRepetitionSystemPrompt('fr'),
+      buildVoiceConsistencyPrompt('ALICE', 'x'),
+      buildSynonymPrompt('mot', 'scene'),
+      buildCharacterNamesPrompt('ALICE', [], 'INT. BAR'),
+    ];
+    for (const prompt of prompts) {
+      expect(prompt, prompt.slice(0, 40)).not.toMatch(/[àâçèéêëîïôûùœ]/i);
+      expect(prompt).not.toMatch(/\b(Tu|Réponds|Retourne|Propose|scénario|réplique)\b/);
+    }
   });
 });

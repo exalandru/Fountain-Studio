@@ -1041,6 +1041,7 @@ export function App() {
           analysis={analysis}
           state={active.appData.inconsistencies}
           t={t}
+          locale={locale}
           onStateChange={updateInconsistencies}
           onSelectReference={(reference) => {
             selectInconsistencyReference(reference);
@@ -1055,6 +1056,7 @@ export function App() {
           analysis={analysis}
           state={active.appData.voiceConsistency}
           t={t}
+          locale={locale}
           onStateChange={updateVoiceConsistency}
           onSelectReference={(reference) => {
             selectInconsistencyReference(reference);
@@ -1069,6 +1071,7 @@ export function App() {
           analysis={analysis}
           state={active.appData.repetitions}
           t={t}
+          locale={locale}
           onStateChange={updateRepetitions}
           onSelectRange={(range) => {
             selectEditorRange(range);

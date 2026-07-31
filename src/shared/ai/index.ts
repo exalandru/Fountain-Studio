@@ -7,6 +7,7 @@
  */
 
 import type { SceneView } from '../fountain/ast.js';
+import type { Locale } from '../i18n/types.js';
 import type { AiProviderKind } from './providers/types.js';
 import { DEFAULT_PROVIDER, isProviderKind } from './providers/types.js';
 
@@ -177,14 +178,51 @@ export function modeTemperature(mode: AiChatMode): number {
   return mode === 'factual' ? 0.2 : 0.7;
 }
 
+/**
+ * Prompts are written in English, whatever the interface language.
+ *
+ * One prose to maintain rather than two that drift apart, and English is the best-tested path
+ * for every model these profiles can reach — small local ones included. What varies by language
+ * is not the instructions but a single explicit line saying which language to answer in.
+ *
+ * Which language that is depends on what the tool produces, and the split matters:
+ *
+ *  - text that goes *into* the screenplay — a rewrite, a synonym, a character name, a bible
+ *    sheet — follows the **screenplay**. A French screenplay must get French variants even when
+ *    the interface is in English, so those prompts name no language at all: they say "in the
+ *    language of the excerpt" and let the model read it off the text.
+ *  - commentary *about* the screenplay — continuity, voice, repetition — follows the **reader**,
+ *    because it is displayed inside a translated panel. Those prompts take the locale.
+ *
+ * The four tools that need no locale keep plain constants; the three that do are functions of it.
+ * The signatures therefore say which tools depend on who is reading.
+ */
+
+/** Named in English because the instruction around it is. */
+const LANGUAGE_NAME: Readonly<Record<Locale, string>> = { en: 'English', fr: 'French' };
+
+/**
+ * The line that decides what language a report comes back in.
+ *
+ * The quoting rule is stated in the same breath on purpose. A model told only "answer in English"
+ * translates the quotes as well, and a reference showing a line the screenplay does not contain
+ * is worse than no reference at all — the panel uses those quotes to jump into the text.
+ */
+function reportLanguage(locale: Locale): string {
+  return `Write every description and suggestion in ${LANGUAGE_NAME[locale]}. Quote the screenplay verbatim, in its own language, never translated.`;
+}
+
+/** The rule for anything that will be pasted back into the screenplay. */
+const EXCERPT_LANGUAGE = 'Answer in the language of the excerpt, never in another.';
+
 export type RewriteTone =
   'neutral' | 'concise' | 'cinematic' | 'dramatic' | 'comic' | 'formal' | 'colloquial' | 'custom';
 
-export const REWRITE_SYSTEM_PROMPT = `Tu reformules un extrait de scénario Fountain.
-Tu produis exactement trois variantes réellement différentes, dans la langue du texte.
-Tu conserves le sens, la voix du personnage et la syntaxe Fountain adaptée au type d’élément.
-Tu ne modifies jamais les marqueurs Fountain qui ne font pas partie du passage sélectionné.
-Réponds exclusivement avec un objet JSON valide de la forme {"variants":["...", "...", "..."]}, sans Markdown ni commentaire.`;
+export const REWRITE_SYSTEM_PROMPT = `You rewrite an excerpt of a Fountain screenplay.
+You produce exactly three genuinely different variants. ${EXCERPT_LANGUAGE}
+You keep the meaning, the character's voice, and the Fountain syntax the element kind calls for.
+You never touch Fountain markers that lie outside the selected passage.
+Answer with nothing but a valid JSON object of the form {"variants":["...", "...", "..."]}, no Markdown and no commentary.`;
 
 export interface RewritePromptInput {
   selection: string;
@@ -197,13 +235,13 @@ export interface RewritePromptInput {
 }
 
 const TONE_INSTRUCTIONS: Record<Exclude<RewriteTone, 'custom'>, string> = {
-  neutral: 'Neutre, naturel et fidèle au texte.',
-  concise: 'Plus concis, sans perdre les informations essentielles.',
-  cinematic: 'Plus visuel et cinématographique, en privilégiant ce qui peut être filmé.',
-  dramatic: 'Plus dramatique, avec davantage de tension et d’enjeu.',
-  comic: 'Plus léger ou comique, sans casser la cohérence de la scène.',
-  formal: 'Dans un registre soutenu.',
-  colloquial: 'Dans un registre familier et oral.',
+  neutral: 'Neutral, natural, faithful to the text.',
+  concise: 'Tighter, without losing anything essential.',
+  cinematic: 'More visual and cinematic, favouring what a camera can see.',
+  dramatic: 'More dramatic, with more tension and more at stake.',
+  comic: 'Lighter or funnier, without breaking the scene apart.',
+  formal: 'In a formal register.',
+  colloquial: 'In a colloquial, spoken register.',
 };
 
 export function buildRewritePrompt(input: RewritePromptInput): string {
@@ -211,19 +249,19 @@ export function buildRewritePrompt(input: RewritePromptInput): string {
     input.tone === 'custom'
       ? input.customStyle.trim() || TONE_INSTRUCTIONS.neutral
       : TONE_INSTRUCTIONS[input.tone];
-  return `Reformule le passage sélectionné en trois variantes.
+  return `Rewrite the selected passage as three variants.
 
-Type Fountain : ${input.elementKind}
-Personnage locuteur : ${input.speaker ?? 'aucun'}
-Scène : ${input.sceneHeading ?? 'hors scène'}
-Style demandé : ${style}
+Fountain kind: ${input.elementKind}
+Speaking character: ${input.speaker ?? 'none'}
+Scene: ${input.sceneHeading ?? 'outside any scene'}
+Requested style: ${style}
 
-Contexte de cohérence, à ne pas reproduire :
+Context, for consistency only — do not reproduce it:
 <scene>
 ${input.sceneContext}
 </scene>
 
-Passage à reformuler :
+Passage to rewrite:
 <selection>
 ${input.selection}
 </selection>`;
@@ -249,13 +287,13 @@ export function parseRewriteVariants(raw: string): string[] {
   }
 }
 
-export const SYNONYM_SYSTEM_PROMPT = `Tu proposes des synonymes adaptés à un scénario.
-Tu respectes la langue, le registre et le sens précis du mot dans son contexte.
-Réponds exclusivement avec un objet JSON valide de la forme {"suggestions":["..."]}, sans Markdown ni commentaire.
-Propose au maximum dix mots ou expressions courtes, sans explication.`;
+export const SYNONYM_SYSTEM_PROMPT = `You suggest synonyms that suit a screenplay.
+You respect the register and the precise sense the word carries in its context. ${EXCERPT_LANGUAGE}
+Answer with nothing but a valid JSON object of the form {"suggestions":["..."]}, no Markdown and no commentary.
+Offer at most ten words or short phrases, with no explanation.`;
 
 export function buildSynonymPrompt(word: string, sceneContext: string): string {
-  return `Propose jusqu’à dix synonymes du mot sélectionné, adaptés à son emploi exact dans la scène.
+  return `Suggest up to ten synonyms for the selected word, fitting the exact use it has in the scene.
 
 <scene>
 ${sceneContext}
@@ -266,10 +304,11 @@ ${word}
 </word>`;
 }
 
-export const CHARACTER_NAMES_SYSTEM_PROMPT = `Tu proposes des noms de personnages pour une œuvre narrative.
-Tu respectes la langue, l’époque, le lieu, le genre et le ton déductibles du contexte.
-Réponds exclusivement avec un objet JSON valide de la forme {"suggestions":["..."]}, sans Markdown ni commentaire.
-Propose au maximum dix noms complets distincts, sans explication.`;
+export const CHARACTER_NAMES_SYSTEM_PROMPT = `You suggest character names for a narrative work.
+You respect the period, place, genre and tone the context lets you infer, and the language the
+screenplay is written in — a name is read aloud by the people in it.
+Answer with nothing but a valid JSON object of the form {"suggestions":["..."]}, no Markdown and no commentary.
+Offer at most ten distinct full names, with no explanation.`;
 
 export type CharacterNameStyle = 'common' | 'rare' | 'creative';
 
@@ -281,14 +320,14 @@ export function buildCharacterNamesPrompt(
 ): string {
   const styleInstruction: Record<CharacterNameStyle, string> = {
     common:
-      'Propose des noms communs et naturels, employés au quotidien dans la langue et la culture déductibles du texte.',
-    rare: 'Propose des noms réels et crédibles, mais nettement moins courants, sans tomber dans les noms inventés.',
+      'Offer ordinary, natural names, the kind used every day in the language and culture the text implies.',
+    rare: 'Offer real, credible names, but markedly less common ones — without drifting into invented names.',
     creative:
-      'Propose des noms fictifs, inventés ou très créatifs, adaptés au genre et à l’univers de l’œuvre.',
+      'Offer fictional, invented or strongly imaginative names, suited to the genre and world of the work.',
   };
-  return `Propose jusqu’à dix noms alternatifs pour le personnage "${currentName}".
-Style demandé : ${styleInstruction[style]}
-Évite les noms déjà employés : ${existingNames.join(', ') || 'aucun'}.
+  return `Suggest up to ten alternative names for the character "${currentName}".
+Requested style: ${styleInstruction[style]}
+Avoid names already in use: ${existingNames.join(', ') || 'none'}.
 
 <scene>
 ${sceneContext}
@@ -343,15 +382,18 @@ export interface AiInconsistency {
   status: InconsistencyStatus;
 }
 
-export const INCONSISTENCY_SYSTEM_PROMPT = `Tu analyses la cohérence d’un scénario.
-Tu ne signales que des contradictions ou risques précis, étayés par les passages fournis.
-Tu distingues continuité matérielle, chronologie, caractérisation, géographie, logique d’intrigue et dialogue contradictoire.
-Réponds exclusivement en JSON valide, sans Markdown ni commentaire.`;
+export function inconsistencySystemPrompt(locale: Locale): string {
+  return `You analyse a screenplay's consistency.
+You report only precise contradictions or risks, each backed by the passages you were given.
+You tell apart physical continuity, chronology, characterisation, geography, plot logic and contradictory dialogue.
+${reportLanguage(locale)}
+Answer with nothing but valid JSON, no Markdown and no commentary.`;
+}
 
 export function buildInconsistencyPrompt(screenplay: string): string {
-  return `Analyse les incohérences sur l’ensemble du scénario.
-Retourne {"items":[{"type":"continuity|chronology|character|location|plot|dialogue","severity":"info|minor|major","description":"...","references":[{"sceneNumber":"...","heading":"...","quote":"..."}],"suggestion":"..."}]}.
-Chaque référence doit contenir le numéro ET le heading de scène, ainsi qu’une courte citation.
+  return `Analyse the whole screenplay for inconsistencies.
+Return {"items":[{"type":"continuity|chronology|character|location|plot|dialogue","severity":"info|minor|major","description":"...","references":[{"sceneNumber":"...","heading":"...","quote":"..."}],"suggestion":"..."}]}.
+Every reference must carry the scene number AND its heading, plus a short quotation.
 
 <screenplay>
 ${screenplay}
@@ -359,8 +401,8 @@ ${screenplay}
 }
 
 export function buildFactExtractionPrompt(screenplayChunk: string): string {
-  return `Extrais une fiche factuelle par scène : numéro, heading, personnages présents, lieu, moment, objets, blessures ou états, événements, et informations connues des personnages.
-Retourne {"facts":[{"sceneNumber":"...","heading":"...","characters":[],"location":"...","time":"...","objects":[],"states":[],"events":[],"knowledge":[]}]}.
+  return `Extract one factual record per scene: number, heading, characters present, location, time, objects, injuries or states, events, and what the characters know.
+Return {"facts":[{"sceneNumber":"...","heading":"...","characters":[],"location":"...","time":"...","objects":[],"states":[],"events":[],"knowledge":[]}]}.
 
 <screenplay>
 ${screenplayChunk}
@@ -368,8 +410,8 @@ ${screenplayChunk}
 }
 
 export function buildFactCrossCheckPrompt(facts: string): string {
-  return `Vérifie les fiches factuelles entre elles et détecte les incohérences sur l’ensemble du scénario.
-Retourne {"items":[{"type":"continuity|chronology|character|location|plot|dialogue","severity":"info|minor|major","description":"...","references":[{"sceneNumber":"...","heading":"...","quote":"..."}],"suggestion":"..."}]}.
+  return `Check the factual records against one another and find the inconsistencies across the whole screenplay.
+Return {"items":[{"type":"continuity|chronology|character|location|plot|dialogue","severity":"info|minor|major","description":"...","references":[{"sceneNumber":"...","heading":"...","quote":"..."}],"suggestion":"..."}]}.
 
 <facts>
 ${facts}
@@ -461,11 +503,14 @@ export function chunkScenes(scenes: Array<{ content: string }>, maximumTokens = 
   return chunks;
 }
 
-export const VOICE_CONSISTENCY_SYSTEM_PROMPT = `Tu analyses la cohérence de la « voix » d’un seul personnage dans un scénario.
-La voix comprend le registre de langue, les tics et manies verbales, la longueur et le rythme des phrases, le vocabulaire propre au personnage, et sa manière d’attaquer ou d’esquiver.
-Une voix n’est pas un carcan : un personnage change légitimement de registre selon son interlocuteur, sous le coup de l’émotion, quand il ment ou quand il joue un rôle. Tu ne signales que les ruptures qu’aucune situation ne justifierait.
-On ne te fournit que ses répliques, sans l’action autour : si une rupture pourrait s’expliquer par un contexte dramatique que tu ne vois pas, tu te tais plutôt que de spéculer.
-Réponds exclusivement en JSON valide, sans Markdown ni commentaire.`;
+export function voiceConsistencySystemPrompt(locale: Locale): string {
+  return `You analyse how consistent one character's voice is across a screenplay.
+A voice is made of register, verbal tics and habits, sentence length and rhythm, the vocabulary that belongs to this character, and the way they go at a subject or dodge it.
+A voice is not a straitjacket: a character legitimately shifts register depending on who they are speaking to, under emotion, when they lie, or when they are playing a part. You report only breaks that no situation would justify.
+You are given their lines alone, without the action around them: where a break could be explained by dramatic context you cannot see, you stay quiet rather than speculate.
+${reportLanguage(locale)}
+Answer with nothing but valid JSON, no Markdown and no commentary.`;
+}
 
 /**
  * Every speech by one character, each tagged with the scene it belongs to.
@@ -488,7 +533,7 @@ export function buildCharacterVoiceContext(
     for (const element of scene.elements) {
       if (element.speaker !== characterName) continue;
       if (element.kind === 'dialogue') {
-        chunks.push(`${tag}\n${characterName} : ${element.text}`);
+        chunks.push(`${tag}\n${characterName}: ${element.text}`);
       } else if (element.kind === 'parenthetical') {
         chunks.push(`${tag}\n${characterName} ${element.text}`);
       }
@@ -497,11 +542,12 @@ export function buildCharacterVoiceContext(
   return chunks.join('\n\n');
 }
 
-export const BIBLE_SYSTEM_PROMPT = `Tu rédiges une fiche de bible pour un scénario, à partir du scénario lui-même.
-Tu n’écris que ce que le texte établit ou implique clairement. Tu n’inventes ni passé, ni motivation, ni détail physique qui ne soit pas dans le scénario : une bible sert de référence, une invention y devient un fait faux.
-Quand le scénario ne dit rien d’un champ, tu renvoies une chaîne vide pour ce champ. Un champ vide est une réponse juste, pas un échec.
-Tu écris au présent, en phrases courtes, sans commentaire sur ton propre travail.
-Réponds exclusivement en JSON valide, sans Markdown ni commentaire.`;
+export const BIBLE_SYSTEM_PROMPT = `You draft one sheet of a screenplay's bible, from the screenplay itself.
+You write only what the text establishes or clearly implies. You invent no past, no motivation and no physical detail the screenplay does not carry: a bible is used as a reference, so anything invented in it becomes a false fact.
+Where the screenplay says nothing about a field, you return an empty string for that field. An empty field is a correct answer, not a failure — and it shows the author where their screenplay is silent.
+You write in the present tense, in short sentences, with no remarks about your own work.
+You write in the language of the screenplay, since the author reads this sheet beside it.
+Answer with nothing but valid JSON, no Markdown and no commentary.`;
 
 export function buildBibleDraftPrompt(
   kind: string,
@@ -509,13 +555,13 @@ export function buildBibleDraftPrompt(
   fields: readonly string[],
   context: string,
 ): string {
-  return `Rédige la fiche de bible pour ${kind} « ${name} ».
-Retourne {"fields":{${fields.map((field) => `"${field}":"..."`).join(',')}}}.
-N’ajoute aucune autre clé. Laisse une chaîne vide tout champ que le scénario n’établit pas.
+  return `Draft the bible sheet for ${kind} "${name}".
+Return {"fields":{${fields.map((field) => `"${field}":"..."`).join(',')}}}.
+Add no other key. Leave an empty string in any field the screenplay does not establish.
 
-<scenario>
+<screenplay>
 ${context}
-</scenario>`;
+</screenplay>`;
 }
 
 /**
@@ -546,18 +592,21 @@ export function parseBibleDraft(raw: string, allowed: readonly string[]): Record
   }
 }
 
-export const STRUCTURAL_REPETITION_SYSTEM_PROMPT = `Tu cherches les répétitions structurelles dans un scénario : deux scènes qui remplissent la même fonction, un même beat joué deux fois, une information révélée à nouveau comme si elle était neuve, un même mouvement dramatique rejoué à l’identique.
-Tu ne t’occupes pas des répétitions de mots ou de tournures : elles sont relevées ailleurs, par un autre moyen.
-Un retour délibéré n’est pas une répétition : un motif qui revient transformé, une réponse à une scène antérieure, un rituel qui se dégrade sont des procédés. Tu ne signales que ce qui fait du surplace.
-Tu ne disposes que d’un résumé d’une ligne par scène : si tu ne peux pas trancher sans le texte, tu t’abstiens.
-Réponds exclusivement en JSON valide, sans Markdown ni commentaire.`;
+export function structuralRepetitionSystemPrompt(locale: Locale): string {
+  return `You look for structural repetition in a screenplay: two scenes doing the same job, the same beat played twice, information revealed again as though it were new, the same dramatic move run a second time unchanged.
+Repeated words and turns of phrase are not your concern: those are found elsewhere, by other means.
+A deliberate return is not a repetition: a motif that comes back changed, an answer to an earlier scene, a ritual that decays — these are craft. You report only what is treading water.
+You have a one-line summary per scene and nothing more: where you cannot decide without the text, you abstain.
+${reportLanguage(locale)}
+Answer with nothing but valid JSON, no Markdown and no commentary.`;
+}
 
 export function buildStructuralRepetitionPrompt(digest: string): string {
-  return `Repère les répétitions structurelles dans ce scénario.
-Retourne {"items":[{"type":"repetition","severity":"info|minor|major","description":"...","references":[{"sceneNumber":"...","heading":"...","quote":"..."}],"suggestion":"..."}]}.
-Chaque constat cite au moins DEUX scènes — celles qui se répètent — avec leur numéro et leur heading tels qu’ils sont donnés. Le champ quote reprend le résumé de la scène.
-La suggestion dit ce que la seconde scène pourrait faire d’autre, ou laquelle des deux se supprime.
-Un scénario sans surplace se répond {"items":[]} : c’est un résultat valable, pas un échec.
+  return `Find the structural repetitions in this screenplay.
+Return {"items":[{"type":"repetition","severity":"info|minor|major","description":"...","references":[{"sceneNumber":"...","heading":"...","quote":"..."}],"suggestion":"..."}]}.
+Every finding cites at least TWO scenes — the ones that repeat — with the number and heading exactly as given. The quote field carries the scene's summary.
+The suggestion says what the second scene could do instead, or which of the two should go.
+A screenplay that never treads water is answered with {"items":[]}: that is a valid result, not a failure.
 
 <scenes>
 ${digest}
@@ -565,13 +614,13 @@ ${digest}
 }
 
 export function buildVoiceConsistencyPrompt(characterName: string, context: string): string {
-  return `Analyse la cohérence de la voix du personnage ${characterName}.
-Établis d’abord sa voix dominante sur l’ensemble de ses répliques, puis ne retiens que celles qui s’en écartent sans raison.
-Retourne {"items":[{"type":"voice","severity":"info|minor|major","description":"...","references":[{"sceneNumber":"...","heading":"...","quote":"..."}],"suggestion":"..."}]}.
-Chaque référence reprend le numéro ET le heading de scène tels qu’ils sont donnés entre crochets, et cite la réplique en cause mot pour mot.
-Une voix cohérente se répond {"items":[]} : c’est un résultat valable, pas un échec.
+  return `Analyse how consistent ${characterName}'s voice is.
+Establish their dominant voice across all their lines first, then keep only the lines that depart from it without reason.
+Return {"items":[{"type":"voice","severity":"info|minor|major","description":"...","references":[{"sceneNumber":"...","heading":"...","quote":"..."}],"suggestion":"..."}]}.
+Every reference carries the scene number AND heading exactly as given in brackets, and quotes the offending line word for word.
+A consistent voice is answered with {"items":[]}: that is a valid result, not a failure.
 
-<repliques>
+<lines>
 ${context}
-</repliques>`;
+</lines>`;
 }

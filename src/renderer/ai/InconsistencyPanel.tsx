@@ -13,10 +13,10 @@ import {
   buildFactExtractionPrompt,
   buildInconsistencyPrompt,
   chunkScenes,
-  INCONSISTENCY_SYSTEM_PROMPT,
+  inconsistencySystemPrompt,
   parseInconsistencies,
 } from '@shared/ai/index.js';
-import type { Translator } from '@shared/i18n/index.js';
+import type { Locale, Translator } from '@shared/i18n/index.js';
 import type { AiRequestHandle } from './request.js';
 import { startCollectedAiRequest } from './request.js';
 
@@ -25,6 +25,7 @@ interface InconsistencyPanelProps {
   analysis: ParseResponse | null;
   state: InconsistencyState;
   t: Translator['t'];
+  locale: Locale;
   onStateChange: (state: InconsistencyState) => void;
   onSelectReference: (reference: { sceneNumber: string; heading: string }) => void;
   onClose: () => void;
@@ -46,6 +47,7 @@ export function InconsistencyPanel({
   analysis,
   state,
   t,
+  locale,
   onStateChange,
   onSelectReference,
   onClose,
@@ -96,7 +98,7 @@ export function InconsistencyPanel({
         profileId,
         mode: 'factual',
         temperature: 0.2,
-        systemPrompt: INCONSISTENCY_SYSTEM_PROMPT,
+        systemPrompt: inconsistencySystemPrompt(locale),
         messages: [{ role: 'user', content: prompt }],
       },
       (next) => {

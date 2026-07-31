@@ -5,11 +5,11 @@ import {
   approximateTokens,
   buildCharacterVoiceContext,
   buildVoiceConsistencyPrompt,
-  VOICE_CONSISTENCY_SYSTEM_PROMPT,
+  voiceConsistencySystemPrompt,
   parseInconsistencies,
 } from '@shared/ai/index.js';
 import type { ParseResponse } from '@shared/analysis/index.js';
-import type { Translator } from '@shared/i18n/index.js';
+import type { Locale, Translator } from '@shared/i18n/index.js';
 import type { AiRequestHandle } from './request.js';
 import { startCollectedAiRequest } from './request.js';
 
@@ -19,6 +19,7 @@ interface VoiceConsistencyPanelProps {
   /** One entry per character, so each voice keeps its own findings. */
   state: Record<string, InconsistencyState>;
   t: Translator['t'];
+  locale: Locale;
   onStateChange: (characterName: string, state: InconsistencyState) => void;
   onSelectReference: (reference: { sceneNumber: string; heading: string }) => void;
   onClose: () => void;
@@ -28,6 +29,7 @@ export function VoiceConsistencyPanel({
   analysis,
   state,
   t,
+  locale,
   onStateChange,
   onSelectReference,
   onClose,
@@ -82,7 +84,7 @@ export function VoiceConsistencyPanel({
         profileId,
         mode: 'factual',
         temperature: 0.2,
-        systemPrompt: VOICE_CONSISTENCY_SYSTEM_PROMPT,
+        systemPrompt: voiceConsistencySystemPrompt(locale),
         messages: [{ role: 'user', content: prompt }],
       },
       (next) => {
