@@ -329,6 +329,31 @@ const server = createServer((request, response) => {
       response.end('data: [DONE]\n\n');
       return;
     }
+    if (lastContent.includes('Rédige la fiche de bible pour')) {
+      response.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache' });
+      response.write(
+        `data: ${JSON.stringify({
+          choices: [
+            {
+              delta: {
+                content: JSON.stringify({
+                  fields: {
+                    role: 'Ingénieure système du laboratoire.',
+                    // The author already wrote this one; the draft must not touch it.
+                    wants: 'CE QUE LE MODÈLE PROPOSE',
+                    // Nothing in the screenplay establishes this, so the model says so.
+                    fears: '',
+                    invented: 'une clé que personne n’a demandée',
+                  },
+                }),
+              },
+            },
+          ],
+        })}\n\n`,
+      );
+      response.end('data: [DONE]\n\n');
+      return;
+    }
     if (lastContent.includes('Repère les répétitions structurelles')) {
       response.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache' });
       response.write(
@@ -818,6 +843,52 @@ test('measures literal repetition without a request, then asks about structure',
 
   await panel.getByRole('button', { name: 'Close repetition analysis' }).click();
   await expect(panel).toBeHidden();
+});
+
+test('drafts a bible sheet into the empty fields only', async () => {
+  requests = [];
+  await runCommand('file.bible');
+  const dialog = page.locator('.bible-dialog');
+  await expect(dialog).toBeVisible();
+
+  // Earlier tests in this file rename the character, so the sheet is named after what the
+  // screenplay says by now.
+  await dialog.getByLabel('Kind of sheet').selectOption('character');
+  // The repetition test rewrote the document; ALICE is who it holds now.
+  await dialog.getByLabel('Name of the new sheet').fill('ALICE');
+  await dialog.getByRole('button', { name: 'New sheet' }).click();
+  await expect(dialog.locator('.rail-row')).toHaveCount(1);
+
+  // The author writes one field themselves before asking for a draft.
+  const wants = dialog.getByLabel('What they want');
+  await wants.fill('CE QUE L’AUTEUR A ÉCRIT');
+  await dialog.getByLabel('Role in the story').click();
+
+  await dialog.getByRole('button', { name: 'Draft the empty fields' }).click();
+  await expect(dialog.getByLabel('Role in the story')).toHaveValue(/Ingénieure système/);
+  // The author always wins: their own sentence is untouched.
+  await expect(wants).toHaveValue('CE QUE L’AUTEUR A ÉCRIT');
+  // A field the model returned empty stays empty rather than storing a blank.
+  await expect(dialog.getByLabel('What they fear')).toHaveValue('');
+  await expect(dialog.locator('.bible-drafted-note')).toBeVisible();
+
+  const prompt = requests.find(({ body }) =>
+    JSON.stringify(body?.['messages']).includes('Rédige la fiche de bible pour'),
+  );
+  // Extraction, not reasoning: thinking first is what made this time out on a local model.
+  expect(prompt?.body?.['reasoning_effort']).toBe('none');
+  // The sheet is drafted from the character's own scenes, tagged with their numbers.
+  expect(JSON.stringify(prompt?.body?.['messages'])).toContain('[1 · INT. LAB - NIGHT]');
+
+  // An invented key never reaches the author's file.
+  await expect
+    .poll(async () => {
+      const raw = await readFile(`${screenplay}.bible.json`, 'utf8');
+      return raw.includes('invented');
+    })
+    .toBe(false);
+
+  await dialog.getByRole('button', { name: 'Close', exact: true }).click();
 });
 
 test('retries a Mistral-style 422 response without non-standard parameters', async () => {

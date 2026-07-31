@@ -10,6 +10,7 @@ import type {
   SectionNode,
   TitlePage,
 } from './ast.js';
+import { foldDiacritics } from '../text/index.js';
 import { TIMES_OF_DAY } from './ast.js';
 import { parseInline, stripEmphasis } from './inline.js';
 import type { LexedLine } from './lexer.js';
@@ -353,12 +354,7 @@ const PREFIX_MAP: Array<{ re: RegExp; value: IntExt }> = [
 ];
 
 /** Strips diacritics so times of day compare equal with or without accents. */
-function fold(text: string): string {
-  return text
-    .normalize('NFD')
-    .replace(/\p{Diacritic}/gu, '')
-    .toUpperCase();
-}
+const fold = foldDiacritics;
 
 const FOLDED_TIMES = TIMES_OF_DAY.map(fold);
 

@@ -7,6 +7,9 @@ const DEFAULT_EDITOR_FONT_SIZE = 15;
 
 type ToolbarIconName =
   | 'consistency'
+  | 'voice'
+  | 'repetition'
+  | 'bible'
   | 'focus'
   | 'typewriter'
   | 'sceneNumbers'
@@ -30,6 +33,33 @@ function ToolbarIcon({ name }: { name: ToolbarIconName }) {
         <>
           <path d="M12 3 4.5 6v5.5c0 4.5 3 7.7 7.5 9.5 4.5-1.8 7.5-5 7.5-9.5V6z" />
           <path d="m8.5 12 2.2 2.2 4.8-5" />
+        </>
+      );
+      break;
+    case 'voice':
+      // A speech bubble with a waveform: what a character sounds like.
+      path = (
+        <>
+          <path d="M4 5.5h16v10H8.5L4 19z" />
+          <path d="M8.5 9v3M12 8v5.5M15.5 10v1.5" />
+        </>
+      );
+      break;
+    case 'repetition':
+      // Two identical marks, one shadowing the other.
+      path = (
+        <>
+          <rect x="4" y="5" width="10" height="6" rx="1.5" />
+          <rect x="10" y="13" width="10" height="6" rx="1.5" />
+        </>
+      );
+      break;
+    case 'bible':
+      // A bound volume with a ribbon.
+      path = (
+        <>
+          <path d="M5 4.5h11a2 2 0 0 1 2 2v13H7a2 2 0 0 1-2-2z" />
+          <path d="M8 4.5v10l2.2-1.6 2.3 1.6V4.5" />
         </>
       );
       break;
@@ -187,6 +217,9 @@ interface TopToolbarProps {
   t: Translator['t'];
   onSettingsChange: (patch: Partial<AppSettings>) => void;
   onOpenInconsistencies: () => void;
+  onOpenVoiceConsistency: () => void;
+  onOpenRepetitions: () => void;
+  onOpenBible: () => void;
 }
 
 /** Four compact groups: writing modes, visibility, theme and editor zoom. */
@@ -195,6 +228,9 @@ export function TopToolbar({
   t,
   onSettingsChange,
   onOpenInconsistencies,
+  onOpenVoiceConsistency,
+  onOpenRepetitions,
+  onOpenBible,
 }: TopToolbarProps) {
   return (
     <div className="topbar-actions" role="toolbar" aria-label={t('toolbar.modes')}>
@@ -204,6 +240,24 @@ export function TopToolbar({
           label={t('consistency.analyse')}
           tooltip={t('consistency.toolbarHint')}
           onClick={onOpenInconsistencies}
+        />
+        <ToolbarButton
+          icon="voice"
+          label={t('voice.title')}
+          tooltip={t('voice.subtitle')}
+          onClick={onOpenVoiceConsistency}
+        />
+        <ToolbarButton
+          icon="repetition"
+          label={t('repetition.title')}
+          tooltip={t('repetition.subtitle')}
+          onClick={onOpenRepetitions}
+        />
+        <ToolbarButton
+          icon="bible"
+          label={t('bible.title')}
+          tooltip={t('bible.subtitle')}
+          onClick={onOpenBible}
         />
       </div>
       <div className="topbar-group" role="group" aria-label={t('toolbar.writingModes')}>

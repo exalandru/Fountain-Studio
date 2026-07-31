@@ -100,7 +100,7 @@ export const lightTheme: Extension = EditorView.theme(
 export const darkTheme: Extension = EditorView.theme(
   {
     ...shared,
-    '&': { ...shared['&'], backgroundColor: 'var(--surface-raised)', color: 'var(--text)' },
+    '&': { ...shared['&'], backgroundColor: 'var(--surface-sunken)', color: 'var(--text)' },
     '.cm-content': { ...shared['.cm-content'], caretColor: 'var(--text)' },
     '.cm-cursor, .cm-dropCursor': { borderLeftColor: 'var(--text)' },
     '.cm-activeLine': { backgroundColor: '#ffffff0a' },
@@ -108,7 +108,7 @@ export const darkTheme: Extension = EditorView.theme(
       backgroundColor: 'color-mix(in srgb, var(--accent) 34%, transparent) !important',
     },
     '.cm-gutters': {
-      backgroundColor: 'var(--surface-raised)',
+      backgroundColor: 'var(--surface-sunken)',
       color: 'color-mix(in srgb, var(--text-muted) 65%, transparent)',
       border: 'none',
     },

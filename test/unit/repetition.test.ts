@@ -7,6 +7,7 @@ function views(source: string): SceneView[] {
   return parse(source).scenes.map((scene) => ({
     number: scene.number,
     heading: scene.heading,
+    location: scene.location,
     elements: scene.elements,
   }));
 }

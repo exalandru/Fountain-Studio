@@ -14,6 +14,7 @@ interface FileCommandsOptions {
   openPaths: (paths: string[]) => Promise<void>;
   onExportPdf: () => void;
   onOpenSnapshots: () => void;
+  onOpenBible: () => void;
   onOpenAiSettings: () => void;
   onOpenInconsistencies: () => void;
   onOpenVoiceConsistency: () => void;
@@ -40,6 +41,7 @@ export function useFileCommands({
   openPaths,
   onExportPdf,
   onOpenSnapshots,
+  onOpenBible,
   onOpenAiSettings,
   onOpenInconsistencies,
   onOpenVoiceConsistency,
@@ -68,6 +70,7 @@ export function useFileCommands({
         'file.saveAs': () => void save({ forceDialog: true }),
         'file.exportPdf': onExportPdf,
         'file.snapshots': onOpenSnapshots,
+        'file.bible': onOpenBible,
         'file.closeTab': () => {
           const id = store().activeId;
           if (id) void closeTab(id);
@@ -114,6 +117,7 @@ export function useFileCommands({
       onCommandPalette,
       onExportPdf,
       onOpenSnapshots,
+      onOpenBible,
       onOpenAiSettings,
       onOpenInconsistencies,
       onOpenVoiceConsistency,

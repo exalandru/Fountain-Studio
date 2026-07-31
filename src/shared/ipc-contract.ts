@@ -9,6 +9,7 @@ import type {
   AiKeyUpdate,
 } from './ai/index.js';
 import type { SnapshotMeta } from './snapshots/index.js';
+import type { Bible } from './bible/index.js';
 
 /**
  * Single IPC contract between the main process and the renderer.
@@ -213,6 +214,21 @@ export interface IpcRequests {
   /** Companion file: read/write versioned metadata alongside the screenplay. */
   'appdata:read': { arg: { path: string }; result: AppData | null };
   'appdata:write': { arg: { path: string; data: AppData }; result: void };
+  /**
+   * Script bible sidecar. Writing returns what was written, so the panel's state and the
+   * file on disk cannot drift apart.
+   */
+  'bible:read': { arg: { path: string }; result: Bible };
+  'bible:write': { arg: { path: string; bible: Bible }; result: Bible };
+  /**
+   * Sheet pictures. They travel as data URIs because the renderer's CSP allows `data:` and
+   * not `file:` — which also means every picture passes through the main process, where the
+   * format and the size are checked.
+   */
+  'bible:imagePick': { arg: void; result: string | null };
+  'bible:imageRead': { arg: { path: string; id: string }; result: string | null };
+  'bible:imageWrite': { arg: { path: string; id: string; dataUri: string }; result: string };
+  'bible:imageDelete': { arg: { path: string; id: string }; result: void };
 }
 
 export type EditorContextAction =
@@ -272,6 +288,7 @@ export type MenuCommand =
   | 'file.saveAs'
   | 'file.exportPdf'
   | 'file.snapshots'
+  | 'file.bible'
   | 'file.closeTab'
   | 'edit.find'
   | 'edit.replace'

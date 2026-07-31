@@ -3,8 +3,10 @@ import { parse } from '../../src/shared/fountain/index.js';
 import {
   approximateTokens,
   buildCharacterNamesPrompt,
+  BIBLE_SYSTEM_PROMPT,
   buildCharacterVoiceContext,
   buildVoiceConsistencyPrompt,
+  parseBibleDraft,
   buildRewritePrompt,
   buildSynonymPrompt,
   chunkScenes,
@@ -196,6 +198,7 @@ Maintenant.
   const scenes = screenplay.scenes.map((scene) => ({
     number: scene.number,
     heading: scene.heading,
+    location: scene.location,
     elements: scene.elements,
   }));
 
@@ -249,5 +252,48 @@ Maintenant.
     expect(prompt).toContain('{"items":[]}');
     // And the model must be told the variation it sees may be motivated.
     expect(VOICE_CONSISTENCY_SYSTEM_PROMPT).toContain('légitimement');
+  });
+});
+
+describe('bible drafting', () => {
+  const FIELDS = ['role', 'wants', 'fears'] as const;
+
+  it('keeps only the fields that were asked for', () => {
+    // A model that invents a key would otherwise put it in the sidecar, and the sidecar is
+    // the author's file.
+    const drafted = parseBibleDraft(
+      '{"fields":{"role":"Chef de projet.","invented":"n’importe quoi","wants":"Finir à temps."}}',
+      FIELDS,
+    );
+    expect(drafted).toEqual({ role: 'Chef de projet.', wants: 'Finir à temps.' });
+    expect('invented' in drafted).toBe(false);
+  });
+
+  it('strips a Markdown fence, as every parser in this file does', () => {
+    expect(parseBibleDraft('```json\n{"fields":{"role":"Témoin."}}\n```', FIELDS)).toEqual({
+      role: 'Témoin.',
+    });
+  });
+
+  it('drops empty and whitespace-only values rather than storing blanks', () => {
+    // A blank field is the model saying the screenplay does not establish it, which must
+    // leave the author's own field untouched rather than writing a space into it.
+    expect(parseBibleDraft('{"fields":{"role":"","wants":"   ","fears":"La nuit."}}', FIELDS)).toEqual(
+      { fears: 'La nuit.' },
+    );
+  });
+
+  it('returns nothing on anything unusable, rather than throwing', () => {
+    expect(parseBibleDraft('not json', FIELDS)).toEqual({});
+    expect(parseBibleDraft('{"fields":null}', FIELDS)).toEqual({});
+    expect(parseBibleDraft('{"fields":["role"]}', FIELDS)).toEqual({});
+    expect(parseBibleDraft('{}', FIELDS)).toEqual({});
+  });
+
+  it('tells the model that a blank field is a valid answer', () => {
+    // Without this the model invents a backstory, and an invention in a bible becomes a fact
+    // the production works from.
+    expect(BIBLE_SYSTEM_PROMPT).toContain('chaîne vide');
+    expect(BIBLE_SYSTEM_PROMPT).toContain('Tu n’invente');
   });
 });

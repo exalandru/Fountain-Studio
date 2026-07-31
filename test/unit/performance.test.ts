@@ -156,6 +156,7 @@ describe('literal repetition on a feature screenplay', () => {
   const scenes = parse(generateScreenplay(120)).scenes.map((scene) => ({
     number: scene.number,
     heading: scene.heading,
+    location: scene.location,
     elements: scene.elements,
   }));
 

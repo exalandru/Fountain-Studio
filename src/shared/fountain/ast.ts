@@ -87,6 +87,8 @@ export type IntExt = 'INT' | 'EXT' | 'EST' | 'INT/EXT';
 export interface SceneView {
   number: string;
   heading: string;
+  /** The location alone: no prefix, no time of day. Analyses match on this, not the heading. */
+  location: string;
   elements: readonly Element[];
 }
 
@@ -225,6 +227,13 @@ export const TIMES_OF_DAY = [
   'APRES-MIDI',
   'PLUS TARD',
   'CONTINU',
+  'MIDI',
+  'MINUIT',
+  'PETIT MATIN',
+  'NUIT TOMBÉE',
+  'NUIT TOMBEE',
+  'FIN DE JOURNÉE',
+  'FIN DE JOURNEE',
   'DAY',
   'NIGHT',
   'DAWN',
@@ -236,6 +245,8 @@ export const TIMES_OF_DAY = [
   'CONTINUOUS',
   'MOMENTS LATER',
   'SAME TIME',
+  'NOON',
+  'MIDNIGHT',
 ] as const;
 
 /**

@@ -71,7 +71,7 @@ export const DEFAULT_APP_DATA: Readonly<AppData> = {
   },
   preview: {
     visible: true,
-    width: 480,
+    width: 280,
     syncScroll: false,
     activeTab: 'statistics',
   },
@@ -245,7 +245,9 @@ export function parseAppData(raw: string): AppData | null {
     }
 
     if (typeof preview['visible'] === 'boolean') result.preview.visible = preview['visible'];
-    result.preview.width = clamp(preview['width'], DEFAULT_APP_DATA.preview.width, 320, 760);
+    // The floor sits below the default, so a narrower preview than the one shipped is a
+    // legitimate choice rather than a value the parser quietly raises on the next open.
+    result.preview.width = clamp(preview['width'], DEFAULT_APP_DATA.preview.width, 240, 760);
     if (typeof preview['syncScroll'] === 'boolean') {
       result.preview.syncScroll = preview['syncScroll'];
     }

@@ -61,8 +61,8 @@
   --border: #e0dcd5;
   --text: #1a1a19;
   --text-muted: #67675f;
-  --accent: #4752c4;
-  --accent-strong: #5865f2;
+  --accent: #3e77ac;
+  --accent-strong: #3b5270;
   --accent-contrast: #fff;
   --warning: #a3541b;
   --scrollbar-track: #e7e4df;
@@ -96,15 +96,15 @@ body[data-theme='dark'] {
   --surface-sunken: #191a1e;
   --surface: #212227;
   --surface-raised: #2b2c32;
-  --surface-overlay: #33343b;
+  --surface-overlay: #2b2c32;
   --field: #1c1d22;
   --control: #3b3d45;
   --control-hover: #464852;
   --border: #3a3b43;
   --text: #e2e0e4;
   --text-muted: #9c9ba4;
-  --accent: #949cf7;
-  --accent-strong: #5865f2;
+  --accent: #94c1f7;
+  --accent-strong: #5d7fab;
   --accent-contrast: #fff;
   --warning: #e0a26b;
   --scrollbar-track: #1e1f24;
@@ -253,6 +253,7 @@ body {
   -webkit-app-region: drag;
   user-select: none;
   overflow: visible;
+  border-bottom: 1px solid var(--surface-raised);
 }
 
 .tab-strip {
@@ -364,12 +365,24 @@ body {
   color: var(--text-muted);
 }
 
+/*
+ * The action groups wrap rather than being clipped.
+ *
+ * With `flex: none` the row could not shrink, so the three analysis tools added past the
+ * original fifteen buttons pushed the zoom and theme controls out of the bar entirely — still
+ * in the DOM, unreachable by pointer. Wrapping costs a second row only on a narrow window,
+ * where the alternative is losing controls.
+ */
 .topbar-actions {
   display: flex;
-  flex: none;
+  flex: 0 1 auto;
+  flex-wrap: wrap;
   align-self: center;
   align-items: center;
-  gap: 11px;
+  justify-content: flex-end;
+  /* The 11px column gap is what keeps the groups reading as groups; a test asserts it. */
+  gap: 6px 11px;
+  min-width: 0;
   margin-left: auto;
   padding-left: 8px;
   -webkit-app-region: no-drag;
@@ -553,6 +566,7 @@ body {
   min-width: 0;
   max-width: 100%;
   height: 100%;
+
 }
 
 .editor-host .cm-editor.cm-focused {
@@ -576,6 +590,7 @@ body {
   background: var(--surface);
   color: var(--text-muted);
   font-variant-numeric: tabular-nums;
+  border-top: 1px solid var(--surface-raised);
 }
 
 .status-message {
@@ -621,18 +636,8 @@ body {
   z-index: 3;
   inset: 0;
   pointer-events: none;
-  background-image:
-    radial-gradient(circle at 20% 30%, var(--text) 0 0.45px, transparent 0.65px),
-    radial-gradient(circle at 75% 65%, var(--text) 0 0.35px, transparent 0.6px),
-    radial-gradient(circle at 45% 85%, var(--text) 0 0.3px, transparent 0.55px);
-  background-position:
-    0 0,
-    3px 5px,
-    7px 2px;
-  background-size:
-    7px 9px,
-    11px 13px,
-    13px 8px;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.25' numOctaves='3' stitchTiles='stitch' result='n'/%3E%3CfeColorMatrix in='n' type='matrix' values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 .333 .333 .333 0 0' result='blackNoise'/%3E%3CfeComponentTransfer in='blackNoise'%3E%3CfeFuncA type='linear' slope='2.4' intercept='-1'/%3E%3C/feComponentTransfer%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='1'/%3E%3C/svg%3E");
+  background-size: 180px 180px;
   content: '';
   opacity: 0.035;
 }
@@ -1527,6 +1532,7 @@ body[data-theme='dark'] .preview-pane {
   max-width: 100%;
   overflow: hidden;
   background: var(--surface);
+  border-top: 1px solid var(--surface-raised);
 }
 
 .timeline-toolbar {
@@ -3337,6 +3343,700 @@ body[data-theme='dark'] .preview-pane {
   padding: 12px 14px;
 }
 
+/* The bible is a rail of sheets beside an editor. It borrows the snapshot dialog's frame,
+   so only what differs is declared here. */
+.bible-dialog {
+  display: flex;
+  flex-direction: column;
+  width: min(1080px, 94vw);
+  height: min(760px, 92vh);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--elev-3);
+  overflow: hidden;
+}
+
+.bible-dialog > header {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 14px 16px;
+}
+
+.bible-dialog > header > div:first-of-type {
+  flex: 1;
+}
+
+.bible-dialog h2 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.bible-dialog > header p {
+  margin: 2px 0 0;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.bible-layout {
+  display: grid;
+  flex: 1;
+  grid-template-columns: 264px minmax(0, 1fr);
+  min-height: 0;
+}
+
+.bible-layout > .rail {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  /* The list scrolls on its own, so the rail must not: a scrolling ancestor would clip the
+     suggestion popup that floats above the composer. */
+  overflow: visible;
+}
+
+.bible-layout > .rail > .rail-list {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.bible-layout .rail-row {
+  display: flex;
+  align-items: center;
+}
+
+.bible-layout > .rail > .rail-list:empty {
+  flex: 0 0 auto;
+}
+
+/* The pane advances against the rail: it holds the form, which is where the work happens.
+   Without the step the two halves read as one flat field, which is how an empty bible looked
+   like a broken dialog rather than an empty one. */
+.bible-pane {
+  padding: 14px 18px;
+  overflow: auto;
+  background: var(--surface-raised);
+}
+
+.bible-dialog > footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 16px;
+}
+
+/*
+ * Controls for the analysis dialogs.
+ *
+ * Neither carried any styling of its own, so their fields fell back to the browser's defaults
+ * in the middle of a themed panel — the voice analysis chooser being the most visible case.
+ * Shared between the two rather than copied: `pdf` and `ai-settings` each keep their own
+ * block, which is a duplication worth removing separately, when moving their appearance is
+ * not a risk to the colour assertions in the E2E suite.
+ */
+.bible-dialog input:not([type='checkbox']),
+.bible-dialog select,
+.bible-dialog textarea,
+.consistency-dialog input:not([type='checkbox']),
+.consistency-dialog select,
+.consistency-dialog textarea {
+  padding: 7px 9px;
+  border: none;
+  border-radius: var(--radius-md);
+  background: var(--field);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  transition:
+    background-color var(--motion),
+    box-shadow var(--motion);
+}
+
+.bible-dialog input:not([type='checkbox']):focus-visible,
+.bible-dialog select:focus-visible,
+.bible-dialog textarea:focus-visible,
+.consistency-dialog input:not([type='checkbox']):focus-visible,
+.consistency-dialog select:focus-visible,
+.consistency-dialog textarea:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+
+/* Rail rows and the destructive action are not controls to be filled. */
+.bible-dialog button:not(.rail-row):not(.ai-danger):not(.panel-close),
+.consistency-dialog button:not(.rail-row):not(.ai-danger):not(.panel-close):not(.ai-primary) {
+  padding: 7px 10px;
+  border: none;
+  border-radius: var(--radius-md);
+  background: var(--control);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  transition:
+    background-color var(--motion),
+    color var(--motion);
+}
+
+.bible-dialog button:not(.rail-row):not(.ai-danger):not(.panel-close):not(:disabled):hover,
+.consistency-dialog
+  button:not(.rail-row):not(.ai-danger):not(.panel-close):not(.ai-primary):not(:disabled):hover {
+  background: var(--control-hover);
+}
+
+.bible-dialog button:disabled,
+.consistency-dialog button:disabled {
+  opacity: 0.45;
+}
+
+.bible-dialog > footer button {
+  min-width: 90px;
+}
+
+/* The view switch sits in the header, between the title and the close button. */
+.bible-views {
+  display: flex;
+  flex: none;
+  gap: 2px;
+  padding: 2px;
+  border-radius: var(--radius-pill);
+  background: var(--surface-sunken);
+}
+
+.bible-views button {
+  padding: 5px 12px !important;
+  border-radius: var(--radius-pill) !important;
+  background: transparent !important;
+  color: var(--text-muted) !important;
+  font-size: 11px !important;
+}
+
+.bible-views button.is-current {
+  background: var(--surface-raised) !important;
+  color: var(--text) !important;
+}
+
+.bible-grouping {
+  flex: 1;
+  min-height: 0;
+  padding: 14px 18px;
+  overflow: auto;
+  background: var(--surface-raised);
+}
+
+.bible-grouping section + section {
+  margin-top: 20px;
+}
+
+.bible-grouping h3 {
+  margin: 0;
+  font-size: 12px;
+}
+
+.bible-grouping-hint {
+  margin: 3px 0 10px;
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.bible-group {
+  margin-bottom: 10px;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  background: var(--surface-sunken);
+}
+
+.bible-group > header {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.bible-group > header strong {
+  font-size: 12px;
+}
+
+.bible-group ul {
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.bible-group label {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 3px 0;
+  font-size: 11px;
+}
+
+/* Its own size, and the accent so a ticked row reads at a glance. */
+.bible-group input[type='checkbox'] {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  accent-color: var(--accent-strong);
+}
+
+.bible-group label > span {
+  flex: 1;
+}
+
+.bible-group label small {
+  color: var(--text-muted);
+  font-size: 10px;
+}
+
+/* One block per kind, so the work reads as a few short lists rather than one long heap. */
+.bible-unattached-kind-group + .bible-unattached-kind-group {
+  margin-top: 12px;
+}
+
+.bible-unattached-kind-group h4 {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  margin: 0 0 3px;
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.bible-unattached-kind-group h4 small {
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+/* A row per free name: the name and where it could go. */
+.bible-unattached {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.bible-unattached li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 190px;
+  gap: 10px;
+  align-items: center;
+  padding: 5px 0;
+}
+
+.bible-unattached-name {
+  overflow: hidden;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bible-unattached-kind {
+  color: var(--text-muted);
+  font-size: 10px;
+}
+
+.bible-unattached select {
+  width: 100%;
+}
+
+/* The names a sheet covers, removable one by one. */
+.bible-aliases {
+  margin-bottom: 12px;
+}
+
+.bible-aliases h3 {
+  margin: 0 0 5px;
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.bible-aliases ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.bible-aliases li {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  padding: 2px 4px 2px 9px;
+  border-radius: var(--radius-pill);
+  background: var(--tint-accent);
+  color: var(--accent);
+  font-size: 11px;
+}
+
+.bible-aliases button {
+  width: 16px;
+  height: 16px;
+  padding: 0 !important;
+  border-radius: 50% !important;
+  background: transparent !important;
+  color: inherit !important;
+  font-size: 12px !important;
+  line-height: 1;
+}
+
+.bible-aliases button:not(:disabled):hover {
+  background: var(--fill-active) !important;
+}
+
+.bible-rail-empty {
+  margin: 0;
+  padding: 10px 12px 2px;
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+/* Centred, so an empty pane reads as waiting rather than as a failure to load. */
+.bible-pane > .panel-placeholder {
+  display: flex;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  text-align: center;
+}
+
+/* One composer for every kind of sheet, pinned to the foot of the rail — except when there
+   is nothing above it, where a footer separated by four hundred pixels of nothing reads as a
+   broken panel rather than an empty one. */
+.bible-compose {
+  position: relative;
+  margin-top: auto;
+  padding: 8px;
+  border-top: 1px solid var(--fill-hover);
+}
+
+.bible-layout > .rail:has(.rail-list:empty) .bible-compose {
+  margin-top: 0;
+  border-top: none;
+}
+
+/* With nothing above it the composer sits at the top, so the list opens downwards instead —
+   a drop-up there would climb past the dialog's own header. */
+.bible-layout > .rail:has(.rail-list:empty) .bible-suggestions {
+  top: calc(100% - 8px);
+  bottom: auto;
+}
+
+/* Stacked, not side by side: at rail width three controls in a row clip their own labels —
+   "Character" came out as "Characteı" and the name field showed four letters of its hint. */
+.bible-compose-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 26px 32px;
+  grid-template-areas:
+    'kind kind kind'
+    'name open add';
+  gap: 6px;
+  align-items: center;
+}
+
+.bible-compose-row > label:first-of-type {
+  grid-area: kind;
+}
+
+.bible-compose-row > label:last-of-type {
+  grid-area: name;
+  min-width: 0;
+}
+
+.bible-compose-row select,
+.bible-compose-row input {
+  width: 100%;
+}
+
+/* The chevron that opens the whole list: this is what makes the field a chooser and not just
+   a search box. Quiet, because picking a name is a step towards the action, not the action. */
+.bible-compose-open {
+  grid-area: open;
+  height: 32px;
+  padding: 0 !important;
+  background: transparent !important;
+  color: var(--text-muted) !important;
+  font-size: 11px !important;
+  line-height: 1;
+}
+
+.bible-compose-open:not(:disabled):hover {
+  background: var(--fill-hover) !important;
+  color: var(--text) !important;
+}
+
+/* The one action of the composer, so it carries the accent rather than sitting grey beside
+   two grey fields. */
+.bible-compose-add {
+  grid-area: add;
+  height: 32px;
+  padding: 0 !important;
+  background: var(--accent-strong) !important;
+  color: #fff !important;
+  font-size: 16px !important;
+  line-height: 1;
+}
+
+.bible-compose-add:not(:disabled):hover {
+  filter: brightness(1.08);
+}
+
+/*
+ * The suggestions open upwards, floating over the rail.
+ *
+ * The composer is pinned to the foot of the rail, so a list rendered below the field had
+ * nowhere to go: with a full cast above it there was not a pixel left, and the list was
+ * invisible while the filtering behind it worked perfectly. Floating upwards makes it
+ * independent of whatever room happens to be left.
+ */
+.bible-suggestions {
+  position: absolute;
+  right: 8px;
+  bottom: calc(100% - 8px);
+  left: 8px;
+  max-height: 220px;
+  margin: 0;
+  padding: 4px;
+  border-radius: var(--radius-md);
+  background: var(--surface-overlay);
+  box-shadow: var(--elev-3);
+  list-style: none;
+  overflow-y: auto;
+}
+
+.bible-suggestions button {
+  display: block;
+  width: 100%;
+  padding: 5px 8px !important;
+  background: transparent !important;
+  color: var(--text) !important;
+  font-size: 11px !important;
+  text-align: left;
+}
+
+.bible-suggestions button:hover,
+.bible-suggestions button.is-current {
+  background: var(--fill-hover) !important;
+}
+
+/* The keyboard-highlighted row has to be distinguishable from a hovered one, or arrowing
+   through the list is invisible while the pointer sits somewhere in it. */
+.bible-suggestions button.is-current {
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.bible-compose-hint {
+  margin: 6px 2px 0;
+  color: var(--text-muted);
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+/* Without a picture, the initials on a tinted ground — the same language as the provider
+   monograms in the AI settings, so the interface stays of one piece. */
+.bible-avatar {
+  display: flex;
+  flex: none;
+  width: 64px;
+  height: 64px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 !important;
+  border-radius: var(--radius-md) !important;
+  background: var(--tint-accent) !important;
+  color: var(--accent) !important;
+  font-size: 20px !important;
+  font-weight: 600;
+  overflow: hidden;
+  transition: filter var(--motion);
+}
+
+.bible-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.bible-avatar:not(:disabled):hover {
+  filter: brightness(1.05);
+}
+
+/* In the rail, small enough that a row keeps its height. */
+.bible-avatar.is-small {
+  width: 26px;
+  height: 26px;
+  margin-right: 8px;
+  border-radius: var(--radius-sm) !important;
+  font-size: 10px !important;
+}
+
+/* Picture and name on one line: the name reads as the sheet's title, not as a caption under
+   the portrait. */
+.bible-heading {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.bible-heading > .bible-name {
+  flex: 1;
+  min-width: 0;
+}
+
+.bible-identity {
+  position: relative;
+  flex: none;
+}
+
+.bible-avatar-remove {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  width: 20px;
+  height: 20px;
+  padding: 0 !important;
+  border-radius: 50% !important;
+  background: var(--surface-overlay) !important;
+  box-shadow: var(--elev-1);
+  font-size: 12px !important;
+  line-height: 1;
+}
+
+/* The sheet's name is its title, so it is set like one and only shows its box on focus. */
+.bible-name input {
+  width: 100%;
+  padding: 6px 8px;
+  background: transparent !important;
+  font-size: 15px !important;
+  font-weight: 600;
+}
+
+.bible-name input:hover {
+  background: var(--fill-hover) !important;
+}
+
+/* An orphaned sheet needs attention, not alarm: a tint, not a red border. */
+.bible-orphan {
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  background: var(--tint-accent);
+}
+
+.bible-orphan strong {
+  font-size: 12px;
+}
+
+.bible-orphan p {
+  margin: 4px 0 8px;
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.bible-orphan-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.bible-orphan-actions label {
+  flex: 1;
+}
+
+.bible-orphan-actions select {
+  width: 100%;
+}
+
+/* The facts recede: they are measurements, not the author's writing. */
+.bible-facts {
+  margin: 12px 0;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  background: var(--surface-sunken);
+}
+
+.bible-facts h3 {
+  margin: 0 0 6px;
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.bible-facts ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.bible-facts li {
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  background: var(--control);
+  font-size: 11px;
+}
+
+.bible-facts p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.bible-fields {
+  display: grid;
+  gap: 10px;
+}
+
+.bible-fields label {
+  display: block;
+}
+
+.bible-fields label > span {
+  display: block;
+  margin-bottom: 3px;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.bible-fields textarea {
+  width: 100%;
+  line-height: 1.45;
+  resize: vertical;
+}
+
+.bible-fields textarea::placeholder {
+  color: var(--text-muted);
+  opacity: 0.75;
+}
+
+/* Above the fields, not below them: the action that fills the form has to be visible before
+   the reader has scrolled past every empty field it would have filled. */
+.bible-draft {
+  margin: 0 0 14px;
+}
+
+.bible-drafted-note {
+  margin: 8px 0 0;
+  color: var(--text-muted);
+  font-size: 10px;
+}
+
 .snapshot-rename {
   display: flex;
   gap: 8px;
@@ -3354,10 +4054,11 @@ body[data-theme='dark'] .preview-pane {
   font-weight: 600;
 }
 
+/* Wide enough for the longest character name, not the width of the dialog: a chooser that
+   spans the whole panel reads as a text field. */
 .voice-controls > select {
-  flex: 1;
+  flex: 0 1 320px;
   min-width: 200px;
-  padding: 8px 10px;
 }
 
 .voice-controls > .ai-primary {

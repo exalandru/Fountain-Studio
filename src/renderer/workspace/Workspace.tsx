@@ -47,6 +47,9 @@ interface WorkspaceProps {
   formattingActive: { bold: boolean; italic: boolean; underline: boolean };
   onFormatSelection: (marker: '*' | '**' | '_') => void;
   onOpenInconsistencies: () => void;
+  onOpenVoiceConsistency: () => void;
+  onOpenRepetitions: () => void;
+  onOpenBible: () => void;
   onExportStats: (format: 'csv' | 'json') => void;
   onMinutesPerPage: (value: number) => void;
   onClosePreview: () => void;
@@ -94,6 +97,9 @@ export function Workspace({
   formattingActive,
   onFormatSelection,
   onOpenInconsistencies,
+  onOpenVoiceConsistency,
+  onOpenRepetitions,
+  onOpenBible,
   onExportStats,
   onMinutesPerPage,
   onClosePreview,
@@ -183,6 +189,9 @@ export function Workspace({
           t={t}
           onSettingsChange={onSettingsChange}
           onOpenInconsistencies={onOpenInconsistencies}
+          onOpenVoiceConsistency={onOpenVoiceConsistency}
+          onOpenRepetitions={onOpenRepetitions}
+          onOpenBible={onOpenBible}
         />
       </div>
 

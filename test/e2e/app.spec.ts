@@ -270,8 +270,10 @@ test('the right sidebar includes a compact Fountain cheat sheet', async () => {
 test('the top bar exposes writing modes, theme controls and the editor texture', async () => {
   await expect(page.locator('.topbar-group')).toHaveCount(5);
   const toolbarButtons = page.locator('.toolbar-icon-button');
-  await expect(toolbarButtons).toHaveCount(15);
-  await expect(page.locator('.toolbar-tooltip')).toHaveCount(15);
+  // Eighteen since the analysis group gained voice, repetition and the bible beside the
+  // consistency report. The count is asserted so a button cannot appear by accident.
+  await expect(toolbarButtons).toHaveCount(18);
+  await expect(page.locator('.toolbar-tooltip')).toHaveCount(18);
   expect(
     await toolbarButtons.evaluateAll((buttons) =>
       buttons.every(
@@ -361,7 +363,10 @@ test('formatted mode hides Fountain markers and exposes a floating format bar', 
   const editor = page.locator('.cm-content');
   await editor.click();
   await page.keyboard.press('ControlOrMeta+a');
-  await page.keyboard.type('INT. ROOM - DAY\n\nA **bold** and _underlined_ word.');
+  // The target word sits on its own line on purpose: a double-click lands in the middle of
+  // whatever it is given, so a word buried in a sentence is selected or not depending on how
+  // wide the editor column happens to be — which changes with the preview panel's width.
+  await page.keyboard.type('INT. ROOM - DAY\n\nA **bold** and _underlined_ line.\n\nword');
 
   const toggle = page.getByRole('button', { name: 'Hide Fountain Markers' });
   await toggle.click();
@@ -377,7 +382,7 @@ test('formatted mode hides Fountain markers and exposes a floating format bar', 
     'aria-pressed',
     'true',
   );
-  await page.locator('.cm-line').filter({ hasText: 'word' }).dblclick();
+  await page.locator('.cm-line').filter({ hasText: /^word$/ }).dblclick();
   await toolbar.getByRole('button', { name: 'Bold' }).click();
   await toggle.click();
   await expect(editor).toContainText('**word**');

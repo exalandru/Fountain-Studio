@@ -498,6 +498,55 @@ export function buildCharacterVoiceContext(
   return chunks.join('\n\n');
 }
 
+export const BIBLE_SYSTEM_PROMPT = `Tu rédiges une fiche de bible pour un scénario, à partir du scénario lui-même.
+Tu n’écris que ce que le texte établit ou implique clairement. Tu n’inventes ni passé, ni motivation, ni détail physique qui ne soit pas dans le scénario : une bible sert de référence, une invention y devient un fait faux.
+Quand le scénario ne dit rien d’un champ, tu renvoies une chaîne vide pour ce champ. Un champ vide est une réponse juste, pas un échec.
+Tu écris au présent, en phrases courtes, sans commentaire sur ton propre travail.
+Réponds exclusivement en JSON valide, sans Markdown ni commentaire.`;
+
+export function buildBibleDraftPrompt(
+  kind: string,
+  name: string,
+  fields: readonly string[],
+  context: string,
+): string {
+  return `Rédige la fiche de bible pour ${kind} « ${name} ».
+Retourne {"fields":{${fields.map((field) => `"${field}":"..."`).join(',')}}}.
+N’ajoute aucune autre clé. Laisse une chaîne vide tout champ que le scénario n’établit pas.
+
+<scenario>
+${context}
+</scenario>`;
+}
+
+/**
+ * Reads a drafted sheet.
+ *
+ * Only the fields that were asked for are kept: a model that invents a key would otherwise
+ * put it in the sidecar, and the sidecar is the author's file.
+ */
+export function parseBibleDraft(raw: string, allowed: readonly string[]): Record<string, string> {
+  try {
+    const cleaned = raw
+      .trim()
+      .replace(/^```(?:json)?\s*/i, '')
+      .replace(/\s*```$/, '');
+    const parsed = JSON.parse(cleaned) as { fields?: unknown };
+    if (typeof parsed.fields !== 'object' || parsed.fields === null) return {};
+    const source = parsed.fields as Record<string, unknown>;
+    const result: Record<string, string> = {};
+    for (const field of allowed) {
+      const value = source[field];
+      if (typeof value === 'string' && value.trim().length > 0) {
+        result[field] = value.slice(0, 4_000);
+      }
+    }
+    return result;
+  } catch {
+    return {};
+  }
+}
+
 export const STRUCTURAL_REPETITION_SYSTEM_PROMPT = `Tu cherches les répétitions structurelles dans un scénario : deux scènes qui remplissent la même fonction, un même beat joué deux fois, une information révélée à nouveau comme si elle était neuve, un même mouvement dramatique rejoué à l’identique.
 Tu ne t’occupes pas des répétitions de mots ou de tournures : elles sont relevées ailleurs, par un autre moyen.
 Un retour délibéré n’est pas une répétition : un motif qui revient transformé, une réponse à une scène antérieure, un rituel qui se dégrade sont des procédés. Tu ne signales que ce qui fait du surplace.

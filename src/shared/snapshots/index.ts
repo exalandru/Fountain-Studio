@@ -19,6 +19,8 @@
  * Pure TypeScript (PLAN.md §3.1): both IPC sides and the unit tests share this validation.
  */
 
+import { foldDiacritics } from '../text/index.js';
+
 export const SNAPSHOT_INDEX_VERSION = 1 as const;
 
 /** Upper bound on snapshots per screenplay: the list is a rail, not an archive. */
@@ -62,9 +64,7 @@ export function isSnapshotId(value: unknown): value is string {
  * only there to make the directory readable.
  */
 export function snapshotSlug(name: string): string {
-  const slug = name
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
+  const slug = foldDiacritics(name)
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')

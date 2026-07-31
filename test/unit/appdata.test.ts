@@ -147,3 +147,12 @@ describe('companion file IO', () => {
     expect(await readAppData(screenplay)).toBeNull();
   });
 });
+
+describe('defaults live inside their own bounds', () => {
+  it('survives a round trip unchanged, whatever the shipped defaults are', () => {
+    // A default outside its clamp range is silently rewritten on the next open, which reads as
+    // the application refusing a preference it offered.
+    const defaults = createDefaultAppData();
+    expect(parseAppData(serializeAppData(defaults))).toEqual(defaults);
+  });
+});

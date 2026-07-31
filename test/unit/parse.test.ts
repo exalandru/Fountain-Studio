@@ -49,6 +49,30 @@ describe('parseHeading', () => {
     expect(parseHeading('EXT. TOIT - CREPUSCULE').timeOfDay).toBe('CREPUSCULE');
   });
 
+  it('recognises the times a French screenplay actually writes', () => {
+    // A time outside the vocabulary stays glued to the location, which is the one way a
+    // single place splits into a daytime one and a night-time one in the sidebar.
+    expect(parseHeading('EXT. MÉGALOPOLE - MIDI')).toEqual({
+      intExt: 'EXT',
+      location: 'MÉGALOPOLE',
+      timeOfDay: 'MIDI',
+    });
+    expect(parseHeading('EXT. MÉGALOPOLE - REMPARTS - NUIT TOMBÉE')).toEqual({
+      intExt: 'EXT',
+      location: 'MÉGALOPOLE - REMPARTS',
+      timeOfDay: 'NUIT TOMBÉE',
+    });
+    expect(parseHeading('INT. BUREAU - PETIT MATIN').timeOfDay).toBe('PETIT MATIN');
+    expect(parseHeading('INT. BUREAU - MINUIT').timeOfDay).toBe('MINUIT');
+    expect(parseHeading('EXT. ROOF - NOON').timeOfDay).toBe('NOON');
+  });
+
+  it('gives the same location whatever the hour, which is what merges them', () => {
+    expect(parseHeading('EXT. MÉGALOPOLE - REMPARTS - JOUR').location).toBe(
+      parseHeading('EXT. MÉGALOPOLE - REMPARTS - MINUIT').location,
+    );
+  });
+
   it('handles a heading with no time of day', () => {
     expect(parseHeading('INT. KITCHEN')).toEqual({
       intExt: 'INT',

@@ -1,3 +1,4 @@
+import { foldedIncludes } from '@shared/text/index.js';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { MenuCommand } from '@shared/ipc-contract.js';
 import { useTranslator } from '../hooks/useTranslator.js';
@@ -21,9 +22,9 @@ export function CommandPalette({ commands, onRun, onClose }: CommandPaletteProps
   const [query, setQuery] = useState('');
   const [selected, setSelected] = useState(0);
   const filtered = useMemo(() => {
-    const needle = query.trim().toLocaleLowerCase();
+    const needle = query.trim();
     return needle
-      ? commands.filter((command) => command.label.toLocaleLowerCase().includes(needle))
+      ? commands.filter((command) => foldedIncludes(command.label, needle))
       : commands;
   }, [commands, query]);
 

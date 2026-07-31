@@ -1,3 +1,4 @@
+import { foldedIncludes } from '@shared/text/index.js';
 import { memo, useMemo, useRef } from 'react';
 import type { ReactNode } from 'react';
 import type { IndexedOccurrence, ParseResponse } from '@shared/analysis/index.js';
@@ -17,11 +18,12 @@ export interface SidebarProps {
 }
 
 function normalizeFilter(value: string): string {
-  return value.trim().toLocaleLowerCase();
+  return value.trim();
 }
 
+/** Accents are ignored: someone typing "megalopole" is looking for MÉGALOPOLE. */
 function matches(value: string | undefined, filter: string): boolean {
-  return filter.length === 0 || value?.toLocaleLowerCase().includes(filter) === true;
+  return filter.length === 0 || (value !== undefined && foldedIncludes(value, filter));
 }
 
 export const Sidebar = memo(function Sidebar({

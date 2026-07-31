@@ -60,6 +60,7 @@ export function RepetitionPanel({
       (analysis?.scenes ?? []).map((scene) => ({
         number: scene.number,
         heading: scene.heading,
+        location: scene.location,
         elements: scene.elementIndexes.flatMap((index) => {
           const element = analysis?.elements[index];
           return element ? [element] : [];

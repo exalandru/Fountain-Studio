@@ -149,6 +149,10 @@ export async function buildMenu(): Promise<void> {
           label: t('menu.file.snapshots'),
           click: () => send('file.snapshots'),
         },
+        {
+          label: t('menu.file.bible'),
+          click: () => send('file.bible'),
+        },
         { type: 'separator' },
         {
           label: t('menu.file.closeTab'),

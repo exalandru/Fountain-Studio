@@ -1,10 +1,19 @@
+import { readFile } from 'node:fs/promises';
 import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron';
 import type { IpcMainInvokeEvent } from 'electron';
-import { basename, isAbsolute, join } from 'node:path';
+import { basename, extname, isAbsolute, join } from 'node:path';
 import { parseAppData } from '@shared/appdata/index.js';
 import type { AiConnectionProfile } from '@shared/ai/index.js';
 import { isProviderKind } from '@shared/ai/providers/index.js';
+import { isBibleId } from '@shared/bible/index.js';
 import { isSnapshotId, MAX_SNAPSHOT_NAME } from '@shared/snapshots/index.js';
+import {
+  deleteBibleImage,
+  readBible,
+  readBibleImage,
+  writeBible,
+  writeBibleImage,
+} from './files/bible.js';
 import type { DocumentSnapshot, IpcChannel, IpcRequests } from '@shared/ipc-contract.js';
 import type { Translator } from '@shared/i18n/index.js';
 import { clearAutosave, pendingAutosaves, writeAutosave } from './files/autosave.js';
@@ -168,6 +177,36 @@ function validateRequest<C extends IpcChannel>(channel: C, value: unknown): IpcR
       break;
     case 'appdata:read':
       valid = record !== null && validPath(record['path']);
+      break;
+    case 'bible:read':
+      valid = record !== null && validPath(record['path']);
+      break;
+    case 'bible:imagePick':
+      valid = true;
+      break;
+    case 'bible:imageRead':
+    case 'bible:imageDelete':
+      valid = record !== null && validPath(record['path']) && isBibleId(record['id']);
+      break;
+    case 'bible:imageWrite':
+      // Only the envelope: the format and the size are the main side's call, in
+      // writeBibleImage, which is the single authority on what may reach the disk.
+      valid =
+        record !== null &&
+        validPath(record['path']) &&
+        isBibleId(record['id']) &&
+        typeof record['dataUri'] === 'string' &&
+        record['dataUri'].startsWith('data:image/') &&
+        record['dataUri'].length <= 4_000_000;
+      break;
+    case 'bible:write':
+      // Only the envelope is checked here. What a bible may contain is decided by
+      // parseBible, which the main side runs on the way in — one authority, not two.
+      valid =
+        record !== null &&
+        validPath(record['path']) &&
+        typeof record['bible'] === 'object' &&
+        record['bible'] !== null;
       break;
     case 'file:openPaths':
       valid =
@@ -631,4 +670,29 @@ export function registerIpcHandlers(): void {
 
   handle('appdata:read', ({ path }) => readAppData(path));
   handle('appdata:write', ({ path, data }) => writeAppData(path, data));
+  handle('bible:read', ({ path }) => readBible(path));
+  handle('bible:write', ({ path, bible }) => writeBible(path, bible));
+  handle('bible:imagePick', async (_arg, window) => {
+    const { t } = await getTranslator();
+    const options = {
+      title: t('bible.imagePick'),
+      filters: [{ name: t('bible.imageFilter'), extensions: ['png', 'jpg', 'jpeg', 'webp'] }],
+      properties: ['openFile' as const],
+    };
+    const result = window
+      ? await dialog.showOpenDialog(window, options)
+      : await dialog.showOpenDialog(options);
+    const [chosen] = result.filePaths;
+    if (result.canceled || chosen === undefined) return null;
+    const bytes = await readFile(chosen);
+    // Bounded before it reaches the renderer, which will shrink it to 512 pixels anyway. A
+    // camera raw file has no business being read into a renderer message.
+    if (bytes.byteLength > 12_000_000) throw new Error('image is too large');
+    const type = extname(chosen).toLowerCase() === '.png' ? 'image/png' : 'image/jpeg';
+    const mime = extname(chosen).toLowerCase() === '.webp' ? 'image/webp' : type;
+    return `data:${mime};base64,${bytes.toString('base64')}`;
+  });
+  handle('bible:imageRead', ({ path, id }) => readBibleImage(path, id));
+  handle('bible:imageWrite', ({ path, id, dataUri }) => writeBibleImage(path, id, dataUri));
+  handle('bible:imageDelete', ({ path, id }) => deleteBibleImage(path, id));
 }

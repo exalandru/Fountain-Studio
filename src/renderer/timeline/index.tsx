@@ -34,6 +34,7 @@ export const Timeline = memo(function Timeline({
 }: TimelineProps) {
   const { t } = useTranslator();
   const activeRef = useRef<HTMLButtonElement | null>(null);
+  const trackRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     activeRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
@@ -85,7 +86,23 @@ export const Timeline = memo(function Timeline({
           ×
         </button>
       </header>
-      <div className="timeline-track">
+      <div
+        className="timeline-track"
+        ref={trackRef}
+        // A plain wheel scrolls the timeline sideways. Most mice have no horizontal wheel, and
+        // there is nothing to scroll vertically here, so a vertical turn is unambiguous. A
+        // trackpad's own horizontal gesture already arrives as deltaX and is left alone.
+        onWheel={(event) => {
+          const track = trackRef.current;
+          if (track === null) return;
+          if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
+          const before = track.scrollLeft;
+          track.scrollLeft += event.deltaY;
+          // Only claim the gesture when it moved something: at either end the page should
+          // still be free to scroll.
+          if (track.scrollLeft !== before) event.preventDefault();
+        }}
+      >
         {analysis?.scenes.map((scene, index) => {
           const statistic = analysis.statistics.scenes[index];
           const eighths = statistic?.eighths ?? 1;

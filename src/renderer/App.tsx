@@ -27,6 +27,7 @@ import type { CharacterNameSelection } from './ai/CharacterNameDialog.js';
 import { InconsistencyPanel } from './ai/InconsistencyPanel.js';
 import { VoiceConsistencyPanel } from './ai/VoiceConsistencyPanel.js';
 import { RepetitionPanel } from './repetition/RepetitionPanel.js';
+import { BiblePanel } from './bible/BiblePanel.js';
 import { fountainLexField } from './editor/fountain-highlight.js';
 import type { NewDocumentStrings } from './store/documents.js';
 import { useDocuments } from './store/documents.js';
@@ -56,6 +57,7 @@ export function App() {
   const [snapshotsOpen, setSnapshotsOpen] = useState(false);
   const [voiceConsistencyOpen, setVoiceConsistencyOpen] = useState(false);
   const [repetitionsOpen, setRepetitionsOpen] = useState(false);
+  const [bibleOpen, setBibleOpen] = useState(false);
   const [, setAiSettingsRevision] = useState(0);
   const [rewriteSelection, setRewriteSelection] = useState<RewriteSelection | null>(null);
   const [characterNameSelection, setCharacterNameSelection] =
@@ -155,6 +157,7 @@ export function App() {
   const openInconsistencies = useCallback(() => setInconsistencyOpen(true), []);
   const openVoiceConsistency = useCallback(() => setVoiceConsistencyOpen(true), []);
   const openRepetitions = useCallback(() => setRepetitionsOpen(true), []);
+  const openBible = useCallback(() => setBibleOpen(true), []);
   const openSnapshots = useCallback(() => setSnapshotsOpen(true), []);
   const openRewrite = useCallback(
     (initialTool: 'rewrite' | 'synonyms' = 'rewrite') => {
@@ -353,6 +356,7 @@ export function App() {
     openPaths,
     onExportPdf: openPdfDialog,
     onOpenSnapshots: openSnapshots,
+    onOpenBible: openBible,
     onOpenAiSettings: openAiSettings,
     onOpenInconsistencies: openInconsistencies,
     onOpenVoiceConsistency: openVoiceConsistency,
@@ -413,6 +417,7 @@ export function App() {
       { id: 'file.save', label: t('menu.file.save'), shortcut: '⌘S' },
       { id: 'file.exportPdf', label: t('menu.file.exportPdf'), shortcut: '⇧⌘E' },
       { id: 'file.snapshots', label: t('menu.file.snapshots') },
+      { id: 'file.bible', label: t('menu.file.bible') },
 
 
       { id: 'edit.find', label: t('menu.edit.find'), shortcut: '⌘F' },
@@ -730,6 +735,9 @@ export function App() {
         formattingActive={formattingActive}
         onFormatSelection={formatSelection}
         onOpenInconsistencies={openInconsistencies}
+        onOpenVoiceConsistency={openVoiceConsistency}
+        onOpenRepetitions={openRepetitions}
+        onOpenBible={openBible}
         onExportStats={(format) => void exportStats(format)}
         onMinutesPerPage={(value) => void patchSettings({ minutesPerPage: value })}
         onClosePreview={closePreview}
@@ -757,6 +765,19 @@ export function App() {
           onClose={() => setPdfOpen(false)}
         />
       ) : null}
+      {bibleOpen && active ? (
+        <BiblePanel
+          // Keyed by document: switching tabs unmounts the panel, which cancels a running
+          // draft. Without it the request outlives the switch and its result is written to
+          // whichever bible is on screen when it lands — the wrong screenplay's.
+          key={active.id}
+          path={active.path}
+          analysis={analysis}
+          t={t}
+          onClose={() => setBibleOpen(false)}
+        />
+      ) : null}
+
       {snapshotsOpen && active ? (
         <SnapshotDialog
           path={active.path}
