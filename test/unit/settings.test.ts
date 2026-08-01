@@ -47,7 +47,7 @@ describe('settings validation', () => {
         focusMode: true,
         typewriterMode: true,
         formattedMode: true,
-        spellcheckLanguage: 'fr',
+        spellcheckLanguage: 'system',
       }),
     ).toEqual({
       theme: 'dark',
@@ -64,7 +64,13 @@ describe('settings validation', () => {
       focusMode: true,
       typewriterMode: true,
       formattedMode: true,
-      spellcheckLanguage: 'fr',
+      spellcheckLanguage: 'system',
+    });
+  });
+
+  it('migrates legacy French spell-check preference to system', () => {
+    expect(sanitizeSettings({ spellcheckLanguage: 'fr' })).toMatchObject({
+      spellcheckLanguage: 'system',
     });
   });
 });

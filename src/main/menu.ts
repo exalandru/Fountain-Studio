@@ -81,16 +81,16 @@ export async function buildMenu(): Promise<void> {
 
   const spellcheckItems: MenuItemConstructorOptions[] = [
     {
+      label: t('spell.system'),
+      type: 'radio',
+      checked: settings.spellcheckLanguage === 'system',
+      click: () => void applyGlobalSettings({ spellcheckLanguage: 'system' }),
+    },
+    {
       label: t('spell.english'),
       type: 'radio',
       checked: settings.spellcheckLanguage === 'en-US',
       click: () => void applyGlobalSettings({ spellcheckLanguage: 'en-US' }),
-    },
-    {
-      label: t('spell.french'),
-      type: 'radio',
-      checked: settings.spellcheckLanguage === 'fr',
-      click: () => void applyGlobalSettings({ spellcheckLanguage: 'fr' }),
     },
   ];
 
@@ -194,8 +194,12 @@ export async function buildMenu(): Promise<void> {
         { label: t('menu.edit.lockProduction'), click: () => send('revision.lock') },
         { label: t('menu.edit.issueRevision'), click: () => send('revision.issue') },
         { label: t('menu.edit.unlockProduction'), click: () => send('revision.unlock') },
-        { type: 'separator' },
-        { label: t('spell.language'), submenu: spellcheckItems },
+        ...(isMac
+          ? []
+          : ([
+              { type: 'separator' },
+              { label: t('spell.language'), submenu: spellcheckItems },
+            ] satisfies MenuItemConstructorOptions[])),
       ],
     },
     {

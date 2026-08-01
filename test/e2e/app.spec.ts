@@ -443,12 +443,14 @@ test('the command palette runs focus mode and typewriter settings', async () => 
 });
 
 test('the spell-check language is independent from the interface language', async () => {
-  const french = await page.evaluate(() =>
-    window.quantum.invoke('settings:patch', { spellcheckLanguage: 'fr' }),
+  const system = await page.evaluate(() =>
+    window.quantum.invoke('settings:patch', { spellcheckLanguage: 'system' }),
   );
-  expect(french).toMatchObject({ language: 'en', spellcheckLanguage: 'fr' });
-  // html lang follows the spell checker, not the UI locale.
-  await expect.poll(() => page.evaluate(() => document.documentElement.lang)).toBe('fr');
+  expect(system).toMatchObject({ language: 'en', spellcheckLanguage: 'system' });
+  // html lang follows the OS language when spellcheck is "system".
+  await expect
+    .poll(() => page.evaluate(() => document.documentElement.lang))
+    .toBe(await page.evaluate(() => navigator.language));
 
   await page.evaluate(() =>
     window.quantum.invoke('settings:patch', { spellcheckLanguage: 'en-US' }),
@@ -694,7 +696,9 @@ test('switching to French retranslates the interface and the native menu', async
   expect(await menuLabels()).toContain('File');
   await expect(page.locator('.statusbar')).toContainText('scene');
 
-  await page.evaluate(() => window.quantum.invoke('settings:patch', { language: 'fr' }));
+  await page.evaluate(() =>
+    window.quantum.invoke('settings:patch', { language: 'fr', spellcheckLanguage: 'en-US' }),
+  );
 
   // Renderer: the status bar is rebuilt from the French catalogue.
   await expect(page.locator('.statusbar')).toContainText('scène');

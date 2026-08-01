@@ -126,8 +126,11 @@ export interface AppSettings {
   typewriterMode: boolean;
   /** Hide Fountain control markers while preserving the plain-text source. */
   formattedMode: boolean;
-  /** Electron supports one active spell-check language on macOS. */
-  spellcheckLanguage: 'en-US' | 'fr';
+  /**
+   * Spell-check dictionary preference (Windows/Linux only).
+   * On macOS the OS checker always uses the machine / input-source language.
+   */
+  spellcheckLanguage: 'system' | 'en-US';
   /** Interface language. English is the fallback for every unknown locale. */
   language: Locale;
 }
@@ -146,7 +149,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   focusMode: false,
   typewriterMode: false,
   formattedMode: false,
-  spellcheckLanguage: 'en-US',
+  spellcheckLanguage: 'system',
   language: 'en',
 };
 

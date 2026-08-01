@@ -85,7 +85,7 @@ async function load(): Promise<StoreShape> {
     // translate still falls back to English.
     cache = defaults();
     cache.settings.language = resolveLocale(app.getLocale());
-    cache.settings.spellcheckLanguage = cache.settings.language === 'fr' ? 'fr' : 'en-US';
+    cache.settings.spellcheckLanguage = 'system';
   }
 
   return cache;

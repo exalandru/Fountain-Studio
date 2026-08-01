@@ -86,8 +86,8 @@ export const fr: Catalog = {
 
   // ── Correcteur orthographique ────────────────────────────────────────────
   'spell.language': 'Langue du correcteur',
+  'spell.system': 'Langue système',
   'spell.english': 'Anglais',
-  'spell.french': 'Français',
   'spell.noSuggestions': 'Aucune suggestion',
   'spell.addGlobal': 'Ajouter « {word} » au dictionnaire global',
 

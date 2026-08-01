@@ -71,8 +71,11 @@ export function sanitizeSettings(raw: unknown): AppSettings {
   if (typeof settings['formattedMode'] === 'boolean') {
     target.formattedMode = settings['formattedMode'];
   }
-  if (settings['spellcheckLanguage'] === 'en-US' || settings['spellcheckLanguage'] === 'fr') {
+  if (settings['spellcheckLanguage'] === 'en-US' || settings['spellcheckLanguage'] === 'system') {
     target.spellcheckLanguage = settings['spellcheckLanguage'];
+  } else if (settings['spellcheckLanguage'] === 'fr') {
+    // Legacy FR/EN choice → follow the OS language instead.
+    target.spellcheckLanguage = 'system';
   }
 
   return target;

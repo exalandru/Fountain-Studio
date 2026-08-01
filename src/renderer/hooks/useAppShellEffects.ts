@@ -44,9 +44,11 @@ export function useAppShellEffects({
     document.body.dataset['theme'] = effectiveDark ? 'dark' : 'light';
   }, [effectiveDark]);
 
-  // html lang follows spellcheckLanguage, not the UI locale — those two settings diverge.
+  // html lang follows the spell-check preference when forced to English;
+  // "system" follows the OS / browser language instead of the UI locale.
   useEffect(() => {
-    document.documentElement.lang = spellcheckLanguage;
+    document.documentElement.lang =
+      spellcheckLanguage === 'en-US' ? 'en-US' : navigator.language;
   }, [spellcheckLanguage]);
 
   const patchSettings = useCallback(async (patch: Partial<AppSettings>) => {

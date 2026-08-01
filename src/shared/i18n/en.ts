@@ -88,8 +88,8 @@ export const en = {
 
   // ── Spell checker ────────────────────────────────────────────────────────
   'spell.language': 'Spell-check Language',
+  'spell.system': 'System Language',
   'spell.english': 'English',
-  'spell.french': 'French',
   'spell.noSuggestions': 'No suggestions',
   'spell.addGlobal': 'Add “{word}” to Global Dictionary',
 
