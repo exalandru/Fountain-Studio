@@ -442,8 +442,8 @@ export const fr: Catalog = {
     other: '{count} tournures répétées sur {words} mots',
   },
   'repetition.meta': {
-    one: '{words} mots · {span} scène d’écart',
-    other: '{words} mots · {span} scènes d’écart',
+    one: '{words} mots · {count} scène d’écart',
+    other: '{words} mots · {count} scènes d’écart',
   },
   'repetition.occurrences': {
     one: 'Voir le {count} endroit où elle apparaît',

@@ -3,6 +3,9 @@ import type { ParseResponse } from '@shared/analysis/index.js';
 import type { TimelineState } from '@shared/appdata/index.js';
 import { sceneColor } from '../scene-color.js';
 import { useTranslator } from '../hooks/useTranslator.js';
+import { CloseButton } from '../ui/CloseButton.js';
+import { Field } from '../ui/Field.js';
+import { Select } from '../ui/Select.js';
 
 interface TimelineProps {
   analysis: ParseResponse | null;
@@ -33,9 +36,9 @@ export const Timeline = memo(function Timeline({
     <section className="timeline" aria-label={t('timeline.title')}>
       <header className="timeline-toolbar">
         <strong>{t('timeline.title')}</strong>
-        <label>
-          <span>{t('timeline.colors')}</span>
-          <select
+        <Field label={t('timeline.colors')}>
+          <Select
+            scale="compact"
             value={state.colorMode}
             onChange={(event) =>
               onStateChange({
@@ -45,8 +48,8 @@ export const Timeline = memo(function Timeline({
           >
             <option value="intExt">{t('timeline.intExt')}</option>
             <option value="timeOfDay">{t('timeline.dayNight')}</option>
-          </select>
-        </label>
+          </Select>
+        </Field>
         <label className="timeline-check">
           <input
             type="checkbox"
@@ -66,14 +69,7 @@ export const Timeline = memo(function Timeline({
             onChange={(event) => onStateChange({ zoom: Number(event.target.value) })}
           />
         </label>
-        <button
-          type="button"
-          className="panel-close"
-          aria-label={t('timeline.close')}
-          onClick={onClose}
-        >
-          ×
-        </button>
+        <CloseButton label={t('timeline.close')} onClick={onClose} />
       </header>
       <div
         className="timeline-track"

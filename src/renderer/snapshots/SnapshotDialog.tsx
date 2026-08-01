@@ -4,6 +4,10 @@ import { collapseToHunks, diffLines, diffScenes } from '@shared/diff/index.js';
 import { parse } from '@shared/fountain/index.js';
 import type { Translator } from '@shared/i18n/index.js';
 import type { SnapshotMeta } from '@shared/snapshots/index.js';
+import { Button } from '../ui/Button.js';
+import { Dialog } from '../ui/Dialog.js';
+import { Field } from '../ui/Field.js';
+import { TextInput } from '../ui/TextInput.js';
 
 interface SnapshotDialogProps {
   /** `null` when the screenplay has never been saved: there is no folder to write beside. */
@@ -172,194 +176,161 @@ export function SnapshotDialog({
     });
 
   return (
-    <div className="modal-backdrop" role="presentation">
-      <section
-        className="snapshot-dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-label={t('snapshots.title')}
-        onKeyDown={(event) => {
-          if (event.key === 'Escape') onClose();
-        }}
-      >
-        <header>
-          <h2>{t('snapshots.title')}</h2>
-          <button
-            type="button"
-            className="panel-close"
-            aria-label={t('snapshots.close')}
-            autoFocus
-            onClick={onClose}
-          >
-            ×
-          </button>
-        </header>
-
-        {path === null ? (
-          <div className="panel-placeholder">{t('snapshots.saveFirst')}</div>
-        ) : snapshots === null ? (
-          <div className="panel-placeholder">{t('snapshots.loading')}</div>
-        ) : (
-          <div className="snapshot-layout">
-            <div className="rail">
-              <ul className="rail-list" aria-label={t('snapshots.list')} ref={listRef}>
-                {snapshots.map((snapshot) => (
-                  <li key={snapshot.id}>
-                    <button
-                      type="button"
-                      className={`rail-row${snapshot.id === selectedId ? ' is-current' : ''}`}
-                      aria-current={snapshot.id === selectedId ? 'true' : undefined}
-                      onClick={() => select(snapshot.id)}
-                    >
-                      <span className="rail-identity">
-                        <span className="rail-name">{snapshot.name}</span>
-                        <span className="rail-detail">
-                          {formatDate(snapshot.createdAt)} ·{' '}
-                          {t('snapshots.meta', {
-                            lines: snapshot.lineCount,
-                            count: snapshot.sceneCount,
-                          })}
-                        </span>
-                      </span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-
-              {snapshots.length === 0 ? (
-                <p className="snapshot-empty">{t('snapshots.empty')}</p>
-              ) : null}
-
-              <label className="snapshot-take">
-                <span className="sr-only">{t('snapshots.nameLabel')}</span>
-                <input
-                  value={name}
-                  maxLength={120}
-                  placeholder={t('snapshots.namePlaceholder')}
-                  onChange={(event) => setName(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter' && !busy) void take();
-                  }}
-                />
-              </label>
-              <button
-                type="button"
-                className="rail-add"
-                disabled={busy}
-                onClick={() => void take()}
-              >
-                <span aria-hidden="true">+</span>
-                {t('snapshots.take')}
-              </button>
-            </div>
-
-            <div className="snapshot-pane">
-              {selected === null ? (
-                <p className="panel-placeholder">{t('snapshots.comparedWith')}</p>
-              ) : comparison === null ? (
-                <p className="panel-placeholder">{t('snapshots.loading')}</p>
-              ) : (
-                <>
-                  <div className="snapshot-summary">
-                    <div className="snapshot-rename">
-                      <label>
-                        <span className="sr-only">{t('snapshots.renameLabel')}</span>
-                        <input
-                          value={draftName}
-                          maxLength={120}
-                          onChange={(event) => setDraftName(event.target.value)}
-                          onKeyDown={(event) => {
-                            if (event.key === 'Enter' && !busy) void rename(selected.id);
-                          }}
-                        />
-                      </label>
-                      <button
-                        type="button"
-                        disabled={
-                          busy || draftName.trim() === selected.name || draftName.trim() === ''
-                        }
-                        onClick={() => void rename(selected.id)}
-                      >
-                        {t('snapshots.rename')}
-                      </button>
-                    </div>
-                    <span>{t('snapshots.comparedWith')}</span>
-                    {comparison.hunks.length === 0 ? (
-                      <p className="snapshot-identical">{t('snapshots.identical')}</p>
-                    ) : (
-                      <>
-                        <p className="snapshot-scene-summary">
-                          {sceneSummary(comparison.scenes).join(' · ') ||
-                            t('snapshots.lineStats', {
-                              added: comparison.lines.added,
-                              removed: comparison.lines.removed,
-                            })}
-                        </p>
-                        <p className="snapshot-line-summary">
-                          {t('snapshots.lineStats', {
-                            added: comparison.lines.added,
-                            removed: comparison.lines.removed,
-                          })}
-                        </p>
-                      </>
-                    )}
-                    {comparison.lines.coarse ? (
-                      <p className="ai-warning">{t('snapshots.coarse')}</p>
-                    ) : null}
-                    <button
-                      type="button"
-                      className="ai-danger"
-                      disabled={busy}
-                      onClick={() => void remove(selected.id)}
-                    >
-                      {t('snapshots.delete')}
-                    </button>
-                  </div>
-
-                  <div className="snapshot-diff">
-                    {comparison.hunks.map((hunk: DiffHunk, index) => (
-                      <div className="snapshot-hunk" key={`${index}-${hunk.skippedBefore}`}>
-                        {hunk.skippedBefore > 0 ? <div className="snapshot-gap" /> : null}
-                        {hunk.lines.map((line, lineIndex) => (
-                          <div
-                            className={`snapshot-line is-${line.kind}`}
-                            key={`${line.kind}-${line.beforeLine ?? 0}-${line.afterLine ?? 0}-${lineIndex}`}
-                          >
-                            <span className="snapshot-gutter">{line.beforeLine ?? ''}</span>
-                            <span className="snapshot-gutter">{line.afterLine ?? ''}</span>
-                            <span className="snapshot-mark" aria-hidden="true">
-                              {line.kind === 'added' ? '+' : line.kind === 'removed' ? '−' : ' '}
-                            </span>
-                            <span className="snapshot-text">{line.text || ' '}</span>
-                          </div>
-                        ))}
-                      </div>
-                    ))}
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
-        )}
-
-        {feedback ? <p className="ai-feedback">{feedback}</p> : null}
-
-        <footer>
-          <button
-            type="button"
-            className="ai-primary"
+    <Dialog
+      className="snapshot-dialog"
+      title={t('snapshots.title')}
+      closeLabel={t('snapshots.close')}
+      onClose={onClose}
+      footer={
+        <>
+          <Button
+            variant="primary"
             disabled={selected === null || selectedContent === null || busy}
             onClick={() => {
               if (selected && selectedContent !== null) onRestore(selectedContent, selected.name);
             }}
           >
             {t('snapshots.restore')}
-          </button>
-          <button type="button" onClick={onClose}>
-            {t('snapshots.done')}
-          </button>
-        </footer>
-      </section>
-    </div>
+          </Button>
+          <Button onClick={onClose}>{t('snapshots.done')}</Button>
+        </>
+      }
+    >
+      {path === null ? (
+        <div className="panel-placeholder">{t('snapshots.saveFirst')}</div>
+      ) : snapshots === null ? (
+        <div className="panel-placeholder">{t('snapshots.loading')}</div>
+      ) : (
+        <div className="snapshot-layout">
+          <div className="rail">
+            <ul className="rail-list" aria-label={t('snapshots.list')} ref={listRef}>
+              {snapshots.map((snapshot) => (
+                <li key={snapshot.id}>
+                  <button
+                    type="button"
+                    className={`rail-row${snapshot.id === selectedId ? ' is-current' : ''}`}
+                    aria-current={snapshot.id === selectedId ? 'true' : undefined}
+                    onClick={() => select(snapshot.id)}
+                  >
+                    <span className="rail-identity">
+                      <span className="rail-name">{snapshot.name}</span>
+                      <span className="rail-detail">
+                        {formatDate(snapshot.createdAt)} ·{' '}
+                        {t('snapshots.meta', {
+                          lines: snapshot.lineCount,
+                          count: snapshot.sceneCount,
+                        })}
+                      </span>
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+
+            {snapshots.length === 0 ? (
+              <p className="snapshot-empty">{t('snapshots.empty')}</p>
+            ) : null}
+
+            <Field className="snapshot-take" label={t('snapshots.nameLabel')} labelHidden>
+              <TextInput
+                value={name}
+                maxLength={120}
+                placeholder={t('snapshots.namePlaceholder')}
+                onChange={(event) => setName(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' && !busy) void take();
+                }}
+              />
+            </Field>
+            <Button className="rail-add" disabled={busy} onClick={() => void take()}>
+              <span aria-hidden="true">+</span>
+              {t('snapshots.take')}
+            </Button>
+          </div>
+
+          <div className="snapshot-pane">
+            {selected === null ? (
+              <p className="panel-placeholder">{t('snapshots.comparedWith')}</p>
+            ) : comparison === null ? (
+              <p className="panel-placeholder">{t('snapshots.loading')}</p>
+            ) : (
+              <>
+                <div className="snapshot-summary">
+                  <div className="snapshot-rename">
+                    <Field label={t('snapshots.renameLabel')} labelHidden>
+                      <TextInput
+                        value={draftName}
+                        maxLength={120}
+                        onChange={(event) => setDraftName(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter' && !busy) void rename(selected.id);
+                        }}
+                      />
+                    </Field>
+                    <Button
+                      disabled={
+                        busy || draftName.trim() === selected.name || draftName.trim() === ''
+                      }
+                      onClick={() => void rename(selected.id)}
+                    >
+                      {t('snapshots.rename')}
+                    </Button>
+                  </div>
+                  <span>{t('snapshots.comparedWith')}</span>
+                  {comparison.hunks.length === 0 ? (
+                    <p className="snapshot-identical">{t('snapshots.identical')}</p>
+                  ) : (
+                    <>
+                      <p className="snapshot-scene-summary">
+                        {sceneSummary(comparison.scenes).join(' · ') ||
+                          t('snapshots.lineStats', {
+                            added: comparison.lines.added,
+                            removed: comparison.lines.removed,
+                          })}
+                      </p>
+                      <p className="snapshot-line-summary">
+                        {t('snapshots.lineStats', {
+                          added: comparison.lines.added,
+                          removed: comparison.lines.removed,
+                        })}
+                      </p>
+                    </>
+                  )}
+                  {comparison.lines.coarse ? (
+                    <p className="ai-warning">{t('snapshots.coarse')}</p>
+                  ) : null}
+                  <Button variant="danger" disabled={busy} onClick={() => void remove(selected.id)}>
+                    {t('snapshots.delete')}
+                  </Button>
+                </div>
+
+                <div className="snapshot-diff">
+                  {comparison.hunks.map((hunk: DiffHunk, index) => (
+                    <div className="snapshot-hunk" key={`${index}-${hunk.skippedBefore}`}>
+                      {hunk.skippedBefore > 0 ? <div className="snapshot-gap" /> : null}
+                      {hunk.lines.map((line, lineIndex) => (
+                        <div
+                          className={`snapshot-line is-${line.kind}`}
+                          key={`${line.kind}-${line.beforeLine ?? 0}-${line.afterLine ?? 0}-${lineIndex}`}
+                        >
+                          <span className="snapshot-gutter">{line.beforeLine ?? ''}</span>
+                          <span className="snapshot-gutter">{line.afterLine ?? ''}</span>
+                          <span className="snapshot-mark" aria-hidden="true">
+                            {line.kind === 'added' ? '+' : line.kind === 'removed' ? '−' : ' '}
+                          </span>
+                          <span className="snapshot-text">{line.text || ' '}</span>
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {feedback ? <p className="ai-feedback">{feedback}</p> : null}
+    </Dialog>
   );
 }

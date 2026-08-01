@@ -8,6 +8,8 @@ import type { CharacterNameStyle } from '@shared/ai/index.js';
 import { useTranslator } from '../hooks/useTranslator.js';
 import type { AiRequestHandle } from './request.js';
 import { startCollectedAiRequest } from './request.js';
+import { CloseButton } from '../ui/CloseButton.js';
+import { Button } from '../ui/Button.js';
 
 export interface CharacterNameSelection {
   name: string;
@@ -99,14 +101,7 @@ export function CharacterNameDialog({ selection, onRename, onClose }: CharacterN
     >
       <header>
         <strong>{t('characterName.title')}</strong>
-        <button
-          type="button"
-          className="panel-close"
-          aria-label={t('characterName.close')}
-          onClick={onClose}
-        >
-          ×
-        </button>
+        <CloseButton label={t('characterName.close')} onClick={onClose} />
       </header>
       <div className="character-name-manual">
         <label>
@@ -121,14 +116,9 @@ export function CharacterNameDialog({ selection, onRename, onClose }: CharacterN
             }}
           />
         </label>
-        <button
-          type="button"
-          className="ai-primary"
-          disabled={!name.trim()}
-          onClick={() => apply(name)}
-        >
+        <Button variant="primary" disabled={!name.trim()} onClick={() => apply(name)}>
           {t('characterName.renameAll')}
-        </button>
+        </Button>
       </div>
       <div className="character-name-ai">
         <fieldset className="character-name-styles">
@@ -149,9 +139,9 @@ export function CharacterNameDialog({ selection, onRename, onClose }: CharacterN
             </label>
           ))}
         </fieldset>
-        <button type="button" disabled={busy} onClick={() => void suggest()}>
+        <Button disabled={busy} onClick={() => void suggest()}>
           {busy ? t('characterName.generating') : t('characterName.suggest')}
-        </button>
+        </Button>
         <small>{t('characterName.undoHint')}</small>
       </div>
       {error ? <p className="ai-warning">{error}</p> : null}

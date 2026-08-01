@@ -435,8 +435,8 @@ export const en = {
     other: '{count} repeated phrases in {words} words',
   },
   'repetition.meta': {
-    one: '{words} words · {span} scene apart',
-    other: '{words} words · {span} scenes apart',
+    one: '{words} words · {count} scene apart',
+    other: '{words} words · {count} scenes apart',
   },
   'repetition.occurrences': {
     one: 'Show the {count} place it appears',

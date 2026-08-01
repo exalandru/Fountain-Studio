@@ -5,8 +5,12 @@ import type { IndexedOccurrence, ParseResponse } from '@shared/analysis/index.js
 import type { SectionNode } from '@shared/fountain/index.js';
 import type { SidebarState, SidebarTab } from '@shared/appdata/index.js';
 import { useTranslator } from '../hooks/useTranslator.js';
+import { CloseButton } from '../ui/CloseButton.js';
+import { TabList } from '../ui/TabList.js';
 
-export interface SidebarProps {
+export const SIDEBAR_TABS = ['structure', 'locations', 'characters'] as const;
+
+interface SidebarProps {
   analysis: ParseResponse | null;
   state: SidebarState;
   activeSceneId: string | null;
@@ -159,55 +163,19 @@ export const Sidebar = memo(function Sidebar({
     <aside className="sidebar" aria-label={t('sidebar.title')}>
       <header className="panel-header">
         <span>{t('sidebar.title')}</span>
-        <button
-          type="button"
-          className="panel-close"
-          aria-label={t('sidebar.close')}
-          onClick={onClose}
-        >
-          ×
-        </button>
+        <CloseButton label={t('sidebar.close')} onClick={onClose} />
       </header>
 
-      <div className="sidebar-tabs" role="tablist">
-        {(['structure', 'locations', 'characters'] as const).map((tab, index, tabs) => (
-          <button
-            type="button"
-            role="tab"
-            id={`sidebar-tab-${tab}`}
-            aria-controls={`sidebar-panel-${tab}`}
-            aria-selected={state.activeTab === tab}
-            tabIndex={state.activeTab === tab ? 0 : -1}
-            className={`sidebar-tab${state.activeTab === tab ? ' active' : ''}`}
-            key={tab}
-            onClick={() => onTabChange(tab)}
-            onKeyDown={(event) => {
-              const nextIndex =
-                event.key === 'ArrowRight'
-                  ? (index + 1) % tabs.length
-                  : event.key === 'ArrowLeft'
-                    ? (index - 1 + tabs.length) % tabs.length
-                    : event.key === 'Home'
-                      ? 0
-                      : event.key === 'End'
-                        ? tabs.length - 1
-                        : -1;
-              const next = tabs[nextIndex];
-              if (nextIndex >= 0 && next) {
-                event.preventDefault();
-                onTabChange(next);
-                const tabButtons =
-                  event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>(
-                    '[role="tab"]',
-                  );
-                tabButtons?.[nextIndex]?.focus();
-              }
-            }}
-          >
-            {t(`sidebar.${tab}`)}
-          </button>
-        ))}
-      </div>
+      <TabList
+        tabs={SIDEBAR_TABS}
+        active={state.activeTab}
+        label={(tab) => t(`sidebar.${tab}`)}
+        idPrefix="sidebar-tab"
+        panelId="sidebar-panel"
+        className="sidebar-tabs"
+        tabClassName="sidebar-tab"
+        onChange={onTabChange}
+      />
 
       <div className="sidebar-options">
         <input
@@ -232,7 +200,7 @@ export const Sidebar = memo(function Sidebar({
       <div
         className="sidebar-content"
         role="tabpanel"
-        id={`sidebar-panel-${state.activeTab}`}
+        id="sidebar-panel"
         aria-labelledby={`sidebar-tab-${state.activeTab}`}
       >
         {!analysis ? <div className="panel-placeholder">{t('sidebar.loading')}</div> : null}

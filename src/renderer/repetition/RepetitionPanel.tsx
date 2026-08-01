@@ -13,6 +13,10 @@ import type { RepeatedPhrase, RepetitionScope } from '@shared/repetition/index.j
 import { buildSceneDigest, findRepeatedPhrases } from '@shared/repetition/index.js';
 import type { AiRequestHandle } from '../ai/request.js';
 import { startCollectedAiRequest } from '../ai/request.js';
+import { Button } from '../ui/Button.js';
+import { Dialog } from '../ui/Dialog.js';
+import { Field } from '../ui/Field.js';
+import { Select } from '../ui/Select.js';
 
 interface RepetitionPanelProps {
   analysis: ParseResponse | null;
@@ -154,169 +158,147 @@ export function RepetitionPanel({
       : t('repetition.spread', { count: phrase.total });
 
   return (
-    <div className="modal-backdrop" role="presentation">
-      <section
-        className="consistency-dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-label={t('repetition.title')}
-        onKeyDown={(event) => {
-          if (event.key === 'Escape') onClose();
-        }}
-      >
-        <header>
-          <div>
-            <h2>{t('repetition.title')}</h2>
-            <p>{t('repetition.subtitle')}</p>
-          </div>
-          <button
-            type="button"
-            className="panel-close"
-            aria-label={t('repetition.close')}
-            onClick={onClose}
-          >
-            ×
-          </button>
-        </header>
+    <Dialog
+      className="consistency-dialog"
+      title={t('repetition.title')}
+      subtitle={t('repetition.subtitle')}
+      closeLabel={t('repetition.close')}
+      onClose={onClose}
+    >
+      <div className="consistency-pane">
+        <div className="repetition-controls">
+          <Field label={t('repetition.scope')} labelHidden>
+            <Select value={filter} onChange={(event) => setFilter(event.target.value as Filter)}>
+              {FILTERS.map((candidate) => (
+                <option key={candidate} value={candidate}>
+                  {t(`repetition.scope.${candidate}`)}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <p className="repetition-count">
+            {t('repetition.found', { count: phrases.length, words: report.wordCount })}
+            {report.truncated ? ` · ${t('repetition.truncated')}` : ''}
+          </p>
+        </div>
 
-        <div className="consistency-pane">
-          <div className="repetition-controls">
-            <label>
-              <span className="sr-only">{t('repetition.scope')}</span>
-              <select value={filter} onChange={(event) => setFilter(event.target.value as Filter)}>
-                {FILTERS.map((candidate) => (
-                  <option key={candidate} value={candidate}>
-                    {t(`repetition.scope.${candidate}`)}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <p className="repetition-count">
-              {t('repetition.found', { count: phrases.length, words: report.wordCount })}
-              {report.truncated ? ` · ${t('repetition.truncated')}` : ''}
+        <div className="consistency-results">
+          {phrases.length === 0 ? (
+            <div className="panel-placeholder">{t('repetition.none')}</div>
+          ) : (
+            phrases.map((phrase) => (
+              <article className="repetition-item" key={`${phrase.scope}-${phrase.phrase}`}>
+                <div className="repetition-heading">
+                  <strong>{phrase.phrase}</strong>
+                  <span className={`repetition-badge is-${phrase.attribution}`}>
+                    {describe(phrase)}
+                  </span>
+                </div>
+                <p className="repetition-meta">
+                  {t('repetition.meta', { words: phrase.length, count: phrase.span })}
+                </p>
+                <button
+                  type="button"
+                  className="repetition-toggle"
+                  aria-expanded={expanded === phrase.phrase}
+                  onClick={() => setExpanded(expanded === phrase.phrase ? null : phrase.phrase)}
+                >
+                  {t('repetition.occurrences', { count: phrase.occurrences.length })}
+                </button>
+                {expanded === phrase.phrase ? (
+                  <ul className="repetition-occurrences">
+                    {phrase.occurrences.map((occurrence) => (
+                      <li key={occurrence.range.from}>
+                        <button type="button" onClick={() => onSelectRange(occurrence.range)}>
+                          <span>
+                            {occurrence.sceneNumber} · {occurrence.heading}
+                            {occurrence.speaker ? ` · ${occurrence.speaker}` : ''}
+                          </span>
+                          <small>{occurrence.text}</small>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+              </article>
+            ))
+          )}
+        </div>
+
+        <div className="repetition-structural">
+          <h3>{t('repetition.structuralTitle')}</h3>
+          <p>{t('repetition.structuralHint')}</p>
+          {running ? (
+            <div className="consistency-running" role="status">
+              <div className="consistency-orbit" aria-hidden="true">
+                <span />
+                <span />
+                <span />
+              </div>
+              <div>
+                <strong>{phase || t('ai.request.reasoning')}</strong>
+                <small>
+                  {t('consistency.elapsed', {
+                    minutes: Math.floor(elapsedSeconds / 60),
+                    seconds: String(elapsedSeconds % 60).padStart(2, '0'),
+                  })}
+                </small>
+              </div>
+              <Button onClick={() => void stop()}>{t('ai.request.stop')}</Button>
+            </div>
+          ) : (
+            <Button
+              variant="primary"
+              disabled={scenes.length === 0}
+              onClick={() => void analyseStructure()}
+            >
+              {t('repetition.analyseStructure')}
+            </Button>
+          )}
+          {error ? <p className="ai-warning">{error}</p> : null}
+
+          {state.items.length === 0 ? (
+            <p className="repetition-structural-empty">
+              {state.analyzedAt ? t('repetition.structuralEmpty') : t('repetition.notAnalysed')}
             </p>
-          </div>
-
-          <div className="consistency-results">
-            {phrases.length === 0 ? (
-              <div className="panel-placeholder">{t('repetition.none')}</div>
-            ) : (
-              phrases.map((phrase) => (
-                <article className="repetition-item" key={`${phrase.scope}-${phrase.phrase}`}>
-                  <div className="repetition-heading">
-                    <strong>{phrase.phrase}</strong>
-                    <span className={`repetition-badge is-${phrase.attribution}`}>
-                      {describe(phrase)}
-                    </span>
-                  </div>
-                  <p className="repetition-meta">
-                    {t('repetition.meta', { words: phrase.length, span: phrase.span })}
-                  </p>
+          ) : (
+            state.items.map((item: AiInconsistency) => (
+              <article key={item.id} className={`consistency-item severity-${item.severity}`}>
+                <div className="consistency-item-heading">
+                  <strong>{t('consistency.type.repetition')}</strong>
+                  <span>{t(`consistency.severity.${item.severity}`)}</span>
+                </div>
+                <p>{item.description}</p>
+                {item.references.map((reference, index) => (
                   <button
                     type="button"
-                    className="repetition-toggle"
-                    aria-expanded={expanded === phrase.phrase}
-                    onClick={() => setExpanded(expanded === phrase.phrase ? null : phrase.phrase)}
+                    className="consistency-reference"
+                    key={`${reference.sceneNumber}-${index}`}
+                    onClick={() => onSelectReference(reference)}
                   >
-                    {t('repetition.occurrences', { count: phrase.occurrences.length })}
+                    {reference.sceneNumber} · {reference.heading}
+                    <small>{reference.quote}</small>
                   </button>
-                  {expanded === phrase.phrase ? (
-                    <ul className="repetition-occurrences">
-                      {phrase.occurrences.map((occurrence) => (
-                        <li key={occurrence.range.from}>
-                          <button type="button" onClick={() => onSelectRange(occurrence.range)}>
-                            <span>
-                              {occurrence.sceneNumber} · {occurrence.heading}
-                              {occurrence.speaker ? ` · ${occurrence.speaker}` : ''}
-                            </span>
-                            <small>{occurrence.text}</small>
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  ) : null}
-                </article>
-              ))
-            )}
-          </div>
-
-          <div className="repetition-structural">
-            <h3>{t('repetition.structuralTitle')}</h3>
-            <p>{t('repetition.structuralHint')}</p>
-            {running ? (
-              <div className="consistency-running" role="status">
-                <div className="consistency-orbit" aria-hidden="true">
-                  <span />
-                  <span />
-                  <span />
-                </div>
-                <div>
-                  <strong>{phase || t('ai.request.reasoning')}</strong>
-                  <small>
-                    {t('consistency.elapsed', {
-                      minutes: Math.floor(elapsedSeconds / 60),
-                      seconds: String(elapsedSeconds % 60).padStart(2, '0'),
-                    })}
-                  </small>
-                </div>
-                <button type="button" onClick={() => void stop()}>
-                  {t('ai.request.stop')}
-                </button>
-              </div>
-            ) : (
-              <button
-                type="button"
-                className="ai-primary"
-                disabled={scenes.length === 0}
-                onClick={() => void analyseStructure()}
-              >
-                {t('repetition.analyseStructure')}
-              </button>
-            )}
-            {error ? <p className="ai-warning">{error}</p> : null}
-
-            {state.items.length === 0 ? (
-              <p className="repetition-structural-empty">
-                {state.analyzedAt ? t('repetition.structuralEmpty') : t('repetition.notAnalysed')}
-              </p>
-            ) : (
-              state.items.map((item: AiInconsistency) => (
-                <article key={item.id} className={`consistency-item severity-${item.severity}`}>
-                  <div className="consistency-item-heading">
-                    <strong>{t('consistency.type.repetition')}</strong>
-                    <span>{t(`consistency.severity.${item.severity}`)}</span>
-                  </div>
-                  <p>{item.description}</p>
-                  {item.references.map((reference, index) => (
-                    <button
-                      type="button"
-                      className="consistency-reference"
-                      key={`${reference.sceneNumber}-${index}`}
-                      onClick={() => onSelectReference(reference)}
-                    >
-                      {reference.sceneNumber} · {reference.heading}
-                      <small>{reference.quote}</small>
-                    </button>
-                  ))}
-                  {item.suggestion ? (
-                    <p className="consistency-suggestion">{item.suggestion}</p>
-                  ) : null}
-                  <select
-                    value={item.status}
-                    onChange={(event) =>
-                      setStatus(item.id, event.target.value as InconsistencyStatus)
-                    }
-                  >
-                    <option value="open">{t('consistency.status.open')}</option>
-                    <option value="ignored">{t('consistency.status.ignored')}</option>
-                    <option value="resolved">{t('consistency.status.resolved')}</option>
-                  </select>
-                </article>
-              ))
-            )}
-          </div>
+                ))}
+                {item.suggestion ? (
+                  <p className="consistency-suggestion">{item.suggestion}</p>
+                ) : null}
+                <Select
+                  scale="compact"
+                  value={item.status}
+                  onChange={(event) =>
+                    setStatus(item.id, event.target.value as InconsistencyStatus)
+                  }
+                >
+                  <option value="open">{t('consistency.status.open')}</option>
+                  <option value="ignored">{t('consistency.status.ignored')}</option>
+                  <option value="resolved">{t('consistency.status.resolved')}</option>
+                </Select>
+              </article>
+            ))
+          )}
         </div>
-      </section>
-    </div>
+      </div>
+    </Dialog>
   );
 }

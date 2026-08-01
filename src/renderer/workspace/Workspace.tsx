@@ -12,6 +12,8 @@ import { StatsPanel } from '../stats/index.js';
 import { Timeline } from '../timeline/index.js';
 import { ResizeHandle } from '../ui/ResizeHandle.js';
 import { TopToolbar } from './TopToolbar.js';
+import { CloseButton } from '../ui/CloseButton.js';
+import { TabList } from '../ui/TabList.js';
 
 const EMPTY_COMPLETIONS = { characters: [], locations: [], times: [] };
 
@@ -19,6 +21,8 @@ interface ScrollPosition {
   documentId: string | null;
   offset: number;
 }
+
+const RIGHT_PANEL_TABS = ['statistics', 'preview', 'syntax'] as const;
 
 interface WorkspaceProps {
   active: OpenDocument | null;
@@ -361,57 +365,17 @@ export function Workspace({
                   >
                     <aside className="right-sidebar" aria-label={t('rightPanel.title')}>
                       <header className="right-panel-header">
-                        <div className="right-panel-tabs" role="tablist">
-                          {(['statistics', 'preview', 'syntax'] as const).map(
-                            (tab, index, tabs) => (
-                              <button
-                                type="button"
-                                role="tab"
-                                id={`right-panel-tab-${tab}`}
-                                aria-controls="right-panel-content"
-                                aria-selected={active.appData.preview.activeTab === tab}
-                                tabIndex={active.appData.preview.activeTab === tab ? 0 : -1}
-                                className={`right-panel-tab${
-                                  active.appData.preview.activeTab === tab ? ' active' : ''
-                                }`}
-                                key={tab}
-                                onClick={() => onRightPanelTab(tab)}
-                                onKeyDown={(event) => {
-                                  const nextIndex =
-                                    event.key === 'ArrowRight'
-                                      ? (index + 1) % tabs.length
-                                      : event.key === 'ArrowLeft'
-                                        ? (index - 1 + tabs.length) % tabs.length
-                                        : event.key === 'Home'
-                                          ? 0
-                                          : event.key === 'End'
-                                            ? tabs.length - 1
-                                            : -1;
-                                  const next = tabs[nextIndex];
-                                  if (nextIndex >= 0 && next) {
-                                    event.preventDefault();
-                                    onRightPanelTab(next);
-                                    const buttons =
-                                      event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>(
-                                        '[role="tab"]',
-                                      );
-                                    buttons?.[nextIndex]?.focus();
-                                  }
-                                }}
-                              >
-                                {t(`rightPanel.${tab}`)}
-                              </button>
-                            ),
-                          )}
-                        </div>
-                        <button
-                          type="button"
-                          className="panel-close"
-                          aria-label={t('preview.close')}
-                          onClick={onClosePreview}
-                        >
-                          ×
-                        </button>
+                        <TabList
+                          tabs={RIGHT_PANEL_TABS}
+                          active={active.appData.preview.activeTab}
+                          label={(tab) => t(`rightPanel.${tab}`)}
+                          idPrefix="right-panel-tab"
+                          panelId="right-panel-content"
+                          className="right-panel-tabs"
+                          tabClassName="right-panel-tab"
+                          onChange={onRightPanelTab}
+                        />
+                        <CloseButton label={t('preview.close')} onClick={onClosePreview} />
                       </header>
                       <div
                         className="right-panel-content"

@@ -5,6 +5,9 @@ import type { BibleReconciliation } from '@shared/bible/index.js';
 import { suggestLocationGroups } from '@shared/bible/grouping.js';
 import { foldDiacritics } from '@shared/text/index.js';
 import type { Translator } from '@shared/i18n/index.js';
+import { Button } from '../ui/Button.js';
+import { Field } from '../ui/Field.js';
+import { Select } from '../ui/Select.js';
 
 interface GroupingViewProps {
   entries: readonly BibleEntry[];
@@ -118,14 +121,14 @@ export function GroupingView({
               <article className="bible-group" key={group.parent}>
                 <header>
                   <strong>{group.parent}</strong>
-                  <button
-                    type="button"
-                    className="ai-primary"
+                  <Button
+                    variant="primary"
+                    scale="compact"
                     disabled={busy || kept.length === 0}
                     onClick={() => onGroup(group.parent, kept)}
                   >
                     {t('bible.grouping.group')}
-                  </button>
+                  </Button>
                 </header>
                 <ul>
                   {group.children.map((child) => {
@@ -169,9 +172,8 @@ export function GroupingView({
                   {group.names.map((name) => (
                     <li key={name}>
                       <span className="bible-unattached-name">{name}</span>
-                      <label>
-                        <span className="sr-only">{t('bible.grouping.attachLabel', { name })}</span>
-                        <select
+                      <Field label={t('bible.grouping.attachLabel', { name })} labelHidden>
+                        <Select
                           value=""
                           disabled={busy}
                           onChange={(event) => {
@@ -188,8 +190,8 @@ export function GroupingView({
                               {sheet.name}
                             </option>
                           ))}
-                        </select>
-                      </label>
+                        </Select>
+                      </Field>
                     </li>
                   ))}
                 </ul>

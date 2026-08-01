@@ -6,6 +6,12 @@ import type { AiProviderKind } from '@shared/ai/providers/index.js';
 import { PROVIDER_KINDS, PROVIDER_PRESETS } from '@shared/ai/providers/index.js';
 import type { MessageKey } from '@shared/i18n/types.js';
 import { useTranslator } from '../hooks/useTranslator.js';
+import { Button } from '../ui/Button.js';
+import { Checkbox } from '../ui/Checkbox.js';
+import { Dialog } from '../ui/Dialog.js';
+import { Field } from '../ui/Field.js';
+import { Select } from '../ui/Select.js';
+import { TextInput } from '../ui/TextInput.js';
 
 interface AiSettingsDialogProps {
   onClose: () => void;
@@ -269,255 +275,236 @@ export function AiSettingsDialog({ onClose, onSaved }: AiSettingsDialogProps) {
   };
 
   return (
-    <div className="modal-backdrop" role="presentation">
-      <section
-        className="ai-settings-dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-label={t('ai.settings.title')}
-        onKeyDown={(event) => {
-          if (event.key === 'Escape') onClose();
-        }}
-      >
-        <header>
-          <h2>{t('ai.settings.title')}</h2>
-          <button
-            type="button"
-            className="panel-close"
-            aria-label={t('ai.settings.close')}
-            autoFocus
-            onClick={onClose}
+    <Dialog
+      className="ai-settings-dialog"
+      title={t('ai.settings.title')}
+      closeLabel={t('ai.settings.close')}
+      onClose={onClose}
+      footer={
+        <>
+          <Button
+            className="ai-footer-probe"
+            disabled={!config || busy !== null}
+            onClick={() => void runTest()}
           >
-            ×
-          </button>
-        </header>
+            {t('ai.settings.test')}
+          </Button>
+          <Button onClick={onClose}>{t('ai.settings.cancel')}</Button>
+          <Button variant="primary" disabled={!config || busy !== null} onClick={() => void save()}>
+            {t('ai.settings.save')}
+          </Button>
+        </>
+      }
+    >
+      {!config || !view || !activeProfile ? (
+        <div className="panel-placeholder">{t('ai.settings.loading')}</div>
+      ) : (
+        <div className="ai-settings-layout">
+          <div className="rail">
+            <ul className="rail-list" aria-label={t('ai.settings.profileList')} ref={railRef}>
+              {config.profiles.map((profile) => (
+                <li key={profile.id}>
+                  <button
+                    type="button"
+                    className={`rail-row${
+                      profile.id === config.activeProfileId ? ' is-current' : ''
+                    }`}
+                    aria-current={profile.id === config.activeProfileId ? 'true' : undefined}
+                    onClick={() => selectProfile(profile.id)}
+                  >
+                    <ProviderBadge provider={profile.provider} />
+                    <span className="rail-identity">
+                      <span className="rail-name">{profile.name}</span>
+                      <span className="rail-detail">{t(PROVIDER_LABEL[profile.provider])}</span>
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
 
-        {!config || !view || !activeProfile ? (
-          <div className="panel-placeholder">{t('ai.settings.loading')}</div>
-        ) : (
-          <div className="ai-settings-layout">
-            <div className="rail">
-              <ul className="rail-list" aria-label={t('ai.settings.profileList')} ref={railRef}>
-                {config.profiles.map((profile) => (
-                  <li key={profile.id}>
-                    <button
-                      type="button"
-                      className={`rail-row${
-                        profile.id === config.activeProfileId ? ' is-current' : ''
-                      }`}
-                      aria-current={profile.id === config.activeProfileId ? 'true' : undefined}
-                      onClick={() => selectProfile(profile.id)}
-                    >
-                      <ProviderBadge provider={profile.provider} />
-                      <span className="rail-identity">
-                        <span className="rail-name">{profile.name}</span>
-                        <span className="rail-detail">{t(PROVIDER_LABEL[profile.provider])}</span>
-                      </span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
+            <Button
+              className="rail-add"
+              disabled={config.profiles.length >= 10}
+              onClick={addProfile}
+            >
+              <span aria-hidden="true">+</span>
+              {t('ai.settings.addProfileLong')}
+            </Button>
 
-              <button
-                type="button"
-                className="rail-add"
-                disabled={config.profiles.length >= 10}
-                onClick={addProfile}
+            {!view.secureStorageAvailable ? (
+              <p className="ai-warning">{t('ai.settings.sessionKeyWarning')}</p>
+            ) : null}
+          </div>
+
+          <div className="ai-settings-pane">
+            <div className="ai-pane-header">
+              <Field className="ai-name-field" label={t('ai.settings.profileName')} labelHidden>
+                <input
+                  value={activeProfile.name}
+                  maxLength={80}
+                  onChange={(event) => patchProfile('name', event.target.value)}
+                />
+              </Field>
+              <Button
+                variant="danger"
+                disabled={config.profiles.length <= 1}
+                onClick={removeProfile}
               >
-                <span aria-hidden="true">+</span>
-                {t('ai.settings.addProfileLong')}
-              </button>
-
-              {!view.secureStorageAvailable ? (
-                <p className="ai-warning">{t('ai.settings.sessionKeyWarning')}</p>
-              ) : null}
+                {t('ai.settings.deleteProfile')}
+              </Button>
             </div>
 
-            <div className="ai-settings-pane">
-              <div className="ai-pane-header">
-                <label className="ai-name-field">
-                  <span className="sr-only">{t('ai.settings.profileName')}</span>
-                  <input
-                    value={activeProfile.name}
-                    maxLength={80}
-                    onChange={(event) => patchProfile('name', event.target.value)}
-                  />
-                </label>
-                <button
-                  type="button"
-                  className="ai-danger"
-                  disabled={config.profiles.length <= 1}
-                  onClick={removeProfile}
-                >
-                  {t('ai.settings.deleteProfile')}
-                </button>
-              </div>
-
-              <section className="ai-settings-section">
-                <h3>{t('ai.settings.sectionConnection')}</h3>
-                <div className="ai-field-grid">
-                  <label>
-                    <span>{t('ai.settings.provider')}</span>
-                    <select
-                      value={activeProfile.provider}
-                      onChange={(event) => changeProvider(event.target.value as AiProviderKind)}
-                    >
-                      {PROVIDER_KINDS.map((kind) => (
-                        <option key={kind} value={kind}>
-                          {t(PROVIDER_LABEL[kind])}
-                        </option>
-                      ))}
-                    </select>
-                    {activeProfile.provider === 'openai' ? (
+            <section className="ai-settings-section">
+              <h3>{t('ai.settings.sectionConnection')}</h3>
+              <div className="ai-field-grid">
+                <Field
+                  label={t('ai.settings.provider')}
+                  hint={
+                    activeProfile.provider === 'openai' ? (
                       <small className="ai-field-note">
                         {t('ai.settings.providerCompatibleHint')}
                       </small>
-                    ) : null}
-                  </label>
-                  <label className="ai-field-wide">
-                    <span>{t('ai.settings.baseUrl')}</span>
-                    <input
-                      type="url"
-                      value={activeProfile.baseUrl}
-                      maxLength={2_000}
-                      onChange={(event) => patchProfile('baseUrl', event.target.value)}
-                    />
-                  </label>
-                  <div className="ai-field-wide ai-key-row">
-                    <label>
-                      <span>
+                    ) : null
+                  }
+                >
+                  <Select
+                    value={activeProfile.provider}
+                    onChange={(event) => changeProvider(event.target.value as AiProviderKind)}
+                  >
+                    {PROVIDER_KINDS.map((kind) => (
+                      <option key={kind} value={kind}>
+                        {t(PROVIDER_LABEL[kind])}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+                <Field className="ai-field-wide" label={t('ai.settings.baseUrl')}>
+                  <TextInput
+                    type="url"
+                    value={activeProfile.baseUrl}
+                    maxLength={2_000}
+                    onChange={(event) => patchProfile('baseUrl', event.target.value)}
+                  />
+                </Field>
+                <div className="ai-field-wide ai-key-row">
+                  <Field
+                    label={
+                      <>
                         {PROVIDER_PRESETS[activeProfile.provider].apiKeyRequired
                           ? t('ai.settings.apiKey')
                           : t('ai.settings.apiKeyOptional')}
                         {activeView?.hasApiKey && !removedKeys.has(activeProfile.id)
                           ? ` — ${t('ai.settings.keyConfigured')}`
                           : ''}
-                      </span>
-                      <input
-                        type="password"
-                        autoComplete="off"
-                        placeholder={activeView?.hasApiKey ? '••••••••••••' : ''}
-                        value={keys[activeProfile.id] ?? ''}
-                        onChange={(event) => {
-                          const key = event.target.value;
-                          setKeys((current) => ({ ...current, [activeProfile.id]: key }));
-                          if (key) {
-                            setRemovedKeys((current) => {
-                              const next = new Set(current);
-                              next.delete(activeProfile.id);
-                              return next;
-                            });
-                          }
-                        }}
-                      />
-                    </label>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setKeys((current) => ({ ...current, [activeProfile.id]: '' }));
-                        setRemovedKeys((current) => new Set(current).add(activeProfile.id));
+                      </>
+                    }
+                  >
+                    <TextInput
+                      type="password"
+                      autoComplete="off"
+                      placeholder={activeView?.hasApiKey ? '••••••••••••' : ''}
+                      value={keys[activeProfile.id] ?? ''}
+                      onChange={(event) => {
+                        const key = event.target.value;
+                        setKeys((current) => ({ ...current, [activeProfile.id]: key }));
+                        if (key) {
+                          setRemovedKeys((current) => {
+                            const next = new Set(current);
+                            next.delete(activeProfile.id);
+                            return next;
+                          });
+                        }
                       }}
-                    >
-                      {t('ai.settings.removeKey')}
-                    </button>
-                  </div>
+                    />
+                  </Field>
+                  <Button
+                    onClick={() => {
+                      setKeys((current) => ({ ...current, [activeProfile.id]: '' }));
+                      setRemovedKeys((current) => new Set(current).add(activeProfile.id));
+                    }}
+                  >
+                    {t('ai.settings.removeKey')}
+                  </Button>
                 </div>
-              </section>
+              </div>
+            </section>
 
-              {/* The legend doubles as this section's heading: a separate "Model" title
+            {/* The legend doubles as this section's heading: a separate "Model" title
                   above a "Model" legend would say the same thing twice. */}
-              <fieldset className="ai-settings-section ai-model-field">
-                <legend>{t('ai.settings.model')}</legend>
-                {models.length > 0 ? (
-                  <div className="ai-model-picker">
-                    {models.map((model) => (
-                      <label key={model}>
-                        <input
-                          type="radio"
-                          name="ai-model"
-                          checked={activeProfile.model === model}
-                          onChange={() => patchProfile('model', model)}
-                        />
-                        <span>{model}</span>
-                      </label>
-                    ))}
-                  </div>
-                ) : (
-                  <output>{activeProfile.model || t('ai.settings.noModel')}</output>
-                )}
-                <button type="button" disabled={busy !== null} onClick={() => void runModels()}>
-                  {t('ai.settings.listModels')}
-                </button>
-              </fieldset>
-
-              <section className="ai-settings-section">
-                <h3>{t('ai.settings.sectionLimits')}</h3>
-                <div className="ai-field-grid">
-                  <label>
-                    <span>{t('ai.settings.timeout')}</span>
-                    <input
-                      type="number"
-                      min={1}
-                      max={600}
-                      value={Math.round(activeProfile.timeoutMs / 1_000)}
-                      onChange={(event) =>
-                        patchProfile('timeoutMs', Math.max(1, Number(event.target.value)) * 1_000)
-                      }
-                    />
-                  </label>
-                  <label>
-                    <span>{t('ai.settings.maxTokens')}</span>
-                    <input
-                      type="number"
-                      min={64}
-                      max={200_000}
-                      value={activeProfile.maxTokens}
-                      onChange={(event) => patchProfile('maxTokens', Number(event.target.value))}
-                    />
-                    {activeProfile.reasoningEnabled && activeProfile.maxTokens < 4_096 ? (
-                      <small className="ai-field-hint">{t('ai.settings.reasoningTokenHint')}</small>
-                    ) : null}
-                  </label>
+            <fieldset className="ai-settings-section ai-model-field">
+              <legend>{t('ai.settings.model')}</legend>
+              {models.length > 0 ? (
+                <div className="ai-model-picker">
+                  {models.map((model) => (
+                    <label key={model}>
+                      <input
+                        type="radio"
+                        name="ai-model"
+                        checked={activeProfile.model === model}
+                        onChange={() => patchProfile('model', model)}
+                      />
+                      <span>{model}</span>
+                    </label>
+                  ))}
                 </div>
-              </section>
+              ) : (
+                <output>{activeProfile.model || t('ai.settings.noModel')}</output>
+              )}
+              <Button disabled={busy !== null} onClick={() => void runModels()}>
+                {t('ai.settings.listModels')}
+              </Button>
+            </fieldset>
 
-              <details className="ai-advanced">
-                <summary>{t('ai.settings.advanced')}</summary>
-                <label className="ai-check ai-reasoning-toggle">
-                  <input
-                    type="checkbox"
-                    checked={!activeProfile.reasoningEnabled}
-                    onChange={(event) => patchProfile('reasoningEnabled', !event.target.checked)}
+            <section className="ai-settings-section">
+              <h3>{t('ai.settings.sectionLimits')}</h3>
+              <div className="ai-field-grid">
+                <Field label={t('ai.settings.timeout')}>
+                  <TextInput
+                    type="number"
+                    min={1}
+                    max={600}
+                    value={Math.round(activeProfile.timeoutMs / 1_000)}
+                    onChange={(event) =>
+                      patchProfile('timeoutMs', Math.max(1, Number(event.target.value)) * 1_000)
+                    }
                   />
-                  <span>{t('ai.settings.disableReasoning')}</span>
-                </label>
-                {activeProfile.provider === 'google' && activeProfile.reasoningEnabled ? (
-                  <small className="ai-field-note">{t('ai.settings.googleReasoningHint')}</small>
-                ) : null}
-              </details>
+                </Field>
+                <Field
+                  label={t('ai.settings.maxTokens')}
+                  hint={
+                    activeProfile.reasoningEnabled && activeProfile.maxTokens < 4_096 ? (
+                      <small className="ai-field-hint">{t('ai.settings.reasoningTokenHint')}</small>
+                    ) : null
+                  }
+                >
+                  <TextInput
+                    type="number"
+                    min={64}
+                    max={200_000}
+                    value={activeProfile.maxTokens}
+                    onChange={(event) => patchProfile('maxTokens', Number(event.target.value))}
+                  />
+                </Field>
+              </div>
+            </section>
 
-              {feedback ? <p className="ai-feedback">{feedback}</p> : null}
-            </div>
+            <details className="ai-advanced">
+              <summary>{t('ai.settings.advanced')}</summary>
+              <Checkbox
+                className="ai-check ai-reasoning-toggle"
+                label={<span>{t('ai.settings.disableReasoning')}</span>}
+                checked={!activeProfile.reasoningEnabled}
+                onChange={(checked) => patchProfile('reasoningEnabled', !checked)}
+              />
+              {activeProfile.provider === 'google' && activeProfile.reasoningEnabled ? (
+                <small className="ai-field-note">{t('ai.settings.googleReasoningHint')}</small>
+              ) : null}
+            </details>
+
+            {feedback ? <p className="ai-feedback">{feedback}</p> : null}
           </div>
-        )}
-
-        <footer>
-          <button
-            type="button"
-            className="ai-footer-probe"
-            disabled={!config || busy !== null}
-            onClick={() => void runTest()}
-          >
-            {t('ai.settings.test')}
-          </button>
-          <button type="button" onClick={onClose}>
-            {t('ai.settings.cancel')}
-          </button>
-          <button type="button" disabled={!config || busy !== null} onClick={() => void save()}>
-            {t('ai.settings.save')}
-          </button>
-        </footer>
-      </section>
-    </div>
+        </div>
+      )}
+    </Dialog>
   );
 }

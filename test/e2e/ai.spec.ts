@@ -805,7 +805,7 @@ test('asks for reports in the interface language, and never for rewrites', async
   const speaker = await chooser.locator('option:not([value=""])').first().getAttribute('value');
   await chooser.selectOption(speaker ?? '');
   // Located by class, not by label: the interface is in French for the length of this test.
-  await panel.locator('.ai-primary').click();
+  await panel.locator('.button-primary').click();
   await expect(panel.locator('.consistency-item')).toHaveCount(1);
 
   const report = requests.find(({ body }) =>

@@ -12,6 +12,11 @@ import {
 import { useTranslator } from '../hooks/useTranslator.js';
 import type { AiRequestHandle } from './request.js';
 import { startCollectedAiRequest } from './request.js';
+import { CloseButton } from '../ui/CloseButton.js';
+import { Button } from '../ui/Button.js';
+import { Field } from '../ui/Field.js';
+import { Select } from '../ui/Select.js';
+import { TextInput } from '../ui/TextInput.js';
 
 export interface RewriteSelection {
   from: number;
@@ -146,20 +151,12 @@ export function RewriteDialog({
     >
       <header>
         <strong>{t(tool === 'synonyms' ? 'rewrite.synonymsTitle' : 'rewrite.title')}</strong>
-        <button
-          type="button"
-          className="panel-close"
-          aria-label={t('rewrite.close')}
-          onClick={onClose}
-        >
-          ×
-        </button>
+        <CloseButton label={t('rewrite.close')} onClick={onClose} />
       </header>
       <div className="rewrite-controls">
         {tool === 'rewrite' ? (
-          <label>
-            <span>{t('rewrite.tone')}</span>
-            <select
+          <Field label={t('rewrite.tone')}>
+            <Select
               value={state.lastTone}
               onChange={(event) =>
                 onStateChange({ ...state, lastTone: event.target.value as RewriteTone })
@@ -170,20 +167,21 @@ export function RewriteDialog({
                   {t(`rewrite.tone.${tone}`)}
                 </option>
               ))}
-            </select>
-          </label>
+            </Select>
+          </Field>
         ) : null}
         {tool === 'rewrite' && state.lastTone === 'custom' ? (
-          <input
+          <TextInput
             value={state.customStyle}
             maxLength={500}
+            aria-label={t('rewrite.customPlaceholder')}
             placeholder={t('rewrite.customPlaceholder')}
             onChange={(event) => onStateChange({ ...state, customStyle: event.target.value })}
           />
         ) : null}
-        <button type="button" disabled={busy} onClick={() => void generate()}>
+        <Button disabled={busy} onClick={() => void generate()}>
           {t('rewrite.regenerate')}
-        </button>
+        </Button>
       </div>
       <div className="rewrite-results">
         {busy ? (

@@ -51,6 +51,7 @@
  */
 
 :root {
+  color-scheme: light;
   --surface-sunken: #e9e6e1;
   --surface: #f2f0ec;
   --surface-raised: #faf9f7;
@@ -85,6 +86,44 @@
   --radius-pill: 999px;
   --motion: 120ms ease;
 
+  /*
+   * Control sizing. Two ranks, and deliberately only two.
+   *
+   * `compact` exists because the timeline and corkboard toolbars are 34px bands with 4px of
+   * vertical padding — a 26px content box, which a taller control cannot enter without
+   * pushing the band past the height the rest of the layout is budgeted against.
+   *
+   * 30px is not a new number: it is already the height of .toolbar-icon-button and of the
+   * formatting toolbar, and it is what the `7px 10px` / `7px 9px` paddings scattered through
+   * the dialogs were resolving to anyway. The default rank is the one the interface had
+   * already converged on without saying so.
+   */
+  --control-h-compact: 26px;
+  --control-h-standard: 30px;
+  --control-px-compact: 8px;
+  --control-px-standard: 10px;
+  --control-fs-compact: 11px;
+  --control-fs-standard: 12px;
+
+  /* Read by every control. A rank modifier or a dense scope redefines these three, and
+     everything inside it follows without needing a class of its own. */
+  --control-h: var(--control-h-standard);
+  --control-px: var(--control-px-standard);
+  --control-fs: var(--control-fs-standard);
+  --control-radius: var(--radius-md);
+  --control-gap: 8px;
+  --control-inner-gap: 6px;
+
+  /* The select caret. --select-caret is its height and the side of each of the two tiles
+     that draw it, so the caret is twice as wide as it is tall: 12×6 standard, 10×5 compact.
+     It was 8×4, which read as a speck rather than as an affordance. */
+  --select-caret: 6px;
+  --select-gap: 10px;
+
+  /* Referenced by the repetition report and never defined, so the repeated phrase fell back
+     to whatever generic monospace the platform chose rather than the screenplay's own face. */
+  --font-mono: 'Courier Prime', 'Courier New', monospace;
+
   /* Scene categories, shared by the timeline and the corkboard: the same scene must not be
      blue on one and green on the other. Pastels rather than theme colours — they carry a
      category, not a state, and they read the same in both themes. */
@@ -102,7 +141,14 @@
  * each level is lifted and body text is softened from ~16:1 to ~12:1 — still far above
  * the 4.5:1 floor, but no longer glaring.
  */
+/*
+ * Tells the engine which way the interface runs, so the widgets it draws itself follow —
+ * the calendar button inside a date field, the option list a select opens, the caret in a
+ * text field. None of those can be reached from CSS; without this they stay light-on-light
+ * in the dark theme.
+ */
 body[data-theme='dark'] {
+  color-scheme: dark;
   --surface-sunken: #191a1e;
   --surface: #212227;
   --surface-raised: #2b2c32;
@@ -206,6 +252,329 @@ body {
   .ai-thinking-dot {
     animation: none !important;
   }
+}
+
+/*
+ * ── Controls ──────────────────────────────────────────────────────────────
+ *
+ * Three layers, in a strict specificity ladder. Before this existed, a scope rule set
+ * colour, geometry and placement at once, so every new scope had to out-specify the last —
+ * which is how the file ended up with `button:not(.rail-row):not(.ai-danger):not(.panel-close)`
+ * and forty-two `!important`s that only existed to escape it.
+ *
+ *   0  reset      `:where(#root) button|input|select`   (0,0,1)   native chrome, ink, type
+ *   1  primitives `.button`, `.field`, variants          (0,1,0)   the box
+ *   2  scopes     `.voice-controls > select`             (0,1,1)   placement only
+ *
+ * Two decisions carry the rest of it.
+ *
+ * `:where(#root)` replaces the `.app` / `.modal-backdrop` / `.rewrite-popover` list this file
+ * used to repeat. The overlays are *siblings* of the workspace, not descendants — which is
+ * why that list had to name three roots and still missed the context menu and the command
+ * palette. `:where()` zeroes the id, so the rule loses to every class, as a reset should.
+ *
+ * Layer 0 gives geometry to fields but never to buttons. Fields are homogeneous: a text
+ * field is a text field wherever it stands, so all thirty-three of them can be sized by
+ * element without a class. Buttons are not — among the ninety-one are cards, list rows and
+ * a 24×58 edge tab, none of which may be 30px tall. Buttons therefore opt in by class.
+ */
+
+:where(#root) button {
+  border: 0;
+  border-radius: var(--control-radius);
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: default;
+}
+
+:where(#root) input,
+:where(#root) select,
+:where(#root) textarea {
+  height: var(--control-h);
+  min-width: 0;
+  padding: 0 var(--control-px);
+  border: 0;
+  border-radius: var(--control-radius);
+  outline: none;
+  background: var(--field);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--control-fs);
+  transition:
+    background-color var(--motion),
+    box-shadow var(--motion);
+}
+
+:where(#root) input:focus-visible,
+:where(#root) select:focus-visible,
+:where(#root) textarea:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+
+:where(#root) input::placeholder,
+:where(#root) textarea::placeholder {
+  color: var(--text-muted);
+}
+
+:where(#root) :disabled {
+  opacity: 0.45;
+}
+
+/* No single line to centre, so the padding comes back and the rank height is only a floor. */
+:where(#root) textarea {
+  height: auto;
+  min-height: calc(var(--control-h) * 2);
+  padding: 6px var(--control-px);
+  line-height: 1.45;
+  resize: vertical;
+}
+
+/*
+ * Widgets, not fields: a tick and a slider carry their own geometry. The attribute lifts
+ * these to (0,1,1), above the group rule, so a checkbox can never inherit a 30px box —
+ * structural rather than a `:not()` chain, because a chain is one new input type away from
+ * being wrong again. A test asserts the bible's checkboxes stay under 20px.
+ */
+:where(#root) input[type='checkbox'],
+:where(#root) input[type='radio'],
+:where(#root) input[type='range'],
+:where(#root) input[type='file'],
+:where(#root) input[type='color'] {
+  height: auto;
+  padding: 0;
+}
+
+/*
+ * The caret has to survive the theme switch, and a data-URI SVG cannot: its fill is frozen
+ * at whichever theme it was authored in. Two gradients draw it out of `--text-muted` itself,
+ * so it re-resolves like any other token. That was already the technique here; the defect
+ * was only that the tiles were 4px, giving an 8×4 speck inside a 30px control.
+ *
+ * One shorthand, colour included — a later `background:` on a select would otherwise drop
+ * the caret without a word. Nothing after this may set the `background` shorthand on one.
+ */
+/* `select.field` is (0,1,1) so it also beats `.field` below, whose `padding` shorthand would
+   otherwise reclaim the room reserved here and drop the caret on top of the option text. */
+:where(#root) select,
+select.field {
+  appearance: none;
+  padding-right: calc(var(--select-gap) + var(--select-caret) * 2 + 4px);
+  cursor: default;
+  background:
+    linear-gradient(45deg, transparent 50%, var(--text-muted) 50%) no-repeat right
+      calc(var(--select-gap) + var(--select-caret)) center / var(--select-caret) var(--select-caret),
+    linear-gradient(135deg, var(--text-muted) 50%, transparent 50%) no-repeat right
+      var(--select-gap) center / var(--select-caret) var(--select-caret),
+    var(--field);
+}
+
+/* A checkbox needs a visible empty state, so this outline stays — it is the control itself,
+   not decoration around it. */
+:where(#root) input[type='checkbox'] {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  margin: 0;
+  appearance: none;
+  border: 1px solid color-mix(in srgb, var(--text-muted) 45%, transparent);
+  border-radius: var(--radius-sm);
+  background: var(--field);
+  transition:
+    background-color var(--motion),
+    border-color var(--motion);
+}
+
+:where(#root) input[type='checkbox']:checked {
+  border-color: var(--accent-strong);
+  background-color: var(--accent-strong);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='m2.2 6.2 2.2 2.2 5.4-5' fill='none' stroke='white' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+
+:where(#root) input[type='checkbox']:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  outline-offset: 2px;
+}
+
+:where(#root) input[type='range'] {
+  height: 18px;
+  appearance: none;
+  background: transparent;
+}
+
+:where(#root) input[type='range']::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--accent) 28%, var(--border));
+}
+
+:where(#root) input[type='range']::-webkit-slider-thumb {
+  width: 15px;
+  height: 15px;
+  margin-top: -5.5px;
+  appearance: none;
+  border: 2px solid var(--surface-raised);
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 1px 5px #0005;
+}
+
+/*
+ * A rank is a set of variables rather than a set of properties, so a dense container can
+ * shrink everything inside it without each of its children needing a class. That is what the
+ * 34px toolbars need: they hold a select, a slider and two labels, and only the container
+ * knows they are cramped.
+ */
+.control-compact,
+.timeline-toolbar,
+.corkboard-toolbar,
+.right-panel-header,
+.bible-views {
+  --control-h: var(--control-h-compact);
+  --control-px: var(--control-px-compact);
+  --control-fs: var(--control-fs-compact);
+  --control-radius: var(--radius-sm);
+  --control-gap: 6px;
+  --select-caret: 5px;
+  --select-gap: 8px;
+}
+
+.control-standard {
+  --control-h: var(--control-h-standard);
+  --control-px: var(--control-px-standard);
+  --control-fs: var(--control-fs-standard);
+  --control-radius: var(--radius-md);
+}
+
+/*
+ * One box for every pressable thing. A variant changes the fill and the ink; it never
+ * changes the box.
+ *
+ * The search panel is reached by scope rather than by class because CodeMirror builds that
+ * DOM itself, so nothing here can put a class on it. `:where()` on the scope leaves the
+ * selector at (0,0,1) — the weight of a bare `button` — so it loses to any class at all.
+ * That is what the old `button:not(.rail-row):not(.ai-danger):not(.panel-close)` chains were
+ * trying to express by subtraction, and what forty-two `!important`s were paying for.
+ */
+.button,
+:where(.cm-panel.cm-search) button {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  gap: var(--control-inner-gap);
+  height: var(--control-h);
+  min-width: 0;
+  padding: 0 var(--control-px);
+  /* Never a border. Separation is carried by the surface step — the doctrine at the top of
+     this file — and a test reads borderTopWidth on the toolbar buttons expecting 0px. */
+  border: 0;
+  border-radius: var(--control-radius);
+  background: var(--control);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--control-fs);
+  line-height: 1;
+  white-space: nowrap;
+  transition:
+    background-color var(--motion),
+    color var(--motion);
+}
+
+.button:not(:disabled):hover,
+:where(.cm-panel.cm-search) button:not(:disabled):hover {
+  background: var(--control-hover);
+}
+
+/* The one committing action of a surface. Declared on the button that commits, never taken
+   from `:last-child` — a footer that reads its emphasis from position silently repaints the
+   old primary the day someone adds a button beside it. */
+.button-primary {
+  background: var(--accent-strong);
+  color: var(--accent-contrast);
+  font-weight: 600;
+}
+
+.button-primary:not(:disabled):hover {
+  background: color-mix(in srgb, var(--accent-strong) 88%, #000);
+}
+
+/* A step towards the action rather than the action: no fill until it is pointed at. */
+.button-quiet {
+  background: transparent;
+  color: var(--text-muted);
+}
+
+.button-quiet:not(:disabled):hover {
+  background: var(--fill-hover);
+  color: var(--text);
+}
+
+/* Destructive: quiet until pointed at, and then it says so. */
+.button-danger {
+  background: transparent;
+  color: var(--text-muted);
+}
+
+.button-danger:not(:disabled):hover {
+  background: color-mix(in srgb, var(--warning) 16%, transparent);
+  color: var(--warning);
+}
+
+/* The glyph is the label, so the box is as wide as it is tall. */
+.button-icon {
+  width: var(--control-h);
+  padding: 0;
+}
+
+.button-block {
+  display: flex;
+  width: 100%;
+}
+
+/*
+ * A row of text that happens to be pressable — a rail entry, a navigator line, an occurrence,
+ * a menu item. It keeps the rank height as a floor and gives back the padding and the
+ * wrapping that a control does not want.
+ */
+.button-row {
+  display: flex;
+  justify-content: flex-start;
+  width: 100%;
+  height: auto;
+  min-height: var(--control-h);
+  padding: 6px var(--control-px);
+  background: transparent;
+  color: inherit;
+  line-height: 1.4;
+  text-align: left;
+  white-space: normal;
+}
+
+.button-row:not(:disabled):hover {
+  background: var(--fill-hover);
+}
+
+/* The named form of the element reset above: for the shared primitive, and for the places
+   that render a value into something that is not an input. */
+/*
+ * `background-color`, never the `background` shorthand — this class lands on selects, and the
+ * shorthand would reset the caret drawn by the rule above it to `none`. The same trap the
+ * caret's own comment names, reached from the other side.
+ */
+.field,
+.ai-model-field output {
+  display: flex;
+  align-items: center;
+  height: var(--control-h);
+  min-width: 0;
+  padding: 0 var(--control-px);
+  border: 0;
+  border-radius: var(--control-radius);
+  background-color: var(--field);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--control-fs);
 }
 
 .app {
@@ -416,8 +785,8 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 31px;
-  height: 30px;
+  width: var(--control-h);
+  height: var(--control-h);
   padding: 0;
   border: none;
   border-radius: var(--radius-sm);
@@ -1169,11 +1538,6 @@ body[data-theme='dark'] .preview-pane {
 
 .stats-ratio input {
   width: 72px;
-  padding: 5px 8px;
-  border: none;
-  border-radius: var(--radius-sm);
-  background: var(--field);
-  color: var(--text);
 }
 
 .stats-section {
@@ -1275,14 +1639,6 @@ body[data-theme='dark'] .preview-pane {
 
 .stats-actions button {
   flex: 1;
-  padding: 7px;
-  border: none;
-  border-radius: var(--radius-md);
-  background: var(--control);
-  color: var(--text);
-  transition:
-    background-color var(--motion),
-    color var(--motion);
 }
 
 .stats-actions button:hover {
@@ -1306,7 +1662,7 @@ body[data-theme='dark'] .preview-pane {
   display: flex;
   flex-direction: column;
   width: min(980px, 100%);
-  max-height: 92vh;
+  height: min(820px, 92vh);
   overflow: hidden;
   border: none;
   border-radius: var(--radius-lg);
@@ -1334,41 +1690,10 @@ body[data-theme='dark'] .preview-pane {
   background: var(--surface);
 }
 
-.pdf-dialog input,
-.pdf-dialog select {
-  border: none;
-  border-radius: var(--radius-sm);
-  background: var(--field);
-  color: var(--text);
-  transition:
-    background-color var(--motion),
-    box-shadow var(--motion);
-}
-
-.pdf-dialog input:focus-visible,
-.pdf-dialog select:focus-visible {
-  outline: none;
-  box-shadow: inset 0 0 0 2px var(--accent);
-}
-
-.pdf-dialog button {
-  border: none;
-  border-radius: var(--radius-sm);
-  background: var(--control);
-  color: var(--text);
-  transition:
-    background-color var(--motion),
-    color var(--motion);
-}
-
-.pdf-dialog button:not(:disabled):hover {
-  background: var(--control-hover);
-}
-
+/* Fields and buttons come from the control layer. What stays here is the one thing the
+   layer cannot know: the committing action of this footer is its last child. */
 .pdf-dialog > footer button {
   min-width: 90px;
-  padding: 7px 12px;
-  border-radius: var(--radius-md);
 }
 
 .pdf-dialog > footer button:last-child {
@@ -1377,7 +1702,7 @@ body[data-theme='dark'] .preview-pane {
   font-weight: 600;
 }
 
-.pdf-dialog > footer button:last-child:hover {
+.pdf-dialog > footer button:last-child:not(:disabled):hover {
   background: color-mix(in srgb, var(--accent-strong) 88%, #000);
 }
 
@@ -1386,9 +1711,15 @@ body[data-theme='dark'] .preview-pane {
   cursor: not-allowed;
 }
 
+/* The single row is `minmax(0, 1fr)`, not the implicit `auto`: an auto row takes the height
+   of its tallest child, so the options column and the preview grew the body past the dialog
+   instead of scrolling inside it. `min-height: 0` alone cannot fix that — it frees the body
+   to shrink, but the row inside it still sizes to content. */
 .pdf-dialog-body {
   display: grid;
+  flex: 1;
   grid-template-columns: 260px minmax(360px, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   min-height: 0;
 }
 
@@ -1414,7 +1745,6 @@ body[data-theme='dark'] .preview-pane {
 .pdf-options input[type='text'],
 .pdf-options input[type='number'] {
   width: 100%;
-  padding: 6px 7px;
 }
 
 .pdf-options .pdf-check {
@@ -1466,9 +1796,13 @@ body[data-theme='dark'] .preview-pane {
   line-height: 1.45;
 }
 
+/* `min-height: 0`, where a 520px floor used to sit: as the grid item of a `minmax(0, 1fr)`
+   row, that floor became the row's floor too, so on a short window the preview and its pager
+   were pushed straight through the bottom of the dialog. The roomy default now comes from the
+   dialog's own height rather than from a minimum this column insists on. */
 .pdf-preview {
   position: relative;
-  min-height: 520px;
+  min-height: 0;
   overflow: auto;
   background: color-mix(in srgb, var(--surface) 70%, #777);
   text-align: center;
@@ -1610,15 +1944,6 @@ body[data-theme='dark'] .preview-pane {
   align-items: center;
   gap: 5px;
   white-space: nowrap;
-}
-
-.timeline-toolbar select,
-.corkboard-toolbar select {
-  padding: 3px 6px;
-  border: none;
-  border-radius: var(--radius-sm);
-  background: var(--control);
-  color: var(--text);
 }
 
 .timeline-zoom {
@@ -1985,17 +2310,6 @@ body[data-theme='dark'] .preview-pane {
 
 .sidebar-options input[type='search'] {
   width: 100%;
-  padding: 6px 9px;
-  border: none;
-  border-radius: var(--radius-md);
-  outline: none;
-  background: var(--field);
-  color: var(--text);
-  transition: box-shadow var(--motion);
-}
-
-.sidebar-options input[type='search']:focus {
-  box-shadow: inset 0 0 0 2px var(--accent);
 }
 
 .sidebar-content {
@@ -2249,73 +2563,32 @@ body[data-theme='dark'] .preview-pane {
   background: var(--surface);
 }
 
-.ai-settings-dialog input,
-.ai-settings-dialog select,
-.ai-settings-dialog textarea {
-  border: none;
-  border-radius: var(--radius-md);
-  background: var(--field);
-  color: var(--text);
-  font: inherit;
-  transition:
-    background-color var(--motion),
-    box-shadow var(--motion);
-}
-
-/* Rail rows and the destructive action opt out: they are not controls to be filled. */
-.ai-settings-dialog button:not(.rail-row):not(.ai-danger) {
-  border: none;
-  border-radius: var(--radius-md);
-  background: var(--control);
-  color: var(--text);
-  font: inherit;
-  transition:
-    background-color var(--motion),
-    color var(--motion);
-}
-
-.ai-settings-dialog button:not(.rail-row):not(.ai-danger):not(:disabled):hover {
-  background: var(--control-hover);
-}
-
-.ai-settings-dialog input:focus-visible,
-.ai-settings-dialog select:focus-visible,
-.ai-settings-dialog textarea:focus-visible {
-  outline: none;
-  box-shadow: inset 0 0 0 2px var(--accent);
-}
-
-.ai-settings-dialog button {
-  padding: 7px 10px;
-}
-
-.ai-settings-dialog button:disabled {
-  opacity: 0.45;
-}
-
 .ai-settings-dialog > footer button {
   min-width: 90px;
 }
 
-.ai-settings-dialog > footer button:last-child,
-.ai-primary {
-  background: var(--accent-strong) !important;
-  color: var(--accent-contrast) !important;
+/* The committing action of this footer is its last child — the one thing the control layer
+   cannot know on its own. Goes away with `variant="primary"` when this file adopts <Button>. */
+.ai-settings-dialog > footer button:last-child {
+  background: var(--accent-strong);
+  color: var(--accent-contrast);
   font-weight: 600;
 }
 
-.ai-settings-dialog > footer button:last-child:not(:disabled):hover,
-.ai-primary:not(:disabled):hover {
-  background: color-mix(in srgb, var(--accent-strong) 88%, #000) !important;
+.ai-settings-dialog > footer button:last-child:not(:disabled):hover {
+  background: color-mix(in srgb, var(--accent-strong) 88%, #000);
 }
 
 /*
  * Two columns: the profile rail is a fixed, stable strip and only the detail pane
  * scrolls, so switching profiles never shifts the layout.
  */
+/* Same reason as `.pdf-dialog-body`: without a bounded row the pane's `overflow-y: auto`
+   never has a height to scroll within, and the advanced section spilled past the footer. */
 .ai-settings-layout {
   display: grid;
   grid-template-columns: 216px minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   min-height: 0;
   overflow: hidden;
 }
@@ -2350,7 +2623,9 @@ body[data-theme='dark'] .preview-pane {
   align-items: center;
   gap: 9px;
   width: 100%;
-  padding: 7px 9px;
+  height: auto;
+  min-height: var(--control-h);
+  padding: 6px var(--control-px);
   border: none;
   border-radius: var(--radius-md);
   background: transparent;
@@ -2423,21 +2698,7 @@ body[data-theme='dark'] .preview-pane {
 }
 
 .rail-add {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  padding: 8px;
-  border: none;
-  border-radius: var(--radius-md);
-  background: var(--control);
-  color: var(--text);
-  font: inherit;
-  transition: background-color var(--motion);
-}
-
-.rail-add:not(:disabled):hover {
-  background: var(--control-hover);
+  width: 100%;
 }
 
 .rail-add > span {
@@ -2490,28 +2751,6 @@ body[data-theme='dark'] .preview-pane {
   background: var(--field);
 }
 
-.ai-danger {
-  flex: none;
-  padding: 6px 10px;
-  border: none;
-  border-radius: var(--radius-md);
-  background: transparent;
-  color: var(--text-muted);
-  font: inherit;
-  transition:
-    background-color var(--motion),
-    color var(--motion);
-}
-
-.ai-danger:not(:disabled):hover {
-  background: color-mix(in srgb, var(--warning) 16%, transparent);
-  color: var(--warning);
-}
-
-.ai-danger:disabled {
-  opacity: 0.4;
-}
-
 .ai-settings-section {
   display: flex;
   flex-direction: column;
@@ -2555,7 +2794,6 @@ body[data-theme='dark'] .preview-pane {
 .ai-field-grid select,
 .ai-advanced textarea {
   width: 100%;
-  padding: 7px 8px;
 }
 
 .ai-field-wide {
@@ -2571,24 +2809,17 @@ body[data-theme='dark'] .preview-pane {
 }
 
 .ai-key-row > button {
-  padding: 7px 10px;
+  align-self: end;
 }
 
 .ai-model-field output {
-  display: block;
-  min-height: 32px;
-  padding: 7px 9px;
   overflow: hidden;
-  border-radius: var(--radius-md);
-  background: var(--field);
-  color: var(--text);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .ai-model-field > button {
   align-self: start;
-  padding: 7px 10px;
 }
 
 .ai-model-picker {
@@ -2746,21 +2977,6 @@ body[data-theme='dark'] .preview-pane {
 
 .snapshot-dialog > footer button {
   min-width: 90px;
-  padding: 7px 12px;
-  border: none;
-  border-radius: var(--radius-md);
-  background: var(--control);
-  color: var(--text);
-  font: inherit;
-  transition: background-color var(--motion);
-}
-
-.snapshot-dialog > footer button:not(:disabled):hover {
-  background: var(--control-hover);
-}
-
-.snapshot-dialog > footer button:disabled {
-  opacity: 0.45;
 }
 
 .snapshot-layout {
@@ -2779,18 +2995,6 @@ body[data-theme='dark'] .preview-pane {
 
 .snapshot-take input {
   width: 100%;
-  padding: 7px 9px;
-  border: none;
-  border-radius: var(--radius-md);
-  background: var(--field);
-  color: var(--text);
-  font: inherit;
-  transition: box-shadow var(--motion);
-}
-
-.snapshot-take input:focus-visible {
-  outline: none;
-  box-shadow: inset 0 0 0 2px var(--accent);
 }
 
 .snapshot-pane {
@@ -2818,7 +3022,7 @@ body[data-theme='dark'] .preview-pane {
   font-size: 11px;
 }
 
-.snapshot-summary > .ai-danger {
+.snapshot-summary > .button-danger {
   margin-left: auto;
 }
 
@@ -2938,32 +3142,13 @@ body[data-theme='dark'] .preview-pane {
   font-size: 10px;
 }
 
-.rewrite-controls select,
-.rewrite-controls input,
-.rewrite-controls button {
-  min-width: 0;
-  padding: 7px 9px;
-  border: none;
-  border-radius: var(--radius-md);
-  color: var(--text);
-  transition: background-color var(--motion);
-}
-
-.rewrite-controls select,
-.rewrite-controls input {
-  background: var(--field);
-}
-
-.rewrite-controls button {
-  background: var(--control);
-}
-
-.rewrite-controls button:hover {
-  background: var(--control-hover);
-}
-
 .rewrite-controls input {
   grid-column: 1 / -1;
+}
+
+/* The label is as tall as its name plus its field; the button is only as tall as itself. */
+.rewrite-controls > button {
+  align-self: end;
 }
 
 .rewrite-results {
@@ -3034,32 +3219,13 @@ body[data-theme='dark'] .preview-pane {
   font-size: 10px;
 }
 
-.character-name-manual input,
-.character-name-manual button,
-.character-name-ai button {
-  padding: 7px 9px;
-  border: none;
-  border-radius: var(--radius-md);
-  color: var(--text);
-  transition: background-color var(--motion);
+.character-name-manual > label,
+.character-name-manual > button {
+  align-self: end;
 }
 
 .character-name-manual input {
-  background: var(--field);
-}
-
-.character-name-manual button,
-.character-name-ai button {
-  background: var(--control);
-}
-
-.character-name-manual button:hover,
-.character-name-ai button:not(.ai-primary):hover {
-  background: var(--control-hover);
-}
-
-.character-name-manual button {
-  align-self: end;
+  width: 100%;
 }
 
 .character-name-ai {
@@ -3100,8 +3266,8 @@ body[data-theme='dark'] .preview-pane {
 .formatting-toolbar button {
   display: grid;
   place-items: center;
-  width: 34px;
-  height: 30px;
+  width: var(--control-h);
+  height: var(--control-h);
   border: none;
   border-radius: var(--radius-sm);
   background: transparent;
@@ -3121,22 +3287,21 @@ body[data-theme='dark'] .preview-pane {
 
 /* ── M6 inconsistency report ─────────────────────────────────────────────── */
 
+/*
+ * `flex: 1; min-height: 0`, not `height: 100%`.
+ *
+ * `height: 100%` resolves against the whole dialog and then relies on flex shrinking it back
+ * past the header — which it can only do down to its own automatic minimum. On a short window
+ * that minimum is the larger number, so the pane stayed taller than the space it had and the
+ * dialog's `overflow: hidden` cut the structural block's button in half. `min-height: 0` is
+ * what switches that automatic minimum off; the scrolling child is `.consistency-results`.
+ */
 .consistency-pane {
   display: flex;
   flex-direction: column;
-  height: 100%;
+  flex: 1;
+  min-height: 0;
   background: var(--surface);
-}
-
-.consistency-controls {
-  padding: 8px;
-}
-
-.consistency-controls > .ai-primary {
-  width: 100%;
-  padding: 8px;
-  border: none;
-  border-radius: var(--radius-md);
 }
 
 .consistency-controls > p {
@@ -3151,16 +3316,6 @@ body[data-theme='dark'] .preview-pane {
   grid-template-columns: 1fr 1fr;
   gap: 6px;
   padding: 8px;
-}
-
-.consistency-filters select,
-.consistency-item select {
-  min-width: 0;
-  padding: 5px 7px;
-  border: none;
-  border-radius: var(--radius-sm);
-  background: var(--control);
-  color: var(--text);
 }
 
 .consistency-results {
@@ -3222,13 +3377,15 @@ body[data-theme='dark'] .preview-pane {
 .consistency-reference {
   display: block;
   width: 100%;
+  height: auto;
   margin: 5px 0;
-  padding: 7px;
+  padding: 6px var(--control-px);
   border: none;
   border-radius: var(--radius-sm);
   background: color-mix(in srgb, var(--accent) 9%, var(--surface));
   color: var(--accent);
   text-align: left;
+  white-space: normal;
 }
 
 .consistency-reference small {
@@ -3242,75 +3399,7 @@ body[data-theme='dark'] .preview-pane {
   color: var(--text-muted);
 }
 
-/* ── Refined native controls and editor utilities ───────────────────────── */
-
-.app select,
-.modal-backdrop select,
-.rewrite-popover select {
-  padding-right: 25px !important;
-  appearance: none;
-  background-image:
-    linear-gradient(45deg, transparent 50%, var(--text-muted) 50%),
-    linear-gradient(135deg, var(--text-muted) 50%, transparent 50%);
-  background-position:
-    calc(100% - 12px) 50%,
-    calc(100% - 8px) 50%;
-  background-repeat: no-repeat;
-  background-size: 4px 4px;
-}
-
-.app input[type='checkbox'],
-.modal-backdrop input[type='checkbox'] {
-  width: 16px;
-  height: 16px;
-  flex: none;
-  margin: 0;
-  appearance: none;
-  /* A checkbox needs a visible empty state, so this outline stays — it is the control
-     itself, not decoration around it. */
-  border: 1px solid color-mix(in srgb, var(--text-muted) 45%, transparent);
-  border-radius: var(--radius-sm);
-  background: var(--field);
-  transition:
-    background-color var(--motion),
-    border-color var(--motion);
-}
-
-.app input[type='checkbox']:checked,
-.modal-backdrop input[type='checkbox']:checked {
-  border-color: var(--accent-strong);
-  background-color: var(--accent-strong);
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='m2.2 6.2 2.2 2.2 5.4-5' fill='none' stroke='white' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
-}
-
-.app input[type='checkbox']:focus-visible,
-.modal-backdrop input[type='checkbox']:focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--accent) 45%, transparent);
-  outline-offset: 2px;
-}
-
-.app input[type='range'] {
-  height: 18px;
-  appearance: none;
-  background: transparent;
-}
-
-.app input[type='range']::-webkit-slider-runnable-track {
-  height: 4px;
-  border-radius: var(--radius-pill);
-  background: color-mix(in srgb, var(--accent) 28%, var(--border));
-}
-
-.app input[type='range']::-webkit-slider-thumb {
-  width: 15px;
-  height: 15px;
-  margin-top: -5.5px;
-  appearance: none;
-  border: 2px solid var(--surface-raised);
-  border-radius: 50%;
-  background: var(--accent);
-  box-shadow: 0 1px 5px #0005;
-}
+/* ── Editor utilities ────────────────────────────────────────────────────── */
 
 .cm-panel.cm-search {
   display: flex;
@@ -3331,17 +3420,6 @@ body[data-theme='dark'] .preview-pane {
  */
 .cm-panel.cm-search .cm-textfield {
   min-width: 150px;
-  padding: 6px 9px;
-  border: none;
-  border-radius: var(--radius-md);
-  outline: none;
-  background: var(--field);
-  color: var(--text);
-  transition: box-shadow var(--motion);
-}
-
-.cm-panel.cm-search .cm-textfield:focus {
-  box-shadow: inset 0 0 0 2px var(--accent);
 }
 
 .cm-panel.cm-search label {
@@ -3353,27 +3431,10 @@ body[data-theme='dark'] .preview-pane {
   white-space: nowrap;
 }
 
-.cm-panel.cm-search button {
-  min-height: 28px;
-  padding: 5px 9px;
-  border: 0;
-  border-radius: var(--radius-md);
-  background: var(--control);
-  color: var(--text);
-  transition: background-color var(--motion);
-}
-
-.cm-panel.cm-search button:hover {
-  background: var(--control-hover);
-}
-
 .cm-panel.cm-search button[name='close'] {
-  display: grid;
-  place-items: center;
-  width: 28px;
+  width: var(--control-h);
   padding: 0;
   font-size: 18px;
-  line-height: 1;
 }
 
 /* ── Character name styles ───────────────────────────────────────────────── */
@@ -3485,10 +3546,9 @@ body[data-theme='dark'] .preview-pane {
   padding: 12px 14px;
 }
 
-.consistency-controls > .ai-primary {
-  width: auto;
+/* Placement only: the box comes from the control layer. */
+.consistency-controls > .button {
   min-width: 190px;
-  padding: 9px 14px;
 }
 
 /* The literal report is a list of phrases, each openable onto the places it appears. The
@@ -3522,11 +3582,15 @@ body[data-theme='dark'] .preview-pane {
   justify-content: space-between;
 }
 
-/* The phrase is the finding, so it reads as the screenplay reads it. */
+/* The phrase is the finding, so it reads as the screenplay reads it. `min-width: 0` and the
+   break are what keep a long phrase from shouldering the badge out of the panel: a flex item
+   refuses to shrink below its content unless it is told it may. */
 .repetition-heading strong {
-  font-family: var(--font-mono, monospace);
-  font-size: 12px;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: var(--control-fs);
   font-weight: 600;
+  overflow-wrap: anywhere;
 }
 
 .repetition-badge {
@@ -3551,7 +3615,9 @@ body[data-theme='dark'] .preview-pane {
   font-size: 10px;
 }
 
+/* A text link rather than a control: it opens a list, it does not act. */
 .repetition-toggle {
+  height: auto;
   margin-top: 6px;
   padding: 3px 8px;
   border: none;
@@ -3567,9 +3633,11 @@ body[data-theme='dark'] .preview-pane {
   list-style: none;
 }
 
+/* Two lines — the scene and the line under it — so the height is a floor, never a box. */
 .repetition-occurrences button {
   display: block;
   width: 100%;
+  height: auto;
   padding: 6px 8px;
   border: none;
   border-radius: var(--radius-sm);
@@ -3577,6 +3645,7 @@ body[data-theme='dark'] .preview-pane {
   color: var(--text);
   font-size: 10px;
   text-align: left;
+  white-space: normal;
 }
 
 .repetition-occurrences button + button,
@@ -3596,6 +3665,7 @@ body[data-theme='dark'] .preview-pane {
 /* Stepping down to the sunken surface separates the paid half from the free one without a
    rule across the dialog. */
 .repetition-structural {
+  flex: none;
   padding: 12px 14px;
   border-radius: var(--radius-md);
   margin: 0 9px 9px;
@@ -3712,69 +3782,6 @@ body[data-theme='dark'] .preview-pane {
   padding: 12px 16px;
 }
 
-/*
- * Controls for the analysis dialogs.
- *
- * Neither carried any styling of its own, so their fields fell back to the browser's defaults
- * in the middle of a themed panel — the voice analysis chooser being the most visible case.
- * Shared between the two rather than copied: `pdf` and `ai-settings` each keep their own
- * block, which is a duplication worth removing separately, when moving their appearance is
- * not a risk to the colour assertions in the E2E suite.
- */
-.bible-dialog input:not([type='checkbox']),
-.bible-dialog select,
-.bible-dialog textarea,
-.consistency-dialog input:not([type='checkbox']),
-.consistency-dialog select,
-.consistency-dialog textarea {
-  padding: 7px 9px;
-  border: none;
-  border-radius: var(--radius-md);
-  background: var(--field);
-  color: var(--text);
-  font: inherit;
-  font-size: 12px;
-  transition:
-    background-color var(--motion),
-    box-shadow var(--motion);
-}
-
-.bible-dialog input:not([type='checkbox']):focus-visible,
-.bible-dialog select:focus-visible,
-.bible-dialog textarea:focus-visible,
-.consistency-dialog input:not([type='checkbox']):focus-visible,
-.consistency-dialog select:focus-visible,
-.consistency-dialog textarea:focus-visible {
-  outline: none;
-  box-shadow: inset 0 0 0 2px var(--accent);
-}
-
-/* Rail rows and the destructive action are not controls to be filled. */
-.bible-dialog button:not(.rail-row):not(.ai-danger):not(.panel-close),
-.consistency-dialog button:not(.rail-row):not(.ai-danger):not(.panel-close):not(.ai-primary) {
-  padding: 7px 10px;
-  border: none;
-  border-radius: var(--radius-md);
-  background: var(--control);
-  color: var(--text);
-  font: inherit;
-  font-size: 12px;
-  transition:
-    background-color var(--motion),
-    color var(--motion);
-}
-
-.bible-dialog button:not(.rail-row):not(.ai-danger):not(.panel-close):not(:disabled):hover,
-.consistency-dialog
-  button:not(.rail-row):not(.ai-danger):not(.panel-close):not(.ai-primary):not(:disabled):hover {
-  background: var(--control-hover);
-}
-
-.bible-dialog button:disabled,
-.consistency-dialog button:disabled {
-  opacity: 0.45;
-}
-
 .bible-dialog > footer button {
   min-width: 90px;
 }
@@ -3790,16 +3797,16 @@ body[data-theme='dark'] .preview-pane {
 }
 
 .bible-views button {
-  padding: 5px 12px !important;
-  border-radius: var(--radius-pill) !important;
-  background: transparent !important;
-  color: var(--text-muted) !important;
-  font-size: 11px !important;
+  padding: 5px 12px;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 11px;
 }
 
 .bible-views button.is-current {
-  background: var(--surface-raised) !important;
-  color: var(--text) !important;
+  background: var(--surface-raised);
+  color: var(--text);
 }
 
 .bible-grouping {
@@ -3967,16 +3974,16 @@ body[data-theme='dark'] .preview-pane {
 .bible-aliases button {
   width: 16px;
   height: 16px;
-  padding: 0 !important;
-  border-radius: 50% !important;
-  background: transparent !important;
-  color: inherit !important;
-  font-size: 12px !important;
+  padding: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: inherit;
+  font-size: 12px;
   line-height: 1;
 }
 
 .bible-aliases button:not(:disabled):hover {
-  background: var(--fill-active) !important;
+  background: var(--fill-active);
 }
 
 .bible-rail-empty {
@@ -4023,7 +4030,7 @@ body[data-theme='dark'] .preview-pane {
    "Character" came out as "Characteı" and the name field showed four letters of its hint. */
 .bible-compose-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 26px 32px;
+  grid-template-columns: minmax(0, 1fr) var(--control-h) var(--control-h);
   grid-template-areas:
     'kind kind kind'
     'name open add';
@@ -4049,28 +4056,28 @@ body[data-theme='dark'] .preview-pane {
    a search box. Quiet, because picking a name is a step towards the action, not the action. */
 .bible-compose-open {
   grid-area: open;
-  height: 32px;
-  padding: 0 !important;
-  background: transparent !important;
-  color: var(--text-muted) !important;
-  font-size: 11px !important;
+  height: var(--control-h);
+  padding: 0;
+  background: var(--control);
+  color: var(--text-muted);
+  font-size: 11px;
   line-height: 1;
 }
 
 .bible-compose-open:not(:disabled):hover {
-  background: var(--fill-hover) !important;
-  color: var(--text) !important;
+  background: var(--control-hover);
+  color: var(--text);
 }
 
 /* The one action of the composer, so it carries the accent rather than sitting grey beside
    two grey fields. */
 .bible-compose-add {
   grid-area: add;
-  height: 32px;
-  padding: 0 !important;
-  background: var(--accent-strong) !important;
-  color: #fff !important;
-  font-size: 16px !important;
+  height: var(--control-h);
+  padding: 0;
+  background: var(--accent-strong);
+  color: var(--accent-contrast);
+  font-size: 16px;
   line-height: 1;
 }
 
@@ -4104,16 +4111,19 @@ body[data-theme='dark'] .preview-pane {
 .bible-suggestions button {
   display: block;
   width: 100%;
-  padding: 5px 8px !important;
-  background: transparent !important;
-  color: var(--text) !important;
-  font-size: 11px !important;
+  padding: 5px 8px;
+  overflow: hidden;
+  background: transparent;
+  color: var(--text);
+  font-size: 11px;
   text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .bible-suggestions button:hover,
 .bible-suggestions button.is-current {
-  background: var(--fill-hover) !important;
+  background: var(--fill-hover);
 }
 
 /* The keyboard-highlighted row has to be distinguishable from a hovered one, or arrowing
@@ -4138,11 +4148,11 @@ body[data-theme='dark'] .preview-pane {
   height: 64px;
   align-items: center;
   justify-content: center;
-  padding: 0 !important;
-  border-radius: var(--radius-md) !important;
-  background: var(--tint-accent) !important;
-  color: var(--accent) !important;
-  font-size: 20px !important;
+  padding: 0;
+  border-radius: var(--radius-md);
+  background: var(--tint-accent);
+  color: var(--accent);
+  font-size: 20px;
   font-weight: 600;
   overflow: hidden;
   transition: filter var(--motion);
@@ -4163,8 +4173,8 @@ body[data-theme='dark'] .preview-pane {
   width: 26px;
   height: 26px;
   margin-right: 8px;
-  border-radius: var(--radius-sm) !important;
-  font-size: 10px !important;
+  border-radius: var(--radius-sm);
+  font-size: 10px;
 }
 
 /* Picture and name on one line: the name reads as the sheet's title, not as a caption under
@@ -4192,11 +4202,11 @@ body[data-theme='dark'] .preview-pane {
   right: -4px;
   width: 20px;
   height: 20px;
-  padding: 0 !important;
-  border-radius: 50% !important;
-  background: var(--surface-overlay) !important;
+  padding: 0;
+  border-radius: 50%;
+  background: var(--surface-overlay);
   box-shadow: var(--elev-1);
-  font-size: 12px !important;
+  font-size: 12px;
   line-height: 1;
 }
 
@@ -4204,13 +4214,13 @@ body[data-theme='dark'] .preview-pane {
 .bible-name input {
   width: 100%;
   padding: 6px 8px;
-  background: transparent !important;
-  font-size: 15px !important;
+  background: transparent;
+  font-size: 15px;
   font-weight: 600;
 }
 
 .bible-name input:hover {
-  background: var(--fill-hover) !important;
+  background: var(--fill-hover);
 }
 
 /* An orphaned sheet needs attention, not alarm: a tint, not a red border. */
@@ -4348,12 +4358,6 @@ body[data-theme='dark'] .preview-pane {
   min-width: 200px;
 }
 
-.voice-controls > .ai-primary {
-  padding: 9px 14px;
-  border: none;
-  border-radius: var(--radius-md);
-}
-
 /* Progress and errors take the whole width underneath the row. */
 .voice-controls > .consistency-running,
 .voice-controls > .ai-warning {
@@ -4383,11 +4387,7 @@ body[data-theme='dark'] .preview-pane {
 }
 
 .consistency-running button {
-  padding: 7px 10px;
-  border: 0;
-  border-radius: var(--radius-md);
   background: var(--surface);
-  color: var(--text);
 }
 
 .consistency-orbit {
@@ -4455,7 +4455,7 @@ body[data-theme='dark'] .preview-pane {
   align-items: center;
   gap: 8px;
   width: 100%;
-  min-height: 32px;
+  min-height: var(--control-h);
   padding: 5px 8px;
   border: 0;
   border-radius: var(--radius-sm);

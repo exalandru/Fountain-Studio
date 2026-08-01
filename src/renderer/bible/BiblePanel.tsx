@@ -17,6 +17,11 @@ import { foldDiacritics, foldedEquals, foldedIncludes } from '@shared/text/index
 import type { Translator } from '@shared/i18n/index.js';
 import type { AiRequestHandle } from '../ai/request.js';
 import { startCollectedAiRequest } from '../ai/request.js';
+import { Button } from '../ui/Button.js';
+import { Dialog } from '../ui/Dialog.js';
+import { Field } from '../ui/Field.js';
+import { Select } from '../ui/Select.js';
+import { TextInput } from '../ui/TextInput.js';
 
 /**
  * Names offered at once.
@@ -537,404 +542,372 @@ export function BiblePanel({ path, analysis, t, onClose }: BiblePanelProps) {
   );
 
   return (
-    <div className="modal-backdrop" role="presentation">
-      <section
-        className="bible-dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-label={t('bible.title')}
-        onKeyDown={(event) => {
-          if (event.key === 'Escape') close();
-        }}
-      >
-        <header>
-          <div>
-            <h2>{t('bible.title')}</h2>
-            <p>{t('bible.subtitle')}</p>
+    <Dialog
+      className="bible-dialog"
+      title={t('bible.title')}
+      subtitle={t('bible.subtitle')}
+      closeLabel={t('bible.close')}
+      onClose={close}
+      headerActions={
+        path === null ? null : (
+          <div className="bible-views" role="group" aria-label={t('bible.view')}>
+            {(['sheets', 'grouping'] as const).map((candidate) => (
+              <button
+                type="button"
+                key={candidate}
+                className={view === candidate ? 'is-current' : ''}
+                aria-pressed={view === candidate}
+                onClick={() => setView(candidate)}
+              >
+                {t(`bible.view.${candidate}`)}
+              </button>
+            ))}
           </div>
-          {path === null ? null : (
-            <div className="bible-views" role="group" aria-label={t('bible.view')}>
-              {(['sheets', 'grouping'] as const).map((candidate) => (
-                <button
-                  type="button"
-                  key={candidate}
-                  className={view === candidate ? 'is-current' : ''}
-                  aria-pressed={view === candidate}
-                  onClick={() => setView(candidate)}
-                >
-                  {t(`bible.view.${candidate}`)}
-                </button>
-              ))}
-            </div>
-          )}
-          <button
-            type="button"
-            className="panel-close"
-            aria-label={t('bible.close')}
-            onClick={close}
-          >
-            ×
-          </button>
-        </header>
+        )
+      }
+      footer={<Button onClick={close}>{t('bible.done')}</Button>}
+    >
+      {path === null ? (
+        <div className="panel-placeholder">{t('bible.saveFirst')}</div>
+      ) : bible === null ? (
+        <div className="panel-placeholder">{t('bible.loading')}</div>
+      ) : view === 'grouping' ? (
+        <GroupingView
+          entries={bible.entries}
+          reconciliation={reconciliation}
+          locations={analysis?.locations ?? []}
+          busy={busy}
+          t={t}
+          onGroup={(parent, children) => void group(parent, children)}
+          onAttach={(sheetId, name) => void attach(sheetId, name)}
+          onCreate={(kind, name) => void add(kind, name)}
+        />
+      ) : (
+        <div className="bible-layout">
+          <div className="rail">
+            <ul className="rail-list" aria-label={t('bible.list')}>
+              {reconciliation.attached.map((entry) => row(entry, false))}
+              {reconciliation.orphaned.map((entry) => row(entry, true))}
+            </ul>
 
-        {path === null ? (
-          <div className="panel-placeholder">{t('bible.saveFirst')}</div>
-        ) : bible === null ? (
-          <div className="panel-placeholder">{t('bible.loading')}</div>
-        ) : view === 'grouping' ? (
-          <GroupingView
-            entries={bible.entries}
-            reconciliation={reconciliation}
-            locations={analysis?.locations ?? []}
-            busy={busy}
-            t={t}
-            onGroup={(parent, children) => void group(parent, children)}
-            onAttach={(sheetId, name) => void attach(sheetId, name)}
-            onCreate={(kind, name) => void add(kind, name)}
-          />
-        ) : (
-          <div className="bible-layout">
-            <div className="rail">
-              <ul className="rail-list" aria-label={t('bible.list')}>
-                {reconciliation.attached.map((entry) => row(entry, false))}
-                {reconciliation.orphaned.map((entry) => row(entry, true))}
-              </ul>
+            {bible.entries.length === 0 ? (
+              <p className="bible-rail-empty">{t('bible.empty')}</p>
+            ) : null}
 
-              {bible.entries.length === 0 ? (
-                <p className="bible-rail-empty">{t('bible.empty')}</p>
-              ) : null}
-
-              {/*
+            {/*
                 One composer instead of a button per detected name. A feature has thirty
                 speaking parts and twenty locations; offering fifty buttons buried the rail
                 and made the panel unreadable. The names are still one keystroke away — they
                 are the field's suggestions — and the same three controls also create the
                 objects and notions that no screenplay can suggest.
               */}
-              <form
-                className="bible-compose"
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  if (draftName.trim().length === 0) return;
-                  void add(newKind, draftName);
-                  setDraftName('');
-                  setListOpen(false);
-                }}
-              >
-                <div className="bible-compose-row">
-                  <label>
-                    <span className="sr-only">{t('bible.addKind')}</span>
-                    <select
-                      value={newKind}
-                      onChange={(event) => setNewKind(event.target.value as BibleEntryKind)}
-                    >
-                      {BIBLE_ENTRY_KINDS.map((kind) => (
-                        <option key={kind} value={kind}>
-                          {t(`bible.kind.${kind}`)}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  {/*
+            <form
+              className="bible-compose"
+              onSubmit={(event) => {
+                event.preventDefault();
+                if (draftName.trim().length === 0) return;
+                void add(newKind, draftName);
+                setDraftName('');
+                setListOpen(false);
+              }}
+            >
+              <div className="bible-compose-row">
+                <Field label={t('bible.addKind')} labelHidden>
+                  <Select
+                    value={newKind}
+                    onChange={(event) => setNewKind(event.target.value as BibleEntryKind)}
+                  >
+                    {BIBLE_ENTRY_KINDS.map((kind) => (
+                      <option key={kind} value={kind}>
+                        {t(`bible.kind.${kind}`)}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+                {/*
                     A native <datalist> would be less code, but it filters accent-sensitively
                     and that cannot be configured: typing "megalopole" offered nothing on a
                     screenplay full of MÉGALOPOLE. This is the same control, filtered by us.
                   */}
-                  <label>
-                    <span className="sr-only">{t('bible.addName')}</span>
-                    <input
-                      value={draftName}
-                      maxLength={120}
-                      placeholder={t('bible.addPlaceholder')}
-                      role="combobox"
-                      aria-expanded={suggestions.length > 0}
-                      aria-controls="bible-suggestions"
-                      aria-activedescendant={
-                        highlighted >= 0 ? `bible-suggestion-${highlighted}` : undefined
+                <Field label={t('bible.addName')} labelHidden>
+                  <TextInput
+                    value={draftName}
+                    maxLength={120}
+                    placeholder={t('bible.addPlaceholder')}
+                    role="combobox"
+                    aria-expanded={suggestions.length > 0}
+                    aria-controls="bible-suggestions"
+                    aria-activedescendant={
+                      highlighted >= 0 ? `bible-suggestion-${highlighted}` : undefined
+                    }
+                    autoComplete="off"
+                    onChange={(event) => {
+                      setDraftName(event.target.value);
+                      setHighlighted(-1);
+                      setListOpen(false);
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key === 'ArrowDown' && suggestions.length === 0) {
+                        // The conventional way to open a combo box from the keyboard.
+                        event.preventDefault();
+                        setListOpen(true);
+                        return;
                       }
-                      autoComplete="off"
-                      onChange={(event) => {
-                        setDraftName(event.target.value);
-                        setHighlighted(-1);
-                        setListOpen(false);
-                      }}
-                      onKeyDown={(event) => {
-                        if (event.key === 'ArrowDown' && suggestions.length === 0) {
-                          // The conventional way to open a combo box from the keyboard.
-                          event.preventDefault();
-                          setListOpen(true);
-                          return;
-                        }
-                        if (suggestions.length === 0) return;
-                        if (event.key === 'ArrowDown') {
-                          event.preventDefault();
-                          setHighlighted((current) => (current + 1) % suggestions.length);
-                        } else if (event.key === 'ArrowUp') {
-                          event.preventDefault();
-                          setHighlighted((current) =>
-                            current <= 0 ? suggestions.length - 1 : current - 1,
-                          );
-                        } else if (event.key === 'Enter' && highlighted >= 0) {
-                          event.preventDefault();
-                          const picked = suggestions[highlighted];
-                          if (picked !== undefined) {
-                            setDraftName(picked);
-                            setHighlighted(-1);
-                            setListOpen(false);
-                          }
-                        } else if (event.key === 'Escape') {
-                          // Swallowed only when there is a list to close, so Escape still
-                          // closes the dialog otherwise.
-                          event.stopPropagation();
+                      if (suggestions.length === 0) return;
+                      if (event.key === 'ArrowDown') {
+                        event.preventDefault();
+                        setHighlighted((current) => (current + 1) % suggestions.length);
+                      } else if (event.key === 'ArrowUp') {
+                        event.preventDefault();
+                        setHighlighted((current) =>
+                          current <= 0 ? suggestions.length - 1 : current - 1,
+                        );
+                      } else if (event.key === 'Enter' && highlighted >= 0) {
+                        event.preventDefault();
+                        const picked = suggestions[highlighted];
+                        if (picked !== undefined) {
+                          setDraftName(picked);
                           setHighlighted(-1);
                           setListOpen(false);
                         }
-                      }}
-                    />
-                  </label>
-                  <button
-                    type="button"
-                    className="bible-compose-open"
-                    disabled={busy || candidates.length === 0}
-                    aria-label={t('bible.browse')}
-                    aria-expanded={listOpen}
-                    onClick={() => {
-                      setDraftName('');
-                      setHighlighted(-1);
-                      setListOpen((current) => !current);
+                      } else if (event.key === 'Escape') {
+                        // Swallowed only when there is a list to close, so Escape still
+                        // closes the dialog otherwise.
+                        event.stopPropagation();
+                        setHighlighted(-1);
+                        setListOpen(false);
+                      }
                     }}
-                  >
-                    <span aria-hidden="true">▾</span>
-                  </button>
-                  <button
-                    type="submit"
-                    className="bible-compose-add"
-                    disabled={busy || draftName.trim().length === 0}
-                    aria-label={t('bible.add')}
-                  >
-                    <span aria-hidden="true">+</span>
-                  </button>
-                </div>
-                {suggestions.length > 0 ? (
-                  <ul className="bible-suggestions" id="bible-suggestions" role="listbox">
-                    {suggestions.map((candidate, index) => (
-                      <li
-                        key={candidate}
-                        id={`bible-suggestion-${index}`}
-                        role="option"
-                        aria-selected={index === highlighted}
-                      >
-                        <button
-                          type="button"
-                          className={index === highlighted ? 'is-current' : ''}
-                          onClick={() => {
-                            setDraftName(candidate);
-                            setHighlighted(-1);
-                            setListOpen(false);
-                          }}
-                        >
-                          {candidate}
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                ) : null}
-                {candidates.length > 0 ? (
-                  <p className="bible-compose-hint">
-                    {t('bible.candidates', { count: candidates.length })}
-                  </p>
-                ) : null}
-              </form>
-            </div>
-
-            <div className="bible-pane">
-              {selected === null ? (
-                <p className="panel-placeholder">{t('bible.selectFirst')}</p>
-              ) : (
-                <>
-                  {orphaned ? (
-                    <div className="bible-orphan">
-                      <strong>{t('bible.orphanTitle')}</strong>
-                      <p>{t('bible.orphanHint', { name: selected.name })}</p>
-                      <div className="bible-orphan-actions">
-                        <label>
-                          <span className="sr-only">{t('bible.orphanReattach')}</span>
-                          <select
-                            value=""
-                            onChange={(event) => {
-                              if (event.target.value === '') return;
-                              void reattach(selected.id, event.target.value);
-                            }}
-                          >
-                            <option value="">{t('bible.orphanReattach')}</option>
-                            {reconciliation.unseeded
-                              .filter((candidate) => candidate.kind === selected.kind)
-                              .map((candidate) => (
-                                <option key={candidate.name} value={candidate.name}>
-                                  {candidate.name}
-                                </option>
-                              ))}
-                          </select>
-                        </label>
-                        <button
-                          type="button"
-                          className="ai-danger"
-                          disabled={busy}
-                          onClick={() => remove(selected.id)}
-                        >
-                          {t('bible.orphanDelete')}
-                        </button>
-                      </div>
-                    </div>
-                  ) : null}
-
-                  <div className="bible-heading">
-                    <div className="bible-identity">
+                  />
+                </Field>
+                <button
+                  type="button"
+                  className="bible-compose-open"
+                  disabled={busy || candidates.length === 0}
+                  aria-label={t('bible.browse')}
+                  aria-expanded={listOpen}
+                  onClick={() => {
+                    setDraftName('');
+                    setHighlighted(-1);
+                    setListOpen((current) => !current);
+                  }}
+                >
+                  <span aria-hidden="true">▾</span>
+                </button>
+                <button
+                  type="submit"
+                  className="bible-compose-add"
+                  disabled={busy || draftName.trim().length === 0}
+                  aria-label={t('bible.add')}
+                >
+                  <span aria-hidden="true">+</span>
+                </button>
+              </div>
+              {suggestions.length > 0 ? (
+                <ul className="bible-suggestions" id="bible-suggestions" role="listbox">
+                  {suggestions.map((candidate, index) => (
+                    <li
+                      key={candidate}
+                      id={`bible-suggestion-${index}`}
+                      role="option"
+                      aria-selected={index === highlighted}
+                    >
                       <button
                         type="button"
-                        className="bible-avatar"
-                        disabled={busy}
-                        aria-label={t('bible.imageChange', { name: selected.name })}
-                        onClick={() => void chooseImage(selected)}
+                        className={index === highlighted ? 'is-current' : ''}
+                        onClick={() => {
+                          setDraftName(candidate);
+                          setHighlighted(-1);
+                          setListOpen(false);
+                        }}
                       >
-                        {pictures.get(selected.id) ? (
-                          <img src={pictures.get(selected.id) ?? ''} alt="" />
-                        ) : (
-                          <span>{initials(selected.name)}</span>
-                        )}
+                        {candidate}
                       </button>
-                      {pictures.get(selected.id) ? (
-                        <button
-                          type="button"
-                          className="bible-avatar-remove"
-                          disabled={busy}
-                          aria-label={t('bible.imageRemove')}
-                          onClick={() => void removeImage(selected)}
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+              {candidates.length > 0 ? (
+                <p className="bible-compose-hint">
+                  {t('bible.candidates', { count: candidates.length })}
+                </p>
+              ) : null}
+            </form>
+          </div>
+
+          <div className="bible-pane">
+            {selected === null ? (
+              <p className="panel-placeholder">{t('bible.selectFirst')}</p>
+            ) : (
+              <>
+                {orphaned ? (
+                  <div className="bible-orphan">
+                    <strong>{t('bible.orphanTitle')}</strong>
+                    <p>{t('bible.orphanHint', { name: selected.name })}</p>
+                    <div className="bible-orphan-actions">
+                      <Field label={t('bible.orphanReattach')} labelHidden>
+                        <Select
+                          value=""
+                          onChange={(event) => {
+                            if (event.target.value === '') return;
+                            void reattach(selected.id, event.target.value);
+                          }}
                         >
-                          <span aria-hidden="true">×</span>
-                        </button>
-                      ) : null}
+                          <option value="">{t('bible.orphanReattach')}</option>
+                          {reconciliation.unseeded
+                            .filter((candidate) => candidate.kind === selected.kind)
+                            .map((candidate) => (
+                              <option key={candidate.name} value={candidate.name}>
+                                {candidate.name}
+                              </option>
+                            ))}
+                        </Select>
+                      </Field>
+                      <Button variant="danger" disabled={busy} onClick={() => remove(selected.id)}>
+                        {t('bible.orphanDelete')}
+                      </Button>
                     </div>
-                    <label className="bible-name">
-                      <span className="sr-only">{t('bible.nameLabel')}</span>
-                      <input
-                        value={selected.name}
-                        maxLength={120}
+                  </div>
+                ) : null}
+
+                <div className="bible-heading">
+                  <div className="bible-identity">
+                    <button
+                      type="button"
+                      className="bible-avatar"
+                      disabled={busy}
+                      aria-label={t('bible.imageChange', { name: selected.name })}
+                      onClick={() => void chooseImage(selected)}
+                    >
+                      {pictures.get(selected.id) ? (
+                        <img src={pictures.get(selected.id) ?? ''} alt="" />
+                      ) : (
+                        <span>{initials(selected.name)}</span>
+                      )}
+                    </button>
+                    {pictures.get(selected.id) ? (
+                      <button
+                        type="button"
+                        className="bible-avatar-remove"
+                        disabled={busy}
+                        aria-label={t('bible.imageRemove')}
+                        onClick={() => void removeImage(selected)}
+                      >
+                        <span aria-hidden="true">×</span>
+                      </button>
+                    ) : null}
+                  </div>
+                  <label className="bible-name">
+                    <span className="sr-only">{t('bible.nameLabel')}</span>
+                    <input
+                      value={selected.name}
+                      maxLength={120}
+                      onChange={(event) => {
+                        update(selected.id, (entry) => ({ ...entry, name: event.target.value }));
+                        dirty.current = true;
+                      }}
+                      onBlur={flush}
+                    />
+                  </label>
+                </div>
+
+                {selected.aliases.length > 0 ? (
+                  <div className="bible-aliases">
+                    <h3>{t('bible.aliases')}</h3>
+                    <ul>
+                      {selected.aliases.map((alias) => (
+                        <li key={alias}>
+                          {alias}
+                          <button
+                            type="button"
+                            aria-label={t('bible.aliasRemove', { name: alias })}
+                            disabled={busy}
+                            onClick={() => void detach(selected.id, alias)}
+                          >
+                            <span aria-hidden="true">×</span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+
+                <div className="bible-facts">
+                  <h3>{t('bible.facts')}</h3>
+                  {facts.length === 0 ? (
+                    <p>{t('bible.noFacts')}</p>
+                  ) : (
+                    <ul>
+                      {facts.map((fact) => (
+                        <li key={fact.key}>
+                          {t(`bible.fact.${fact.key}`, {
+                            count: fact.count ?? 0,
+                            value: fact.value ?? '',
+                          })}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+
+                <div className="bible-draft">
+                  {running ? (
+                    <div className="consistency-running" role="status">
+                      <div className="consistency-orbit" aria-hidden="true">
+                        <span />
+                        <span />
+                        <span />
+                      </div>
+                      <div>
+                        <strong>{t('bible.drafting', { name: selected.name })}</strong>
+                        <small>
+                          {t('consistency.elapsed', {
+                            minutes: Math.floor(elapsedSeconds / 60),
+                            seconds: String(elapsedSeconds % 60).padStart(2, '0'),
+                          })}
+                        </small>
+                      </div>
+                      <Button onClick={() => void stop()}>{t('ai.request.stop')}</Button>
+                    </div>
+                  ) : (
+                    <Button variant="primary" onClick={() => void draft()}>
+                      {t('bible.draft')}
+                    </Button>
+                  )}
+                  {selected.draftedAt ? (
+                    <p className="bible-drafted-note">
+                      {t('bible.draftedNote')} {t('bible.draftKept')}
+                    </p>
+                  ) : null}
+                </div>
+                <div className="bible-fields">
+                  {bibleFieldsFor(selected.kind).map((field) => (
+                    <label key={field}>
+                      <span>{t(`bible.field.${field}`)}</span>
+                      <textarea
+                        rows={3}
+                        // An empty form reads as broken; a question reads as an invitation.
+                        placeholder={t(`bible.placeholder.${field}`)}
+                        value={selected.fields[field] ?? ''}
                         onChange={(event) => {
-                          update(selected.id, (entry) => ({ ...entry, name: event.target.value }));
+                          update(selected.id, (entry) => ({
+                            ...entry,
+                            fields: { ...entry.fields, [field]: event.target.value },
+                          }));
                           dirty.current = true;
                         }}
                         onBlur={flush}
                       />
                     </label>
-                  </div>
-
-                  {selected.aliases.length > 0 ? (
-                    <div className="bible-aliases">
-                      <h3>{t('bible.aliases')}</h3>
-                      <ul>
-                        {selected.aliases.map((alias) => (
-                          <li key={alias}>
-                            {alias}
-                            <button
-                              type="button"
-                              aria-label={t('bible.aliasRemove', { name: alias })}
-                              disabled={busy}
-                              onClick={() => void detach(selected.id, alias)}
-                            >
-                              <span aria-hidden="true">×</span>
-                            </button>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  ) : null}
-
-                  <div className="bible-facts">
-                    <h3>{t('bible.facts')}</h3>
-                    {facts.length === 0 ? (
-                      <p>{t('bible.noFacts')}</p>
-                    ) : (
-                      <ul>
-                        {facts.map((fact) => (
-                          <li key={fact.key}>
-                            {t(`bible.fact.${fact.key}`, {
-                              count: fact.count ?? 0,
-                              value: fact.value ?? '',
-                            })}
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
-
-                  <div className="bible-draft">
-                    {running ? (
-                      <div className="consistency-running" role="status">
-                        <div className="consistency-orbit" aria-hidden="true">
-                          <span />
-                          <span />
-                          <span />
-                        </div>
-                        <div>
-                          <strong>{t('bible.drafting', { name: selected.name })}</strong>
-                          <small>
-                            {t('consistency.elapsed', {
-                              minutes: Math.floor(elapsedSeconds / 60),
-                              seconds: String(elapsedSeconds % 60).padStart(2, '0'),
-                            })}
-                          </small>
-                        </div>
-                        <button type="button" onClick={() => void stop()}>
-                          {t('ai.request.stop')}
-                        </button>
-                      </div>
-                    ) : (
-                      <button type="button" className="ai-primary" onClick={() => void draft()}>
-                        {t('bible.draft')}
-                      </button>
-                    )}
-                    {selected.draftedAt ? (
-                      <p className="bible-drafted-note">
-                        {t('bible.draftedNote')} {t('bible.draftKept')}
-                      </p>
-                    ) : null}
-                  </div>
-                  <div className="bible-fields">
-                    {bibleFieldsFor(selected.kind).map((field) => (
-                      <label key={field}>
-                        <span>{t(`bible.field.${field}`)}</span>
-                        <textarea
-                          rows={3}
-                          // An empty form reads as broken; a question reads as an invitation.
-                          placeholder={t(`bible.placeholder.${field}`)}
-                          value={selected.fields[field] ?? ''}
-                          onChange={(event) => {
-                            update(selected.id, (entry) => ({
-                              ...entry,
-                              fields: { ...entry.fields, [field]: event.target.value },
-                            }));
-                            dirty.current = true;
-                          }}
-                          onBlur={flush}
-                        />
-                      </label>
-                    ))}
-                  </div>
-                </>
-              )}
-            </div>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
-        )}
+        </div>
+      )}
 
-        {feedback ? <p className="ai-feedback">{feedback}</p> : null}
-
-        <footer>
-          <button type="button" onClick={close}>
-            {t('bible.done')}
-          </button>
-        </footer>
-      </section>
-    </div>
+      {feedback ? <p className="ai-feedback">{feedback}</p> : null}
+    </Dialog>
   );
 }

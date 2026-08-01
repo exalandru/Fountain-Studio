@@ -1,7 +1,7 @@
-import { useId } from 'react';
 import type { ReactNode } from 'react';
 import type { AppSettings } from '@shared/ipc-contract.js';
 import type { Translator } from '@shared/i18n/index.js';
+import { IconButton } from '../ui/IconButton.js';
 
 const DEFAULT_EDITOR_FONT_SIZE = 15;
 
@@ -187,6 +187,13 @@ function ToolbarIcon({ name }: { name: ToolbarIconName }) {
   );
 }
 
+/**
+ * Names the icon and keeps the tooltip mandatory.
+ *
+ * Every button in this bar carries a hint, falling back to its own label when it has nothing
+ * longer to say — which is why the bar has as many tooltips as buttons, and a test counts on
+ * that. `IconButton` leaves the tooltip optional because the formatting toolbar wants none.
+ */
 function ToolbarButton({
   icon,
   label,
@@ -202,25 +209,16 @@ function ToolbarButton({
   disabled?: boolean;
   onClick: () => void;
 }) {
-  const tooltipId = useId();
-
   return (
-    <span className="toolbar-button-wrap">
-      <button
-        type="button"
-        className={`toolbar-icon-button${active ? ' is-active' : ''}`}
-        aria-label={label}
-        aria-describedby={tooltipId}
-        aria-pressed={active === undefined ? undefined : active}
-        disabled={disabled}
-        onClick={onClick}
-      >
-        <ToolbarIcon name={icon} />
-      </button>
-      <span className="toolbar-tooltip" id={tooltipId} role="tooltip">
-        {tooltip ?? label}
-      </span>
-    </span>
+    <IconButton
+      label={label}
+      tooltip={tooltip ?? label}
+      active={active}
+      disabled={disabled}
+      onClick={onClick}
+    >
+      <ToolbarIcon name={icon} />
+    </IconButton>
   );
 }
 

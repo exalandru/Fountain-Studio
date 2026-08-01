@@ -1,6 +1,7 @@
 import { memo } from 'react';
 import type { ScreenplayStatistics } from '@shared/stats/index.js';
 import { useTranslator } from '../hooks/useTranslator.js';
+import { Button } from '../ui/Button.js';
 
 interface StatsPanelProps {
   statistics: ScreenplayStatistics | null;
@@ -162,12 +163,8 @@ export const StatsPanel = memo(function StatsPanel({
           </section>
 
           <div className="stats-actions">
-            <button type="button" onClick={() => onExport('csv')}>
-              {t('stats.exportCsv')}
-            </button>
-            <button type="button" onClick={() => onExport('json')}>
-              {t('stats.exportJson')}
-            </button>
+            <Button onClick={() => onExport('csv')}>{t('stats.exportCsv')}</Button>
+            <Button onClick={() => onExport('json')}>{t('stats.exportJson')}</Button>
           </div>
         </div>
       )}

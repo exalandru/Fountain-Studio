@@ -5,6 +5,9 @@ import type { CorkboardState } from '@shared/appdata/index.js';
 import { gapToTargetIndex } from '@shared/corkboard/index.js';
 import type { Translator } from '@shared/i18n/index.js';
 import { sceneColor } from '../scene-color.js';
+import { CloseButton } from '../ui/CloseButton.js';
+import { Field } from '../ui/Field.js';
+import { Select } from '../ui/Select.js';
 
 interface CorkboardProps {
   analysis: ParseResponse | null;
@@ -198,9 +201,9 @@ export const Corkboard = memo(function Corkboard({
     >
       <header className="corkboard-toolbar">
         <strong>{t('corkboard.title')}</strong>
-        <label>
-          <span>{t('corkboard.colors')}</span>
-          <select
+        <Field label={t('corkboard.colors')}>
+          <Select
+            scale="compact"
             value={state.colorMode}
             onChange={(event) =>
               onStateChange({ colorMode: event.target.value as CorkboardState['colorMode'] })
@@ -209,8 +212,8 @@ export const Corkboard = memo(function Corkboard({
             <option value="intExt">{t('timeline.intExt')}</option>
             <option value="timeOfDay">{t('timeline.dayNight')}</option>
             <option value="none">{t('corkboard.colorNone')}</option>
-          </select>
-        </label>
+          </Select>
+        </Field>
         <label className="corkboard-size">
           <span>{t('corkboard.cardWidth')}</span>
           <input
@@ -223,14 +226,7 @@ export const Corkboard = memo(function Corkboard({
           />
         </label>
         <span className="corkboard-hint">{t('corkboard.moveHint')}</span>
-        <button
-          type="button"
-          className="panel-close"
-          aria-label={t('corkboard.close')}
-          onClick={onClose}
-        >
-          ×
-        </button>
+        <CloseButton label={t('corkboard.close')} onClick={onClose} />
       </header>
 
       {analysis === null ? <div className="panel-placeholder">{t('sidebar.loading')}</div> : null}

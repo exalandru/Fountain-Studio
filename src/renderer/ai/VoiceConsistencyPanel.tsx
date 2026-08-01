@@ -12,6 +12,9 @@ import type { ParseResponse } from '@shared/analysis/index.js';
 import type { Locale, Translator } from '@shared/i18n/index.js';
 import type { AiRequestHandle } from './request.js';
 import { startCollectedAiRequest } from './request.js';
+import { Button } from '../ui/Button.js';
+import { Dialog } from '../ui/Dialog.js';
+import { Select } from '../ui/Select.js';
 
 interface VoiceConsistencyPanelProps {
   /** `null` until the first analysis lands; the character list comes from it. */
@@ -158,122 +161,104 @@ export function VoiceConsistencyPanel({
   };
 
   return (
-    <div className="modal-backdrop" role="presentation">
-      <section
-        className="consistency-dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-label={t('voice.title')}
-        onKeyDown={(event) => {
-          if (event.key === 'Escape') onClose();
-        }}
-      >
-        <header>
-          <div>
-            <h2>{t('voice.title')}</h2>
-            <p>{t('voice.subtitle')}</p>
-          </div>
-          <button
-            type="button"
-            className="panel-close"
-            aria-label={t('voice.close')}
-            onClick={onClose}
+    <Dialog
+      className="consistency-dialog"
+      title={t('voice.title')}
+      subtitle={t('voice.subtitle')}
+      closeLabel={t('voice.close')}
+      onClose={onClose}
+    >
+      <div className="consistency-pane">
+        <div className="voice-controls">
+          <Select
+            aria-label={t('voice.selectCharacter')}
+            value={selectedCharacter || ''}
+            onChange={(event) => setSelectedCharacter(event.target.value || null)}
+            disabled={running}
           >
-            ×
-          </button>
-        </header>
-        <div className="consistency-pane">
-          <div className="voice-controls">
-            <select
-              value={selectedCharacter || ''}
-              onChange={(event) => setSelectedCharacter(event.target.value || null)}
-              disabled={running}
-            >
-              <option value="">{t('voice.selectCharacter')}</option>
-              {characters.map((char) => (
-                <option key={char} value={char}>
-                  {char}
-                </option>
-              ))}
-            </select>
+            <option value="">{t('voice.selectCharacter')}</option>
+            {characters.map((char) => (
+              <option key={char} value={char}>
+                {char}
+              </option>
+            ))}
+          </Select>
 
-            {selectedCharacter && !running && (
-              <button type="button" className="ai-primary" onClick={() => void analyse()}>
-                {t('voice.analyse')}
-              </button>
-            )}
+          {selectedCharacter && !running && (
+            <Button variant="primary" onClick={() => void analyse()}>
+              {t('voice.analyse')}
+            </Button>
+          )}
 
-            {running && (
-              <div className="consistency-running" role="status">
-                <div className="consistency-orbit" aria-hidden="true">
-                  <span />
-                  <span />
-                  <span />
-                </div>
-                <div>
-                  <strong>{phase || t('ai.request.reasoning')}</strong>
-                  <small>
-                    {t('consistency.elapsed', {
-                      minutes: Math.floor(elapsedSeconds / 60),
-                      seconds: String(elapsedSeconds % 60).padStart(2, '0'),
-                    })}
-                  </small>
-                </div>
-                <button type="button" onClick={() => void stop()}>
-                  {t('ai.request.stop')}
-                </button>
+          {running && (
+            <div className="consistency-running" role="status">
+              <div className="consistency-orbit" aria-hidden="true">
+                <span />
+                <span />
+                <span />
               </div>
-            )}
-            {error ? <p className="ai-warning">{error}</p> : null}
-          </div>
-
-          <div className="consistency-results">
-            {!selectedCharacter ? (
-              <div className="panel-placeholder">{t('voice.selectFirst')}</div>
-            ) : currentItems.length === 0 ? (
-              <div className="panel-placeholder">
-                {state[selectedCharacter]?.analyzedAt
-                  ? t('consistency.empty')
-                  : t('voice.notAnalysed')}
+              <div>
+                <strong>{phase || t('ai.request.reasoning')}</strong>
+                <small>
+                  {t('consistency.elapsed', {
+                    minutes: Math.floor(elapsedSeconds / 60),
+                    seconds: String(elapsedSeconds % 60).padStart(2, '0'),
+                  })}
+                </small>
               </div>
-            ) : (
-              currentItems.map((item: AiInconsistency) => (
-                <article key={item.id} className={`consistency-item severity-${item.severity}`}>
-                  <div className="consistency-item-heading">
-                    <strong>{t('consistency.type.voice')}</strong>
-                    <span>{t(`consistency.severity.${item.severity}`)}</span>
-                  </div>
-                  <p>{item.description}</p>
-                  {item.references.map((reference, index) => (
-                    <button
-                      type="button"
-                      className="consistency-reference"
-                      key={`${reference.sceneNumber}-${index}`}
-                      onClick={() => onSelectReference(reference)}
-                    >
-                      {reference.sceneNumber} · {reference.heading}
-                      <small>{reference.quote}</small>
-                    </button>
-                  ))}
-                  {item.suggestion ? (
-                    <p className="consistency-suggestion">{item.suggestion}</p>
-                  ) : null}
-                  <select
-                    value={item.status}
-                    onChange={(event) =>
-                      setStatus(item.id, event.target.value as InconsistencyStatus)
-                    }
-                  >
-                    <option value="open">{t('consistency.status.open')}</option>
-                    <option value="ignored">{t('consistency.status.ignored')}</option>
-                    <option value="resolved">{t('consistency.status.resolved')}</option>
-                  </select>
-                </article>
-              ))
-            )}
-          </div>
+              <Button onClick={() => void stop()}>{t('ai.request.stop')}</Button>
+            </div>
+          )}
+          {error ? <p className="ai-warning">{error}</p> : null}
         </div>
-      </section>
-    </div>
+
+        <div className="consistency-results">
+          {!selectedCharacter ? (
+            <div className="panel-placeholder">{t('voice.selectFirst')}</div>
+          ) : currentItems.length === 0 ? (
+            <div className="panel-placeholder">
+              {state[selectedCharacter]?.analyzedAt
+                ? t('consistency.empty')
+                : t('voice.notAnalysed')}
+            </div>
+          ) : (
+            currentItems.map((item: AiInconsistency) => (
+              <article key={item.id} className={`consistency-item severity-${item.severity}`}>
+                <div className="consistency-item-heading">
+                  <strong>{t('consistency.type.voice')}</strong>
+                  <span>{t(`consistency.severity.${item.severity}`)}</span>
+                </div>
+                <p>{item.description}</p>
+                {item.references.map((reference, index) => (
+                  <button
+                    type="button"
+                    className="consistency-reference"
+                    key={`${reference.sceneNumber}-${index}`}
+                    onClick={() => onSelectReference(reference)}
+                  >
+                    {reference.sceneNumber} · {reference.heading}
+                    <small>{reference.quote}</small>
+                  </button>
+                ))}
+                {item.suggestion ? (
+                  <p className="consistency-suggestion">{item.suggestion}</p>
+                ) : null}
+                <Select
+                  scale="compact"
+                  value={item.status}
+                  onChange={(event) =>
+                    setStatus(item.id, event.target.value as InconsistencyStatus)
+                  }
+                >
+                  <option value="open">{t('consistency.status.open')}</option>
+                  <option value="ignored">{t('consistency.status.ignored')}</option>
+                  <option value="resolved">{t('consistency.status.resolved')}</option>
+                </Select>
+              </article>
+            ))
+          )}
+        </div>
+      </div>
+    </Dialog>
   );
 }
