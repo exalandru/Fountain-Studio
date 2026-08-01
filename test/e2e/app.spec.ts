@@ -447,9 +447,46 @@ test('the spell-check language is independent from the interface language', asyn
     window.quantum.invoke('settings:patch', { spellcheckLanguage: 'fr' }),
   );
   expect(french).toMatchObject({ language: 'en', spellcheckLanguage: 'fr' });
+  // html lang follows the spell checker, not the UI locale.
+  await expect.poll(() => page.evaluate(() => document.documentElement.lang)).toBe('fr');
 
   await page.evaluate(() =>
     window.quantum.invoke('settings:patch', { spellcheckLanguage: 'en-US' }),
+  );
+  await expect.poll(() => page.evaluate(() => document.documentElement.lang)).toBe('en-US');
+});
+
+test('action lines stay spell-checkable while scene and character lines do not', async () => {
+  // Native Chromium underlines inside CodeMirror are platform-dependent (macOS often
+  // ignores setSpellCheckerLanguages). What we can guarantee is the editor wiring:
+  // contenteditable on, action/dialogue without spellcheck=false, preference in html lang.
+  // Keep a title page so later PDF export still sees two pages.
+  await page.evaluate(() =>
+    window.quantum.invoke('settings:patch', { spellcheckLanguage: 'en-US' }),
+  );
+  await expect.poll(() => page.evaluate(() => document.documentElement.lang)).toBe('en-US');
+
+  const editor = page.locator('.cm-content');
+  await expect(editor).toHaveAttribute('spellcheck', 'true');
+
+  await editor.click();
+  await page.keyboard.press('ControlOrMeta+a');
+  await page.keyboard.type(
+    'Title: Spellcheck wiring\n\nINT. LAB - NIGHT\n\nShe walks past the doorway.\n\nALICE\nHello.\n',
+  );
+
+  await expect(page.locator('.cm-fountain-scene').first()).toHaveAttribute('spellcheck', 'false');
+  await expect(page.locator('.cm-fountain-character').first()).toHaveAttribute(
+    'spellcheck',
+    'false',
+  );
+  await expect(page.locator('.cm-fountain-action').first()).not.toHaveAttribute(
+    'spellcheck',
+    'false',
+  );
+  await expect(page.locator('.cm-fountain-dialogue').first()).not.toHaveAttribute(
+    'spellcheck',
+    'false',
   );
 });
 
@@ -571,6 +608,8 @@ test('scrollbar colours follow the light and dark themes', async () => {
 });
 
 test('panel state is persisted in the screenplay companion file', async () => {
+  // Earlier tests may have left another tab active (e.g. an untitled French draft).
+  await page.getByRole('tab', { name: /opened\.fountain/ }).click();
   await page.getByRole('tab', { name: 'Preview' }).click();
   await page.getByLabel('Sync scroll with editor').check();
   await page.getByRole('tab', { name: 'Structure' }).click();
@@ -660,8 +699,8 @@ test('switching to French retranslates the interface and the native menu', async
   // Renderer: the status bar is rebuilt from the French catalogue.
   await expect(page.locator('.statusbar')).toContainText('scène');
   await expect(page.locator('.statusbar')).toContainText('lieu');
-  // The document language follows, which is what drives Chromium's spell checker.
-  expect(await page.evaluate(() => document.documentElement.lang)).toBe('fr');
+  // UI language and spellcheck language stay independent: html lang tracks the latter.
+  expect(await page.evaluate(() => document.documentElement.lang)).toBe('en-US');
 
   // Main process: the native menu was rebuilt, since labels cannot be updated in place.
   const labels = await menuLabels();

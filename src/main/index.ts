@@ -142,6 +142,9 @@ if (!app.requestSingleInstanceLock()) {
     session.defaultSession.setPermissionCheckHandler(() => false);
 
     registerIpcHandlers();
+    // Dictionary must be set on the default session before the first window loads,
+    // otherwise Chromium spells against whatever language it picked at content creation.
+    applySpellCheckerLanguage((await getSettings()).spellcheckLanguage);
     await buildMenu();
 
     await createMainWindow();
