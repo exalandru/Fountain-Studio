@@ -14,6 +14,7 @@ import type { AiRequestHandle } from './request.js';
 import { startCollectedAiRequest } from './request.js';
 import { Button } from '../ui/Button.js';
 import { Dialog } from '../ui/Dialog.js';
+import { Field } from '../ui/Field.js';
 import { Select } from '../ui/Select.js';
 
 interface VoiceConsistencyPanelProps {
@@ -209,7 +210,11 @@ export function VoiceConsistencyPanel({
               <Button onClick={() => void stop()}>{t('ai.request.stop')}</Button>
             </div>
           )}
-          {error ? <p className="ai-warning">{error}</p> : null}
+          {error ? (
+            <p className="ai-warning" role="alert">
+              {error}
+            </p>
+          ) : null}
         </div>
 
         <div className="consistency-results">
@@ -243,17 +248,19 @@ export function VoiceConsistencyPanel({
                 {item.suggestion ? (
                   <p className="consistency-suggestion">{item.suggestion}</p>
                 ) : null}
-                <Select
-                  scale="compact"
-                  value={item.status}
-                  onChange={(event) =>
-                    setStatus(item.id, event.target.value as InconsistencyStatus)
-                  }
-                >
-                  <option value="open">{t('consistency.status.open')}</option>
-                  <option value="ignored">{t('consistency.status.ignored')}</option>
-                  <option value="resolved">{t('consistency.status.resolved')}</option>
-                </Select>
+                <Field label={t('consistency.statusLabel')} labelHidden>
+                  <Select
+                    scale="compact"
+                    value={item.status}
+                    onChange={(event) =>
+                      setStatus(item.id, event.target.value as InconsistencyStatus)
+                    }
+                  >
+                    <option value="open">{t('consistency.status.open')}</option>
+                    <option value="ignored">{t('consistency.status.ignored')}</option>
+                    <option value="resolved">{t('consistency.status.resolved')}</option>
+                  </Select>
+                </Field>
               </article>
             ))
           )}

@@ -255,7 +255,11 @@ export function RepetitionPanel({
               {t('repetition.analyseStructure')}
             </Button>
           )}
-          {error ? <p className="ai-warning">{error}</p> : null}
+          {error ? (
+            <p className="ai-warning" role="alert">
+              {error}
+            </p>
+          ) : null}
 
           {state.items.length === 0 ? (
             <p className="repetition-structural-empty">
@@ -283,17 +287,19 @@ export function RepetitionPanel({
                 {item.suggestion ? (
                   <p className="consistency-suggestion">{item.suggestion}</p>
                 ) : null}
-                <Select
-                  scale="compact"
-                  value={item.status}
-                  onChange={(event) =>
-                    setStatus(item.id, event.target.value as InconsistencyStatus)
-                  }
-                >
-                  <option value="open">{t('consistency.status.open')}</option>
-                  <option value="ignored">{t('consistency.status.ignored')}</option>
-                  <option value="resolved">{t('consistency.status.resolved')}</option>
-                </Select>
+                <Field label={t('consistency.statusLabel')} labelHidden>
+                  <Select
+                    scale="compact"
+                    value={item.status}
+                    onChange={(event) =>
+                      setStatus(item.id, event.target.value as InconsistencyStatus)
+                    }
+                  >
+                    <option value="open">{t('consistency.status.open')}</option>
+                    <option value="ignored">{t('consistency.status.ignored')}</option>
+                    <option value="resolved">{t('consistency.status.resolved')}</option>
+                  </Select>
+                </Field>
               </article>
             ))
           )}

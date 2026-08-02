@@ -29,7 +29,12 @@ export const Timeline = memo(function Timeline({
   const trackRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    activeRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    activeRef.current?.scrollIntoView({
+      behavior: reduced ? 'auto' : 'smooth',
+      block: 'nearest',
+      inline: 'center',
+    });
   }, [activeSceneId]);
 
   return (
@@ -50,7 +55,7 @@ export const Timeline = memo(function Timeline({
             <option value="timeOfDay">{t('timeline.dayNight')}</option>
           </Select>
         </Field>
-        <label className="timeline-check">
+        <label className="panel-checkbox">
           <input
             type="checkbox"
             checked={state.uniformWidth}

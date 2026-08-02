@@ -9,7 +9,10 @@ interface DocumentIOOptions {
   locale: Locale;
   t: Translator['t'];
   stringsRef: RefObject<NewDocumentStrings>;
+  /** Informational messages such as “saved”. */
   setStatus: (message: string) => void;
+  /** Error messages that should appear with the warning style. */
+  setStatusError: (message: string) => void;
 }
 
 /**
@@ -19,7 +22,13 @@ interface DocumentIOOptions {
  * revision invariants independently understandable before later milestones add more
  * workspace panels.
  */
-export function useDocumentIO({ locale, t, stringsRef, setStatus }: DocumentIOOptions) {
+export function useDocumentIO({
+  locale,
+  t,
+  stringsRef,
+  setStatus,
+  setStatusError,
+}: DocumentIOOptions) {
   const store = useDocuments.getState;
   const saving = useRef(new Set<string>());
 
@@ -42,12 +51,12 @@ export function useDocumentIO({ locale, t, stringsRef, setStatus }: DocumentIOOp
             const appData = await window.quantum.invoke('appdata:read', { path: snapshot.path });
             if (appData) store().setAppData(target.id, appData);
           } catch {
-            setStatus(t('status.appDataFailed'));
+            setStatusError(t('status.appDataFailed'));
           }
         }),
       );
     },
-    [setStatus, store, t],
+    [setStatusError, store, t],
   );
 
   const save = useCallback(
@@ -110,14 +119,14 @@ export function useDocumentIO({ locale, t, stringsRef, setStatus }: DocumentIOOp
         if (outcome.status === 'conflict') {
           setStatus(t('status.conflict'));
         } else if (outcome.status === 'error') {
-          setStatus(t('status.saveFailed', { error: outcome.message }));
+          setStatusError(t('status.saveFailed', { error: outcome.message }));
         }
         return false;
       } finally {
         saving.current.delete(current.id);
       }
     },
-    [locale, setStatus, store, t],
+    [locale, setStatus, setStatusError, store, t],
   );
 
   const openDialog = useCallback(async () => {

@@ -306,7 +306,7 @@ export function SnapshotDialog({
 
                 <div className="snapshot-diff">
                   {comparison.hunks.map((hunk: DiffHunk, index) => (
-                    <div className="snapshot-hunk" key={`${index}-${hunk.skippedBefore}`}>
+                    <div key={`${index}-${hunk.skippedBefore}`}>
                       {hunk.skippedBefore > 0 ? <div className="snapshot-gap" /> : null}
                       {hunk.lines.map((line, lineIndex) => (
                         <div
@@ -318,7 +318,7 @@ export function SnapshotDialog({
                           <span className="snapshot-mark" aria-hidden="true">
                             {line.kind === 'added' ? '+' : line.kind === 'removed' ? '−' : ' '}
                           </span>
-                          <span className="snapshot-text">{line.text || ' '}</span>
+                          <span>{line.text || ' '}</span>
                         </div>
                       ))}
                     </div>
@@ -330,7 +330,11 @@ export function SnapshotDialog({
         </div>
       )}
 
-      {feedback ? <p className="ai-feedback">{feedback}</p> : null}
+      {feedback ? (
+        <p className="ai-feedback" role="status">
+          {feedback}
+        </p>
+      ) : null}
     </Dialog>
   );
 }

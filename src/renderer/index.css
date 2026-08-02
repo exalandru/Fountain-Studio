@@ -66,6 +66,10 @@
   --accent-strong: #3b5270;
   --accent-contrast: #fff;
   --warning: #a3541b;
+  /* Semantic colour tokens */
+  --danger: #c34b42; /* Used for error / removal indications */
+  --success: #3fa46a; /* Used for addition confirmations */
+  --accent-secondary: #a855d8; /* Secondary accent (e.g., chart secondary fill) */
   --scrollbar-track: #e7e4df;
   --scrollbar-thumb: #aaa59d;
   --scrollbar-thumb-hover: #817b72;
@@ -111,7 +115,6 @@
   --control-px: var(--control-px-standard);
   --control-fs: var(--control-fs-standard);
   --control-radius: var(--radius-md);
-  --control-gap: 8px;
   --control-inner-gap: 6px;
 
   /* The select caret. --select-caret is its height and the side of each of the two tiles
@@ -122,7 +125,7 @@
 
   /* Referenced by the repetition report and never defined, so the repeated phrase fell back
      to whatever generic monospace the platform chose rather than the screenplay's own face. */
-  --font-mono: 'Courier Prime', 'Courier New', monospace;
+  --font-mono: 'Courier Prime', 'Courier New', ui-monospace, monospace;
 
   /* Scene categories, shared by the timeline and the corkboard: the same scene must not be
      blue on one and green on the other. Pastels rather than theme colours — they carry a
@@ -163,6 +166,10 @@ body[data-theme='dark'] {
   --accent-strong: #5d7fab;
   --accent-contrast: #fff;
   --warning: #e0a26b;
+  /* Semantic colour tokens for dark theme */
+  --danger: #ff6f61; /* Bright red for errors */
+  --success: #68e08a; /* Light green for additions */
+  --accent-secondary: #c084f5; /* Lighter purple for secondary accents */
   --scrollbar-track: #1e1f24;
   --scrollbar-thumb: #4a4c55;
   --scrollbar-thumb-hover: #5d5f69;
@@ -247,10 +254,12 @@ body {
   *::before,
   *::after {
     scroll-behavior: auto !important;
-  }
-
-  .ai-thinking-dot {
-    animation: none !important;
+    /* Not `none`: a duration this short still completes, so anything listening for
+       `animationend` or `transitionend` keeps firing. Covers the analysis orbit, which
+       otherwise spins for the whole length of a request. */
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }
 
@@ -306,9 +315,13 @@ body {
     box-shadow var(--motion);
 }
 
+/* `outline: none` belongs here rather than on the base rule: the base is (0,0,1) and loses
+   to the global `:focus-visible`, so the field ended up with the outline and this inset ring
+   at once. This selector is (0,1,1) and settles it — the inset ring is the field's own. */
 :where(#root) input:focus-visible,
 :where(#root) select:focus-visible,
 :where(#root) textarea:focus-visible {
+  outline: none;
   box-shadow: inset 0 0 0 2px var(--accent);
 }
 
@@ -434,7 +447,6 @@ select.field {
   --control-px: var(--control-px-compact);
   --control-fs: var(--control-fs-compact);
   --control-radius: var(--radius-sm);
-  --control-gap: 6px;
   --select-caret: 5px;
   --select-gap: 8px;
 }
@@ -499,17 +511,6 @@ select.field {
   background: color-mix(in srgb, var(--accent-strong) 88%, #000);
 }
 
-/* A step towards the action rather than the action: no fill until it is pointed at. */
-.button-quiet {
-  background: transparent;
-  color: var(--text-muted);
-}
-
-.button-quiet:not(:disabled):hover {
-  background: var(--fill-hover);
-  color: var(--text);
-}
-
 /* Destructive: quiet until pointed at, and then it says so. */
 .button-danger {
   background: transparent;
@@ -521,43 +522,10 @@ select.field {
   color: var(--warning);
 }
 
-/* The glyph is the label, so the box is as wide as it is tall. */
-.button-icon {
-  width: var(--control-h);
-  padding: 0;
-}
-
-.button-block {
-  display: flex;
-  width: 100%;
-}
-
 /*
- * A row of text that happens to be pressable — a rail entry, a navigator line, an occurrence,
- * a menu item. It keeps the rank height as a floor and gives back the padding and the
- * wrapping that a control does not want.
- */
-.button-row {
-  display: flex;
-  justify-content: flex-start;
-  width: 100%;
-  height: auto;
-  min-height: var(--control-h);
-  padding: 6px var(--control-px);
-  background: transparent;
-  color: inherit;
-  line-height: 1.4;
-  text-align: left;
-  white-space: normal;
-}
-
-.button-row:not(:disabled):hover {
-  background: var(--fill-hover);
-}
-
-/* The named form of the element reset above: for the shared primitive, and for the places
-   that render a value into something that is not an input. */
-/*
+ * The named form of the element reset above: for the shared primitive, and for the places that
+ * render a value into something that is not an input.
+ *
  * `background-color`, never the `background` shorthand — this class lands on selects, and the
  * shorthand would reset the caret drawn by the rule above it to `none`. The same trap the
  * caret's own comment names, reached from the other side.
@@ -827,7 +795,7 @@ select.field {
 }
 
 .toolbar-icon-button:disabled {
-  opacity: 0.28;
+  /* Keep disabled buttons from receiving pointer events; the visual dimming is handled globally via :where(#root) :disabled */
   pointer-events: none;
 }
 
@@ -1234,12 +1202,14 @@ select.field {
   right: 0;
 }
 
+/* Move the timeline toggle button to the right edge so it no longer overlaps the formatting toolbar. */
 .timeline-launcher {
   position: absolute;
   z-index: 6;
   bottom: 8px;
-  left: 50%;
-  transform: translateX(-50%);
+  left: auto;
+  right: 16px;
+  transform: none;
 }
 
 .timeline-launcher button {
@@ -1331,7 +1301,7 @@ body[data-theme='dark'] .preview-pane {
   background: #fff;
   box-shadow: 0 2px 12px #0004;
   color: #111;
-  font-family: 'Courier Prime', 'Courier New', monospace;
+  font-family: var(--font-mono);
   font-size: 16px;
   line-height: 16px;
 }
@@ -1557,10 +1527,15 @@ body[data-theme='dark'] .preview-pane {
   font-size: 11px;
 }
 
+/* The rects carry no `rx`: `preserveAspectRatio="none"` stretches the 100×8 viewBox to the
+   panel's width, and a radius expressed in viewBox units would stretch with it into an
+   ellipse. Rounding the box instead survives the stretch. */
 .stats-chart svg {
   display: block;
   width: 100%;
   height: 10px;
+  overflow: hidden;
+  border-radius: var(--radius-pill);
 }
 
 .stats-chart-track {
@@ -1572,7 +1547,7 @@ body[data-theme='dark'] .preview-pane {
 }
 
 .stats-chart-secondary {
-  fill: #a855d8;
+  fill: var(--accent-secondary);
 }
 
 /*
@@ -1617,6 +1592,8 @@ body[data-theme='dark'] .preview-pane {
   background: var(--surface);
 }
 
+/* Same shape as the navigator's list rows, and the same treatment: the name is allowed to
+   shrink and truncate so a long one cannot push its own counts out of the card. */
 .stats-character-list > div {
   display: flex;
   justify-content: space-between;
@@ -1625,10 +1602,18 @@ body[data-theme='dark'] .preview-pane {
   background: var(--surface-raised);
 }
 
+.stats-character-list strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .stats-character-list span {
+  flex: none;
   color: var(--text-muted);
   font-size: 11px;
   text-align: right;
+  white-space: nowrap;
 }
 
 .stats-actions {
@@ -1696,20 +1681,8 @@ body[data-theme='dark'] .preview-pane {
   min-width: 90px;
 }
 
-.pdf-dialog > footer button:last-child {
-  background: var(--accent-strong);
-  color: var(--accent-contrast);
-  font-weight: 600;
-}
-
-.pdf-dialog > footer button:last-child:not(:disabled):hover {
-  background: color-mix(in srgb, var(--accent-strong) 88%, #000);
-}
-
-.pdf-dialog button:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
-}
+/* Emphasis and the disabled look both come from the control layer: `variant="primary"` on
+   the committing button, and the single `:disabled` rule at the top of this file. */
 
 /* The single row is `minmax(0, 1fr)`, not the implicit `auto`: an auto row takes the height
    of its tallest child, so the options column and the preview grew the body past the dialog
@@ -2347,9 +2320,18 @@ body[data-theme='dark'] .preview-pane {
 }
 
 .sidebar-section-title,
+/* A flex item refuses to shrink below its content unless told it may, so without this a long
+   location name pushes its own occurrence count out of the row. */
+.sidebar-list-identity {
+  min-width: 0;
+}
+
 .sidebar-list-name {
   display: block;
+  overflow: hidden;
   font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .sidebar-section-children {
@@ -2473,7 +2455,7 @@ body[data-theme='dark'] .preview-pane {
   border-radius: var(--radius-md);
   background: var(--surface-sunken);
   color: var(--text);
-  font-family: 'Courier Prime', 'Courier New', monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
   line-height: 1.4;
   white-space: pre;
@@ -2567,17 +2549,8 @@ body[data-theme='dark'] .preview-pane {
   min-width: 90px;
 }
 
-/* The committing action of this footer is its last child — the one thing the control layer
-   cannot know on its own. Goes away with `variant="primary"` when this file adopts <Button>. */
-.ai-settings-dialog > footer button:last-child {
-  background: var(--accent-strong);
-  color: var(--accent-contrast);
-  font-weight: 600;
-}
-
-.ai-settings-dialog > footer button:last-child:not(:disabled):hover {
-  background: color-mix(in srgb, var(--accent-strong) 88%, #000);
-}
+/* The committing action carries `variant="primary"` on the button itself; this footer only
+   has to keep its buttons a comfortable width. */
 
 /*
  * Two columns: the profile rail is a fixed, stable strip and only the detail pane
@@ -2928,7 +2901,7 @@ body[data-theme='dark'] .preview-pane {
   }
 }
 
-@media (max-width: 720px) {
+@media (max-width: 900px) {
   .ai-settings-layout {
     grid-template-columns: 1fr;
   }
@@ -3051,7 +3024,7 @@ body[data-theme='dark'] .preview-pane {
   min-height: 0;
   padding: 0 0 16px;
   overflow: auto;
-  font-family: 'Courier Prime', 'Courier New', ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   line-height: 1.55;
 }
@@ -3075,11 +3048,11 @@ body[data-theme='dark'] .preview-pane {
 }
 
 .snapshot-line.is-added {
-  background: color-mix(in srgb, #3fa46a 18%, transparent);
+  background: color-mix(in srgb, var(--success) 18%, transparent);
 }
 
 .snapshot-line.is-removed {
-  background: color-mix(in srgb, #c34b42 18%, transparent);
+  background: color-mix(in srgb, var(--danger) 18%, transparent);
 }
 
 .snapshot-gutter {
@@ -3094,7 +3067,7 @@ body[data-theme='dark'] .preview-pane {
   user-select: none;
 }
 
-@media (max-width: 720px) {
+@media (max-width: 900px) {
   .snapshot-layout {
     grid-template-columns: 1fr;
   }
@@ -3276,12 +3249,15 @@ body[data-theme='dark'] .preview-pane {
   font-size: 14px;
 }
 
+/* The same reaction as `.toolbar-icon-button`: these two bars sit on the same screen and a
+   button that answers the pointer differently in each reads as a different kind of control. */
 .formatting-toolbar button:hover {
-  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  background: var(--fill-hover);
+  color: var(--text);
 }
 
 .formatting-toolbar button.is-active {
-  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  background: var(--tint-accent-strong);
   color: var(--accent);
 }
 
@@ -3347,7 +3323,7 @@ body[data-theme='dark'] .preview-pane {
 }
 
 .consistency-item.severity-major::before {
-  background: #c34b42;
+  background: var(--danger);
 }
 
 .consistency-item.severity-minor::before {
@@ -4447,6 +4423,11 @@ body[data-theme='dark'] .preview-pane {
   background: color-mix(in srgb, var(--surface-overlay) 94%, transparent);
   box-shadow: var(--elev-3);
   backdrop-filter: blur(18px);
+  /* Paired with `MARGIN` in EditorContextMenu.tsx: the component clamps `top` to leave the
+     same 8px at each edge, so a menu taller than the window scrolls rather than running off
+     the bottom of it. */
+  max-height: calc(100vh - 16px);
+  overflow-y: auto;
 }
 
 .editor-context-menu button {
@@ -4467,10 +4448,6 @@ body[data-theme='dark'] .preview-pane {
 
 .editor-context-menu button:hover:not(:disabled) {
   background: color-mix(in srgb, var(--accent) 14%, transparent);
-}
-
-.editor-context-menu button:disabled {
-  opacity: 0.36;
 }
 
 .editor-context-menu svg {

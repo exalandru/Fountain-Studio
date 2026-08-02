@@ -11,17 +11,15 @@ import type { ButtonHTMLAttributes, Ref } from 'react';
 export type ControlScale = 'compact' | 'standard';
 
 /**
- * `primary` commits, `danger` destroys, `quiet` is an action that must not compete with the
- * text beside it, and `neutral` is everything else. There is deliberately no `secondary`: a
- * dialog with two ranks of emphasis below the primary reads as three primaries.
+ * `primary` commits, `danger` destroys, and `neutral` is everything else. There is
+ * deliberately no `secondary`: a dialog with two ranks of emphasis below the primary reads as
+ * three primaries.
  */
-export type ButtonVariant = 'neutral' | 'primary' | 'danger' | 'quiet';
+export type ButtonVariant = 'neutral' | 'primary' | 'danger';
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: ButtonVariant;
   scale?: ControlScale;
-  /** Square, for a button whose glyph is its label. Pair with an `aria-label`. */
-  icon?: boolean;
   ref?: Ref<HTMLButtonElement>;
 }
 
@@ -35,7 +33,6 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 export function Button({
   variant = 'neutral',
   scale = 'standard',
-  icon = false,
   // Always written out: a button inside a form defaults to `submit`, and two of these live
   // in one. Every call site in this codebase already said so by hand; the default only makes
   // the discipline free.
@@ -44,7 +41,6 @@ export function Button({
   ...rest
 }: ButtonProps) {
   const classes = ['button', `button-${variant}`, `control-${scale}`];
-  if (icon) classes.push('button-icon');
   if (className) classes.push(className);
   return <button type={type} className={classes.join(' ')} {...rest} />;
 }

@@ -90,6 +90,7 @@ export const fr: Catalog = {
   'spell.english': 'Anglais',
   'spell.noSuggestions': 'Aucune suggestion',
   'spell.addGlobal': 'Ajouter « {word} » au dictionnaire global',
+  'contextMenu.label': 'Édition',
 
   // ── Menu : Fenêtre et Aide ───────────────────────────────────────────────
   'menu.window': 'Fenêtre',
@@ -582,6 +583,7 @@ export const fr: Catalog = {
   'consistency.severity.info': 'Information',
   'consistency.severity.minor': 'Mineure',
   'consistency.severity.major': 'Majeure',
+  'consistency.statusLabel': 'État de ce constat',
   'consistency.status.open': 'À traiter',
   'consistency.status.ignored': 'Ignoré',
   'consistency.status.resolved': 'Résolu',

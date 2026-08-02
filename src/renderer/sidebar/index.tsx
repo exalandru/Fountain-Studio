@@ -209,7 +209,7 @@ export const Sidebar = memo(function Sidebar({
           structureEmpty ? (
             <div className="panel-placeholder">{t('sidebar.noResults')}</div>
           ) : (
-            <div className="sidebar-structure">
+            <div>
               {rootScenes.map((scene) => renderScene(scene.index - 1))}
               {analysis.sections.map((section) => renderSection(section))}
             </div>
@@ -228,7 +228,7 @@ export const Sidebar = memo(function Sidebar({
                   key={location.name}
                   onClick={() => cycle(`location:${location.name}`, location.occurrences)}
                 >
-                  <span>
+                  <span className="sidebar-list-identity">
                     <span className="sidebar-list-name">{location.name}</span>
                     {location.mixed ? (
                       <span className="sidebar-location-mixed">{t('sidebar.locationMixed')}</span>
@@ -255,7 +255,9 @@ export const Sidebar = memo(function Sidebar({
                   key={character.name}
                   onClick={() => cycle(`character:${character.name}`, character.occurrences)}
                 >
-                  <span className="sidebar-list-name">{character.name}</span>
+                  <span className="sidebar-list-identity">
+                    <span className="sidebar-list-name">{character.name}</span>
+                  </span>
                   <span className="sidebar-list-stat">
                     {t('sidebar.speeches', { count: character.speeches })}
                     {' · '}

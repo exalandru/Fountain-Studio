@@ -99,7 +99,8 @@ export const DEFAULT_APP_DATA: Readonly<AppData> = {
   },
   preview: {
     visible: true,
-    width: 280,
+    // The UI now expects the preview panel to start at the minimum size of the resize handle (320 px).
+    width: 320,
     syncScroll: false,
     activeTab: 'statistics',
   },

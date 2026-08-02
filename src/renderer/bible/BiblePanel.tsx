@@ -907,7 +907,11 @@ export function BiblePanel({ path, analysis, t, onClose }: BiblePanelProps) {
         </div>
       )}
 
-      {feedback ? <p className="ai-feedback">{feedback}</p> : null}
+      {feedback ? (
+        <p className="ai-feedback" role="status">
+          {feedback}
+        </p>
+      ) : null}
     </Dialog>
   );
 }

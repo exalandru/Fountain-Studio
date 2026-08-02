@@ -28,6 +28,8 @@ export interface AppOverlaysProps {
   locale: 'en' | 'fr';
   t: Translator['t'];
   setStatus: (message: string) => void;
+  /** Used for error messages that should appear with the warning style. */
+  setStatusError: (message: string) => void;
   executeCommand: (command: MenuCommand) => void;
   paletteCommands: PaletteCommand[];
   pdfOpen: boolean;
@@ -78,6 +80,7 @@ export function AppOverlays({
   locale,
   t,
   setStatus,
+  setStatusError,
   executeCommand,
   paletteCommands,
   pdfOpen,
@@ -127,7 +130,7 @@ export function AppOverlays({
             setStatus(t('status.exported', { path }));
             setPdfOpen(false);
           }}
-          onError={(error) => setStatus(t('status.exportFailed', { error }))}
+          onError={(error) => setStatusError(t('status.exportFailed', { error }))}
           onClose={() => setPdfOpen(false)}
         />
       ) : null}

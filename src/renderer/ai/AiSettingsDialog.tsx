@@ -332,7 +332,9 @@ export function AiSettingsDialog({ onClose, onSaved }: AiSettingsDialogProps) {
             </Button>
 
             {!view.secureStorageAvailable ? (
-              <p className="ai-warning">{t('ai.settings.sessionKeyWarning')}</p>
+              <p className="ai-warning" role="alert">
+                {t('ai.settings.sessionKeyWarning')}
+              </p>
             ) : null}
           </div>
 
@@ -491,7 +493,7 @@ export function AiSettingsDialog({ onClose, onSaved }: AiSettingsDialogProps) {
             <details className="ai-advanced">
               <summary>{t('ai.settings.advanced')}</summary>
               <Checkbox
-                className="ai-check ai-reasoning-toggle"
+                className="ai-reasoning-toggle"
                 label={<span>{t('ai.settings.disableReasoning')}</span>}
                 checked={!activeProfile.reasoningEnabled}
                 onChange={(checked) => patchProfile('reasoningEnabled', !checked)}
@@ -501,7 +503,11 @@ export function AiSettingsDialog({ onClose, onSaved }: AiSettingsDialogProps) {
               ) : null}
             </details>
 
-            {feedback ? <p className="ai-feedback">{feedback}</p> : null}
+            {feedback ? (
+              <p className="ai-feedback" role="status">
+                {feedback}
+              </p>
+            ) : null}
           </div>
         </div>
       )}

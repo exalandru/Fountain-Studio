@@ -18,6 +18,7 @@ export function useRevisionActions(
   updateAppData: (update: (current: AppData) => AppData) => void,
   t: Translator['t'],
   setStatus: (message: string) => void,
+  setStatusError: (message: string) => void,
 ) {
   const store = useDocuments.getState;
 
@@ -88,9 +89,9 @@ export function useRevisionActions(
       }));
       setStatus(t('revision.locked', { count: scenes.length, colour: t('revision.colour.blue') }));
     } catch (error) {
-      setStatus(t('revision.failed', { error: error instanceof Error ? error.message : '' }));
+      setStatusError(t('revision.failed', { error: error instanceof Error ? error.message : '' }));
     }
-  }, [editorView, setStatus, snapshotReference, store, t, updateAppData]);
+  }, [editorView, setStatus, setStatusError, snapshotReference, store, t, updateAppData]);
 
   const issueRevision = useCallback(async () => {
     const view = editorView.current;
@@ -128,9 +129,9 @@ export function useRevisionActions(
         }),
       );
     } catch (error) {
-      setStatus(t('revision.failed', { error: error instanceof Error ? error.message : '' }));
+      setStatusError(t('revision.failed', { error: error instanceof Error ? error.message : '' }));
     }
-  }, [editorView, setStatus, snapshotReference, store, t, updateAppData]);
+  }, [editorView, setStatus, setStatusError, snapshotReference, store, t, updateAppData]);
 
   const unlockProduction = useCallback(() => {
     updateAppData((data) => ({

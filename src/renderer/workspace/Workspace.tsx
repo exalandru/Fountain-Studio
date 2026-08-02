@@ -34,7 +34,9 @@ interface WorkspaceProps {
   effectiveDark: boolean;
   previewScrollPosition: ScrollPosition;
   settings: AppSettings;
-  status: string | null;
+  // Status messages now carry a tone (info or error). The footer renders the text and
+  // applies the warning style for errors.
+  status: { text: string; tone: 'info' | 'error' } | null;
   /** Translated colour of the revision under way, or `null` when nothing is locked. */
   revisionColour: string | null;
   t: Translator['t'];
@@ -477,7 +479,23 @@ export function Workspace({
             {t('revision.status', { colour: revisionColour })}
           </span>
         )}
-        <span className="status-message">{status}</span>
+        {/*
+          Always rendered, for two reasons. A live region has to exist before its content
+          changes or the change is never announced; and `.status-message` carries `flex: 1`,
+          so it is also what holds the timing and diagnostics counts out at the right edge —
+          without it they slide back in whenever there is nothing to say.
+
+          Both classes together, never one or the other: `.status-message` owns the `flex: 1`
+          and the ellipsis, `.status-warning` only the colour. Swapping them would strip the
+          truncation from the one message that embeds a whole file path, in a bar that has no
+          `flex-wrap` to absorb it.
+        */}
+        <span
+          className={`status-message${status?.tone === 'error' ? ' status-warning' : ''}`}
+          role="status"
+        >
+          {status?.text ?? ''}
+        </span>
         {analysis && (
           <span className="status-timing">
             {t('status.analysis', { ms: analysis.durationMs.toFixed(0) })}

@@ -92,6 +92,7 @@ export const en = {
   'spell.english': 'English',
   'spell.noSuggestions': 'No suggestions',
   'spell.addGlobal': 'Add “{word}” to Global Dictionary',
+  'contextMenu.label': 'Editor actions',
 
   // ── Menu: Window and Help ────────────────────────────────────────────────
   'menu.window': 'Window',
@@ -575,6 +576,7 @@ export const en = {
   'consistency.severity.info': 'Info',
   'consistency.severity.minor': 'Minor',
   'consistency.severity.major': 'Major',
+  'consistency.statusLabel': 'Status of this finding',
   'consistency.status.open': 'To address',
   'consistency.status.ignored': 'Ignored',
   'consistency.status.resolved': 'Resolved',

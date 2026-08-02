@@ -6,12 +6,15 @@ import { useDocuments } from '../store/documents.js';
 
 interface RecoveryOptions {
   stringsRef: RefObject<NewDocumentStrings>;
+  /** Informational messages such as “recovered”. */
   setStatus: (message: string) => void;
+  /** Error messages, displayed with the warning style. */
+  setStatusError: (message: string) => void;
   t: Translator['t'];
 }
 
 /** Restores crash snapshots exactly once during renderer startup. */
-export function useRecovery({ stringsRef, setStatus, t }: RecoveryOptions): void {
+export function useRecovery({ stringsRef, setStatus, setStatusError, t }: RecoveryOptions): void {
   const store = useDocuments.getState;
 
   useEffect(() => {
@@ -38,7 +41,7 @@ export function useRecovery({ stringsRef, setStatus, t }: RecoveryOptions): void
           const appData = await window.quantum.invoke('appdata:read', { path: record.path });
           if (!cancelled && appData) store().setAppData(id, appData);
         } catch {
-          if (!cancelled) setStatus(t('status.appDataFailed'));
+          if (!cancelled) setStatusError(t('status.appDataFailed'));
         }
       }
 

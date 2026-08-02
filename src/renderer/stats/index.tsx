@@ -33,12 +33,15 @@ function SplitBar({
       </div>
       <svg
         viewBox="0 0 100 8"
+        preserveAspectRatio="none"
         role="img"
         aria-label={`${leftLabel} ${left}%, ${rightLabel} ${right}%`}
       >
-        <rect width="100" height="8" rx="4" className="stats-chart-track" />
-        <rect width={left} height="8" rx="4" className="stats-chart-primary" />
-        <rect x={left} width={right} height="8" rx="4" className="stats-chart-secondary" />
+        {/* Remove rounded corners (rx) because with preserveAspectRatio the rects would become ellipses.
+            The surrounding CSS adds border‑radius where needed. */}
+        <rect width="100" height="8" className="stats-chart-track" />
+        <rect width={left} height="8" className="stats-chart-primary" />
+        <rect x={left} width={right} height="8" className="stats-chart-secondary" />
       </svg>
     </div>
   );

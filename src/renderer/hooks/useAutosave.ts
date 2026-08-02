@@ -8,7 +8,8 @@ interface AutosaveOptions {
   activeAppData: AppData | null;
   activeAppDataRevision: number;
   autosaveSeconds: number;
-  setStatus: (message: string) => void;
+  /** Called when the autosave write fails – displays an error. */
+  setStatusError: (message: string) => void;
   t: Translator['t'];
 }
 
@@ -18,7 +19,7 @@ export function useAutosave({
   activeAppData,
   activeAppDataRevision,
   autosaveSeconds,
-  setStatus,
+  setStatusError,
   t,
 }: AutosaveOptions): void {
   const store = useDocuments.getState;
@@ -28,10 +29,10 @@ export function useAutosave({
     const timer = setTimeout(() => {
       void window.quantum
         .invoke('appdata:write', { path: activePath, data: activeAppData })
-        .catch(() => setStatus(t('status.appDataFailed')));
+        .catch(() => setStatusError(t('status.appDataFailed')));
     }, 300);
     return () => clearTimeout(timer);
-  }, [activeAppData, activeAppDataRevision, activePath, setStatus, t]);
+  }, [activeAppData, activeAppDataRevision, activePath, setStatusError, t]);
 
   useEffect(() => {
     if (autosaveSeconds <= 0) return;

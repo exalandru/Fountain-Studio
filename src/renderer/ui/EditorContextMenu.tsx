@@ -1,9 +1,13 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import type { KeyboardEvent } from 'react';
 import type { ReactNode } from 'react';
 import type { EditorContextAction, IpcEvents } from '@shared/ipc-contract.js';
 import type { Translator } from '@shared/i18n/index.js';
 
 type MenuState = IpcEvents['editor:contextMenu'];
+
+/** Kept clear of the window edges, and paired with the `max-height` in the stylesheet. */
+const MARGIN = 8;
 
 function Icon({ children }: { children: ReactNode }) {
   return (
@@ -85,10 +89,29 @@ export function EditorContextMenu({
 }: EditorContextMenuProps) {
   const [menu, setMenu] = useState<MenuState | null>(null);
 
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  /**
+   * Whatever held the focus when the menu opened — in practice CodeMirror's contenteditable.
+   * Stored as-is: matching it against a `button, input, select` list never succeeds for a
+   * contenteditable, and a null opener means the focus lands on `document.body` when the menu
+   * closes, which leaves the author with no cursor.
+   */
+  const openerRef = useRef<HTMLElement | null>(null);
   useEffect(() => window.quantum.on('editor:contextMenu', setMenu), []);
+
+  const dismiss = () => {
+    setMenu(null);
+    openerRef.current?.focus();
+  };
+
   useEffect(() => {
     if (!menu) return;
-    const close = () => setMenu(null);
+    openerRef.current =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
+
+    // `dismiss` is re-created every render, but it only ever calls a state setter and a ref,
+    // so the copy these listeners capture stays correct.
+    const close = () => dismiss();
     window.addEventListener('blur', close);
     window.addEventListener('resize', close);
     document.addEventListener('pointerdown', close);
@@ -99,25 +122,88 @@ export function EditorContextMenu({
     };
   }, [menu]);
 
+  // Focus the first enabled item, so the menu is reachable when it is opened from the keyboard.
+  useEffect(() => {
+    if (!menu) return;
+    containerRef.current
+      ?.querySelector<HTMLElement>('button[role=menuitem]:not([disabled])')
+      ?.focus();
+  }, [menu]);
+
+  /*
+   * The menu can only be kept on screen once its height is known, and that depends on what the
+   * click produced — six spelling suggestions or none. Measuring in a layout effect runs
+   * before paint, so the corrected position is the first one drawn.
+   *
+   * Written straight onto the node rather than through state: this is the "manually updating
+   * the DOM" case, and routing a measurement back through a render would cost a second pass
+   * for a value the browser already has.
+   */
+  useLayoutEffect(() => {
+    const element = containerRef.current;
+    if (!menu || !element) return;
+    const { height } = element.getBoundingClientRect();
+    const top = Math.max(MARGIN, Math.min(menu.y, window.innerHeight - height - MARGIN));
+    element.style.top = `${top}px`;
+  }, [menu]);
+
   if (!menu) return null;
   const runSystem = (action: EditorContextAction, value?: string) => {
     setMenu(null);
+    // Before the invoke, not after: the action is applied to whatever holds the focus, and by
+    // now that is a button of a menu about to unmount.
+    openerRef.current?.focus();
     void window.quantum.invoke('editor:contextAction', { action, value });
   };
   const runAi = (callback: () => void) => {
     setMenu(null);
+    openerRef.current?.focus();
     callback();
   };
   const left = Math.min(menu.x, window.innerWidth - 276);
-  const top = Math.min(menu.y, window.innerHeight - 430);
+
+  // Keyboard navigation for the menu
+  const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    const items = Array.from(
+      containerRef.current?.querySelectorAll('button[role=menuitem]:not([disabled])') ?? [],
+    ) as HTMLElement[];
+    if (!items.length) return;
+    const currentIdx = items.findIndex((item) => item === document.activeElement);
+    let nextIdx = -1;
+    switch (event.key) {
+      case 'ArrowDown':
+        nextIdx = (currentIdx + 1) % items.length;
+        break;
+      case 'ArrowUp':
+        nextIdx = (currentIdx - 1 + items.length) % items.length;
+        break;
+      case 'Home':
+        nextIdx = 0;
+        break;
+      case 'End':
+        nextIdx = items.length - 1;
+        break;
+      case 'Escape':
+        event.stopPropagation();
+        dismiss();
+        return;
+    }
+    if (nextIdx >= 0 && items[nextIdx]) {
+      event.preventDefault();
+      items[nextIdx]!.focus();
+    }
+  };
 
   return (
     <div
       className="editor-context-menu"
       role="menu"
-      style={{ left: Math.max(8, left), top: Math.max(8, top) }}
+      aria-label={t('contextMenu.label')}
+      ref={containerRef}
+      style={{ left: Math.max(MARGIN, left), top: Math.max(MARGIN, menu.y) }}
       onPointerDown={(event) => event.stopPropagation()}
       onContextMenu={(event) => event.preventDefault()}
+      onKeyDown={handleKeyDown}
     >
       {menu.misspelledWord ? (
         <>
@@ -127,6 +213,7 @@ export function EditorContextMenu({
               <button
                 type="button"
                 role="menuitem"
+                tabIndex={-1}
                 key={suggestion}
                 onClick={() => runSystem('replaceMisspelling', suggestion)}
               >
@@ -135,7 +222,7 @@ export function EditorContextMenu({
               </button>
             ))
           ) : (
-            <button type="button" role="menuitem" disabled>
+            <button type="button" role="menuitem" tabIndex={-1} disabled>
               {ICONS.spelling}
               <span>{t('spell.noSuggestions')}</span>
             </button>
@@ -143,6 +230,7 @@ export function EditorContextMenu({
           <button
             type="button"
             role="menuitem"
+            tabIndex={-1}
             onClick={() => runSystem('addToDictionary', menu.misspelledWord)}
           >
             {ICONS.spelling}
@@ -155,6 +243,7 @@ export function EditorContextMenu({
       <button
         type="button"
         role="menuitem"
+        tabIndex={-1}
         disabled={!menu.singleWord}
         onClick={() => runAi(onSynonyms)}
       >
@@ -164,6 +253,7 @@ export function EditorContextMenu({
       <button
         type="button"
         role="menuitem"
+        tabIndex={-1}
         disabled={!menu.selectedText || menu.singleWord}
         onClick={() => runAi(onRewrite)}
       >
@@ -173,6 +263,7 @@ export function EditorContextMenu({
       <button
         type="button"
         role="menuitem"
+        tabIndex={-1}
         disabled={!menu.characterLike}
         onClick={() => runAi(onRenameCharacter)}
       >
@@ -184,6 +275,7 @@ export function EditorContextMenu({
         <button
           type="button"
           role="menuitem"
+          tabIndex={-1}
           disabled={!menu.editFlags.canUndo}
           onClick={() => runSystem('undo')}
         >
@@ -193,6 +285,7 @@ export function EditorContextMenu({
         <button
           type="button"
           role="menuitem"
+          tabIndex={-1}
           disabled={!menu.editFlags.canRedo}
           onClick={() => runSystem('redo')}
         >
@@ -212,6 +305,7 @@ export function EditorContextMenu({
         <button
           type="button"
           role="menuitem"
+          tabIndex={-1}
           key={action}
           disabled={!enabled}
           onClick={() => runSystem(action)}

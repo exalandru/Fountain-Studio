@@ -33,12 +33,32 @@ export function CharacterNameDialog({ selection, onRename, onClose }: CharacterN
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Cancel any pending AI request on unmount.
   useEffect(
     () => () => {
       void requestRef.current?.cancel();
     },
     [],
   );
+
+  /*
+   * Hands the focus back on close. Stored as-is for the same reason as in the rewrite
+   * popover: the opener is CodeMirror's contenteditable, which no control selector matches.
+   * The input below claims the focus itself with `autoFocus`.
+   */
+  useEffect(() => {
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    return () => opener?.focus();
+  }, []);
+
+  // Ensure Escape key closes the dialog even when focus is elsewhere.
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [onClose]);
 
   const suggest = async () => {
     await requestRef.current?.cancel();
@@ -95,9 +115,6 @@ export function CharacterNameDialog({ selection, onRename, onClose }: CharacterN
       aria-modal="false"
       aria-label={t('characterName.title')}
       style={{ top, left }}
-      onKeyDown={(event) => {
-        if (event.key === 'Escape') onClose();
-      }}
     >
       <header>
         <strong>{t('characterName.title')}</strong>
@@ -144,7 +161,11 @@ export function CharacterNameDialog({ selection, onRename, onClose }: CharacterN
         </Button>
         <small>{t('characterName.undoHint')}</small>
       </div>
-      {error ? <p className="ai-warning">{error}</p> : null}
+      {error ? (
+        <p className="ai-warning" role="alert">
+          {error}
+        </p>
+      ) : null}
       <div className="rewrite-results character-name-results">
         {suggestions.map((suggestion) => (
           <button

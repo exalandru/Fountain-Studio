@@ -58,17 +58,33 @@ export function RewriteDialog({
 }: RewriteDialogProps) {
   const { t } = useTranslator();
   const requestRef = useRef<AiRequestHandle | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
   const tool = selection.initialTool ?? 'rewrite';
   const [variants, setVariants] = useState<string[]>([]);
   const [phase, setPhase] = useState<'idle' | 'waiting' | 'reasoning' | 'answering'>('idle');
   const [error, setError] = useState<string | null>(null);
 
+  // Cancel any pending AI request on unmount.
   useEffect(
     () => () => {
       void requestRef.current?.cancel();
     },
     [],
   );
+
+  /*
+   * Takes the focus on open and hands it back on close.
+   *
+   * The opener is stored as-is rather than filtered through a `button, input, select` list:
+   * this popover is opened from the editor, whose focused element is CodeMirror's
+   * contenteditable, which matches none of those — so the filtered form always yielded null
+   * and the focus was dropped on `document.body`.
+   */
+  useEffect(() => {
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    containerRef.current?.querySelector<HTMLElement>('button, input, select, textarea')?.focus();
+    return () => opener?.focus();
+  }, []);
 
   const generate = async () => {
     await requestRef.current?.cancel();
@@ -148,6 +164,7 @@ export function RewriteDialog({
       aria-modal="false"
       aria-label={t(tool === 'synonyms' ? 'rewrite.synonymsTitle' : 'rewrite.title')}
       style={{ top, left }}
+      ref={containerRef}
     >
       <header>
         <strong>{t(tool === 'synonyms' ? 'rewrite.synonymsTitle' : 'rewrite.title')}</strong>
@@ -190,7 +207,11 @@ export function RewriteDialog({
             {phase === 'reasoning' ? t('ai.request.reasoning') : t('rewrite.generating')}
           </div>
         ) : null}
-        {error ? <p className="ai-warning">{error}</p> : null}
+        {error ? (
+          <p className="ai-warning" role="alert">
+            {error}
+          </p>
+        ) : null}
         {variants.map((variant, index) => (
           <button
             key={`${index}-${variant}`}

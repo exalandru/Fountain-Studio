@@ -28,7 +28,23 @@ export function App() {
   const settings = useDocuments((state) => state.settings);
   const store = useDocuments.getState;
   const { t, locale } = useTranslator();
-  const [status, setStatus] = useState<string | null>(null);
+  /*
+   * The footer message carries its own severity and clears itself.
+   *
+   * Neither was true before: an export failure read as a neutral note, and every message
+   * stayed for the rest of the session.
+   */
+  type StatusInfo = { text: string; tone: 'info' | 'error' };
+  const [statusObj, setStatusObj] = useState<StatusInfo | null>(null);
+
+  const setStatus = (text: string) => setStatusObj({ text, tone: 'info' });
+  const setStatusError = (text: string) => setStatusObj({ text, tone: 'error' });
+
+  useEffect(() => {
+    if (!statusObj) return undefined;
+    const timer = window.setTimeout(() => setStatusObj(null), 6_000);
+    return () => window.clearTimeout(timer);
+  }, [statusObj]);
 
   const active = documents.find((d) => d.id === activeId) ?? null;
   const anyDirty = documents.some((document) => document.dirty);
@@ -59,6 +75,7 @@ export function App() {
     t,
     stringsRef,
     setStatus,
+    setStatusError,
   });
 
   const { effectiveDark, patchSettings } = useAppShellEffects({
@@ -69,7 +86,7 @@ export function App() {
     save,
   });
 
-  useRecovery({ stringsRef, setStatus, t });
+  useRecovery({ stringsRef, setStatus, setStatusError, t });
 
   const updateAppData = useCallback(
     (update: (current: AppData) => AppData) => {
@@ -88,7 +105,7 @@ export function App() {
     activeAppData,
     activeAppDataRevision,
     autosaveSeconds: settings.autosaveSeconds,
-    setStatus,
+    setStatusError,
     t,
   });
 
@@ -104,6 +121,7 @@ export function App() {
     updateAppData,
     t,
     setStatus,
+    setStatusError,
   );
 
   const ai = useAiEditorActions(
@@ -195,7 +213,7 @@ export function App() {
       if (outcome.status === 'exported') {
         setStatus(t('status.exported', { path: outcome.path }));
       } else if (outcome.status === 'error') {
-        setStatus(t('status.exportFailed', { error: outcome.message }));
+        setStatusError(t('status.exportFailed', { error: outcome.message }));
       }
     },
     [analysis, store, t],
@@ -221,7 +239,7 @@ export function App() {
         effectiveDark={effectiveDark}
         previewScrollPosition={chrome.previewScrollPosition}
         settings={settings}
-        status={status}
+        status={statusObj}
         revisionColour={locked && revision ? t(`revision.colour.${revision.colour}`) : null}
         t={t}
         onCloseTab={(id) => void closeTab(id)}
@@ -272,6 +290,7 @@ export function App() {
         locale={locale}
         t={t}
         setStatus={setStatus}
+        setStatusError={setStatusError}
         executeCommand={executeCommand}
         paletteCommands={paletteCommands}
         pdfOpen={ai.pdfOpen}
