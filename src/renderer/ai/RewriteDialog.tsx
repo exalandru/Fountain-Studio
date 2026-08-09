@@ -10,6 +10,10 @@ import {
   SYNONYM_SYSTEM_PROMPT,
 } from '@shared/ai/index.js';
 import { useTranslator } from '../hooks/useTranslator.js';
+import {
+  beginDocumentOperation,
+  type DocumentOperationContext,
+} from '@shared/documents/operations.js';
 import type { AiRequestHandle } from './request.js';
 import { startCollectedAiRequest } from './request.js';
 import { CloseButton } from '../ui/CloseButton.js';
@@ -19,6 +23,7 @@ import { Select } from '../ui/Select.js';
 import { TextInput } from '../ui/TextInput.js';
 
 export interface RewriteSelection {
+  operation: DocumentOperationContext;
   from: number;
   to: number;
   text: string;
@@ -34,7 +39,7 @@ interface RewriteDialogProps {
   selection: RewriteSelection;
   state: RewriteState;
   onStateChange: (state: RewriteState) => void;
-  onReplace: (from: number, to: number, content: string) => void;
+  onReplace: (selection: RewriteSelection, content: string) => boolean;
   onClose: () => void;
 }
 
@@ -58,6 +63,7 @@ export function RewriteDialog({
 }: RewriteDialogProps) {
   const { t } = useTranslator();
   const requestRef = useRef<AiRequestHandle | null>(null);
+  const latestOperation = useRef<DocumentOperationContext | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const tool = selection.initialTool ?? 'rewrite';
   const [variants, setVariants] = useState<string[]>([]);
@@ -67,6 +73,7 @@ export function RewriteDialog({
   // Cancel any pending AI request on unmount.
   useEffect(
     () => () => {
+      latestOperation.current = null;
       void requestRef.current?.cancel();
     },
     [],
@@ -88,14 +95,23 @@ export function RewriteDialog({
 
   const generate = async () => {
     await requestRef.current?.cancel();
+    const operation = beginDocumentOperation(
+      {
+        id: selection.operation.documentId,
+        revision: selection.operation.documentRevision,
+      },
+      'rewrite',
+    );
+    latestOperation.current = operation;
     setVariants([]);
     setError(null);
     setPhase('waiting');
     try {
       const config = await window.quantum.invoke('ai:config:get', undefined);
+      if (latestOperation.current?.requestId !== operation.requestId) return;
       const request = startCollectedAiRequest(
         {
-          requestId: `rewrite-${crypto.randomUUID()}`,
+          requestId: operation.requestId,
           profileId: config.activeProfileId,
           mode: 'creative',
           temperature: tool === 'synonyms' ? 0.7 : 0.8,
@@ -123,6 +139,7 @@ export function RewriteDialog({
       );
       requestRef.current = request;
       const output = await request.promise;
+      if (latestOperation.current?.requestId !== operation.requestId) return;
       const parsed =
         tool === 'synonyms' ? parseShortSuggestions(output) : parseRewriteVariants(output);
       if (parsed.length === 0 || (tool === 'rewrite' && parsed.length !== 3)) {
@@ -131,6 +148,7 @@ export function RewriteDialog({
       setVariants(parsed);
       setPhase('idle');
     } catch (reason) {
+      if (latestOperation.current?.requestId !== operation.requestId) return;
       setError(reason instanceof Error ? reason.message : String(reason));
       setPhase('idle');
     }
@@ -218,8 +236,7 @@ export function RewriteDialog({
             type="button"
             className="rewrite-variant"
             onClick={() => {
-              onReplace(selection.from, selection.to, variant);
-              onClose();
+              if (onReplace(selection, variant)) onClose();
             }}
           >
             <span>{index + 1}</span>

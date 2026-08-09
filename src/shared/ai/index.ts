@@ -11,6 +11,15 @@ import type { Locale } from '../i18n/types.js';
 import type { AiProviderKind } from './providers/types.js';
 import { DEFAULT_PROVIDER, isProviderKind } from './providers/types.js';
 
+export {
+  AI_REQUEST_LIMIT_DEFAULTS,
+  aiRequestLimits,
+  appendCollectedAiChunk,
+  type AiRequestLimits,
+} from './limits.js';
+
+export { aiEndpointOrigin, sameAiEndpointOrigin } from './origin.js';
+
 export interface AiConnectionProfile {
   id: string;
   name: string;
@@ -165,6 +174,7 @@ export type AiErrorCode =
   | 'network'
   | 'invalidRequest'
   | 'cancelled'
+  | 'responseTooLarge'
   | 'unknown';
 
 export function approximateTokens(text: string): number {

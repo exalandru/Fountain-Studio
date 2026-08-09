@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, useRef } from 'react';
 import type { RefObject } from 'react';
 import { isolateHistory } from '@codemirror/commands';
 import type { EditorView } from '@codemirror/view';
@@ -7,6 +7,11 @@ import { parse } from '@shared/fountain/index.js';
 import type { Translator } from '@shared/i18n/index.js';
 import { nextRevisionColour, planSceneNumbering } from '@shared/revision/index.js';
 import { fountainLexField } from '../editor/fountain-highlight.js';
+import {
+  beginDocumentOperation,
+  commitDocumentOperation,
+  type DocumentOperationContext,
+} from '@shared/documents/operations.js';
 import { useDocuments } from '../store/documents.js';
 
 /**
@@ -21,11 +26,43 @@ export function useRevisionActions(
   setStatusError: (message: string) => void,
 ) {
   const store = useDocuments.getState;
+  const latestByDocument = useRef(new Map<string, string>());
+
+  const beginRevisionOperation = useCallback(
+    (documentId: string, prefix: string): DocumentOperationContext | null => {
+      const document = store().documents.find((candidate) => candidate.id === documentId);
+      if (!document) return null;
+      const operation = beginDocumentOperation(document, prefix);
+      latestByDocument.current.set(documentId, operation.requestId);
+      return operation;
+    },
+    [store],
+  );
+
+  const commitRevisionOperation = useCallback(
+    (operation: DocumentOperationContext, update: (current: AppData) => AppData): boolean => {
+      const status = commitDocumentOperation(
+        store().documents,
+        operation,
+        (document) => store().setAppData(document.id, update(document.appData), true),
+        latestByDocument.current.get(operation.documentId),
+      );
+      if (status === 'current') return true;
+      setStatus(t('operation.stale'));
+      return false;
+    },
+    [setStatus, store, t],
+  );
 
   const snapshotReference = useCallback(async (path: string, name: string, content: string) => {
     const before = await window.quantum.invoke('snapshot:list', { path });
+    if (before.status !== 'ok') {
+      throw new Error('indexDamaged');
+    }
     const after = await window.quantum.invoke('snapshot:create', { path, name, content });
-    return after.find((meta) => !before.some((previous) => previous.id === meta.id)) ?? null;
+    return (
+      after.find((meta) => !before.snapshots.some((previous) => previous.id === meta.id)) ?? null
+    );
   }, []);
 
   const numberScenes = useCallback(() => {
@@ -79,19 +116,33 @@ export function useRevisionActions(
       view.dispatch({ changes: edits, annotations: isolateHistory.of('full') });
     }
     const numbered = view.state.doc.toString();
+    const operation = beginRevisionOperation(current.id, 'revision-lock');
+    if (!operation) return;
 
     try {
       const created = await snapshotReference(current.path, t('revision.lockName'), numbered);
       if (!created) return;
-      updateAppData((data) => ({
-        ...data,
-        revision: { snapshotId: created.id, lockedAt: created.createdAt, colour: 'blue' },
-      }));
+      if (
+        !commitRevisionOperation(operation, (data) => ({
+          ...data,
+          revision: { snapshotId: created.id, lockedAt: created.createdAt, colour: 'blue' },
+        }))
+      )
+        return;
       setStatus(t('revision.locked', { count: scenes.length, colour: t('revision.colour.blue') }));
     } catch (error) {
       setStatusError(t('revision.failed', { error: error instanceof Error ? error.message : '' }));
     }
-  }, [editorView, setStatus, setStatusError, snapshotReference, store, t, updateAppData]);
+  }, [
+    beginRevisionOperation,
+    commitRevisionOperation,
+    editorView,
+    setStatus,
+    setStatusError,
+    snapshotReference,
+    store,
+    t,
+  ]);
 
   const issueRevision = useCallback(async () => {
     const view = editorView.current;
@@ -109,6 +160,8 @@ export function useRevisionActions(
     }
     const issued = view.state.doc.toString();
     const colour = current.appData.revision.colour;
+    const operation = beginRevisionOperation(current.id, 'revision-issue');
+    if (!operation) return;
 
     try {
       const created = await snapshotReference(
@@ -118,10 +171,13 @@ export function useRevisionActions(
       );
       if (!created) return;
       const next = nextRevisionColour(colour);
-      updateAppData((data) => ({
-        ...data,
-        revision: { snapshotId: created.id, lockedAt: created.createdAt, colour: next },
-      }));
+      if (
+        !commitRevisionOperation(operation, (data) => ({
+          ...data,
+          revision: { snapshotId: created.id, lockedAt: created.createdAt, colour: next },
+        }))
+      )
+        return;
       setStatus(
         t('revision.issued', {
           colour: t(`revision.colour.${colour}`),
@@ -131,7 +187,16 @@ export function useRevisionActions(
     } catch (error) {
       setStatusError(t('revision.failed', { error: error instanceof Error ? error.message : '' }));
     }
-  }, [editorView, setStatus, setStatusError, snapshotReference, store, t, updateAppData]);
+  }, [
+    beginRevisionOperation,
+    commitRevisionOperation,
+    editorView,
+    setStatus,
+    setStatusError,
+    snapshotReference,
+    store,
+    t,
+  ]);
 
   const unlockProduction = useCallback(() => {
     updateAppData((data) => ({

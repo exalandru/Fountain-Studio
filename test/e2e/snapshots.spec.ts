@@ -4,6 +4,7 @@ import { dirname, join } from 'node:path';
 import { _electron as electron } from '@playwright/test';
 import type { ElectronApplication, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
+import { openTrustedScreenplays } from './helpers/open.js';
 
 /**
  * Named snapshots and version comparison.
@@ -60,9 +61,7 @@ test.beforeAll(async () => {
   page = await app.firstWindow();
   await page.setViewportSize({ width: 1400, height: 900 });
   await page.waitForSelector('.cm-content');
-  await app.evaluate(({ BrowserWindow }, path) => {
-    BrowserWindow.getAllWindows()[0]?.webContents.send('app:openFiles', { paths: [path] });
-  }, screenplay);
+  await openTrustedScreenplays(app, [screenplay]);
   await expect(page.locator('.cm-content')).toContainText('Alice observe les serveurs.');
 });
 
@@ -188,12 +187,16 @@ test('survives a corrupt index without losing the snapshot files', async () => {
   await runCommand('file.snapshots');
   const dialog = page.locator('.snapshot-dialog');
   await expect(dialog).toBeVisible();
-  // An empty list rather than a failure…
-  await expect(dialog.locator('.rail-row')).toHaveCount(0);
-  await expect(dialog.locator('.snapshot-empty')).toBeVisible();
-  // …and the versions themselves are still on disk, openable by hand.
+  // Damaged history is distinguishable from a genuinely empty list.
+  await expect(dialog.getByRole('button', { name: 'Repair history' })).toBeVisible();
+  await expect(dialog.locator('.rail-row')).toHaveCount(2);
   const entries = await readdir(snapshotDir());
   expect(entries.filter((entry) => entry.endsWith('.fountain'))).toHaveLength(2);
+
+  await dialog.getByRole('button', { name: 'Repair history' }).click();
+  await expect(dialog.getByRole('button', { name: 'Repair history' })).toHaveCount(0);
+  await expect(dialog.locator('.rail-row')).toHaveCount(2);
+  await expect(dialog.locator('.snapshot-empty')).toHaveCount(0);
 
   await dialog.getByRole('button', { name: 'Close', exact: true }).click();
 });

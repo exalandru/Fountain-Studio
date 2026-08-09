@@ -8,7 +8,7 @@ import type {
   AiErrorCode,
   AiKeyUpdate,
 } from './ai/index.js';
-import type { SnapshotMeta } from './snapshots/index.js';
+import type { SnapshotCatalog, SnapshotMeta } from './snapshots/index.js';
 import type { RevisionColour } from './revision/index.js';
 import type { Bible } from './bible/index.js';
 
@@ -49,6 +49,15 @@ export interface SaveRequest {
   refuseExisting?: boolean;
 }
 
+export interface SaveAsBundleRequest {
+  sourcePath: string | null;
+  destinationPath: string;
+  content: string;
+  eol: Eol;
+  expectedMtimeMs: number | null;
+  appData: AppData;
+}
+
 export type SaveOutcome =
   | { status: 'saved'; path: string; mtimeMs: number }
   | { status: 'cancelled' }
@@ -60,6 +69,14 @@ export type ExportOutcome =
   | { status: 'cancelled' }
   | { status: 'error'; message: string };
 
+export interface PdfRevisionBaseline {
+  /** Screenplay beside which the immutable snapshot is stored. */
+  path: string;
+  snapshotId: string;
+  /** Exact bytes decoded as UTF-8 and validated for the preview. Empty is valid. */
+  source: string;
+}
+
 /**
  * What a revision adds to an export.
  *
@@ -69,8 +86,8 @@ export type ExportOutcome =
  * fill colour — the main process resolves it through `REVISION_PAPER`.
  */
 export interface PdfRevisionOptions {
-  /** The locked draft. Empty means there is nothing to compare against. */
-  baselineSource: string;
+  /** Locked draft identity and content. Main re-resolves it before rendering or exporting. */
+  baseline: PdfRevisionBaseline;
   /** Composed header, e.g. “BLUE REVISED — 31/07/26”. */
   header: string;
   colour: RevisionColour;
@@ -172,7 +189,10 @@ export interface IpcRequests {
   'dialog:confirmDiscard': { arg: { name: string }; result: 'save' | 'discard' | 'cancel' };
 
   'file:openPaths': { arg: { paths: string[] }; result: DocumentSnapshot[] };
+  /** Drag/drop paths require an explicit native confirmation before a grant is created. */
+  'file:openDropped': { arg: { paths: string[] }; result: DocumentSnapshot[] };
   'file:save': { arg: SaveRequest; result: SaveOutcome };
+  'file:saveAsBundle': { arg: SaveAsBundleRequest; result: SaveOutcome };
   'file:exportText': {
     arg: { suggestedName: string; content: string; format: 'csv' | 'json' };
     result: ExportOutcome;
@@ -186,7 +206,8 @@ export interface IpcRequests {
     result: ExportOutcome;
   };
 
-  'snapshot:list': { arg: { path: string }; result: SnapshotMeta[] };
+  'snapshot:list': { arg: { path: string }; result: SnapshotCatalog };
+  'snapshot:repair': { arg: { path: string }; result: SnapshotCatalog };
   'snapshot:create': {
     arg: { path: string; name: string; content: string };
     result: SnapshotMeta[];
@@ -235,6 +256,9 @@ export interface IpcRequests {
   };
   'autosave:clear': { arg: { id: string }; result: void };
   'autosave:pending': { arg: void; result: CrashRecovery[] };
+
+  /** Revokes main-process document path authority after the renderer closes a tab. */
+  'document:release': { arg: { path: string }; result: void };
 
   'window:setDirty': { arg: { dirty: boolean; name: string }; result: void };
   /** Completes the close handshake initiated by `app:willQuit`. */

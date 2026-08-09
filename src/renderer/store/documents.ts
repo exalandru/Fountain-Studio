@@ -1,9 +1,23 @@
 import { create } from 'zustand';
 import type { AppData } from '@shared/appdata/index.js';
 import { createDefaultAppData } from '@shared/appdata/index.js';
-import { refuseRecoveredExistingFile, resolveSavedRevision } from '@shared/documents/index.js';
+import {
+  detectPathPlatform,
+  documentPathsEqual,
+  findDocumentByPath,
+  refuseRecoveredExistingFile,
+  resolveSavedRevision,
+  type PathPlatform,
+} from '@shared/documents/index.js';
 import type { AppSettings, DocumentSnapshot, Eol } from '@shared/ipc-contract.js';
 import { DEFAULT_SETTINGS } from '@shared/ipc-contract.js';
+
+function hostPlatform(): PathPlatform {
+  if (typeof window !== 'undefined' && window.quantum?.platform) {
+    return window.quantum.platform;
+  }
+  return detectPathPlatform();
+}
 
 /**
  * State of the open documents.
@@ -132,6 +146,7 @@ export const useDocuments = create<DocumentsState>((set, get) => ({
   adopt(snapshots) {
     if (snapshots.length === 0) return null;
     let lastId: string | null = null;
+    const platform = hostPlatform();
 
     set((state) => {
       const documents = [...state.documents];
@@ -139,8 +154,8 @@ export const useDocuments = create<DocumentsState>((set, get) => ({
       for (const snapshot of snapshots) {
         if (snapshot.path === null) continue;
 
-        // A file already open is not duplicated: its tab is reactivated instead.
-        const existing = documents.find((d) => d.path === snapshot.path);
+        // Equivalent paths share one open owner: reactivate that tab instead of duplicating.
+        const existing = findDocumentByPath(documents, snapshot.path, platform);
         if (existing) {
           lastId = existing.id;
           continue;
@@ -177,6 +192,14 @@ export const useDocuments = create<DocumentsState>((set, get) => ({
    * is refused until the author explicitly chooses Save As.
    */
   restore(path, content, strings, eol = 'lf', mtimeMs, recoveryId) {
+    if (path !== null) {
+      const existing = findDocumentByPath(get().documents, path, hostPlatform());
+      if (existing) {
+        set({ activeId: existing.id });
+        return existing.id;
+      }
+    }
+
     const id = recoveryId ?? newId();
     set((state) => ({
       documents: [
@@ -231,28 +254,40 @@ export const useDocuments = create<DocumentsState>((set, get) => ({
 
   markSaved(id, path, mtimeMs, savedRevision) {
     let fullySaved = false;
-    set((state) => ({
-      documents: state.documents.map((document) =>
-        document.id === id
-          ? (() => {
-              const decision = resolveSavedRevision(
-                document.revision,
-                savedRevision,
-                document.dirty,
-              );
-              fullySaved = decision.fullySaved;
-              return {
-                ...document,
-                path,
-                name: nameFromPath(path),
-                mtimeMs,
-                dirty: decision.dirty,
-                refuseExistingOnSave: false,
-              };
-            })()
-          : document,
-      ),
-    }));
+    const platform = hostPlatform();
+    set((state) => {
+      const conflict = state.documents.find(
+        (document) =>
+          document.id !== id &&
+          document.path !== null &&
+          documentPathsEqual(document.path, path, platform),
+      );
+      // Fail closed: never let two open documents own the same path identity.
+      if (conflict) return state;
+
+      return {
+        documents: state.documents.map((document) =>
+          document.id === id
+            ? (() => {
+                const decision = resolveSavedRevision(
+                  document.revision,
+                  savedRevision,
+                  document.dirty,
+                );
+                fullySaved = decision.fullySaved;
+                return {
+                  ...document,
+                  path,
+                  name: nameFromPath(path),
+                  mtimeMs,
+                  dirty: decision.dirty,
+                  refuseExistingOnSave: false,
+                };
+              })()
+            : document,
+        ),
+      };
+    });
     return fullySaved;
   },
 

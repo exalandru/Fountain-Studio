@@ -5,6 +5,28 @@
  * the data-loss invariants independent from React and Electron.
  */
 
+export {
+  comparableDocumentPath,
+  detectPathPlatform,
+  documentPathsEqual,
+  findDocumentByPath,
+  normalizeDocumentPath,
+  type PathPlatform,
+} from './paths.js';
+export {
+  DocumentPathCoordinator,
+  resetSharedDocumentPathCoordinator,
+  sharedDocumentPathCoordinator,
+} from './path-ownership.js';
+export {
+  DEFAULT_DOCUMENT_OPEN_LIMITS,
+  formatOpenByteLimit,
+  MAX_OPEN_BATCH_BYTES,
+  MAX_OPEN_FILE_BYTES,
+  MAX_OPEN_PATHS,
+  type DocumentOpenLimits,
+} from './limits.js';
+
 export interface SavedRevisionDecision {
   fullySaved: boolean;
   dirty: boolean;

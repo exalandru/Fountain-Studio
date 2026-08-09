@@ -5,6 +5,7 @@ import type { Locale } from '@shared/i18n/index.js';
 import { LOCALES } from '@shared/i18n/index.js';
 import { applySpellCheckerLanguage } from './spellcheck.js';
 import { clearRecent, getSettings, getTranslator, listRecent, patchSettings } from './store.js';
+import { openTrustedDocumentPaths } from './files/trusted-open.js';
 
 /**
  * Native application menu, translated through the shared catalogues.
@@ -31,8 +32,11 @@ function send(command: MenuCommand): void {
   focusedWindow()?.webContents.send('menu:command', { command });
 }
 
-function sendOpenFiles(paths: string[]): void {
-  focusedWindow()?.webContents.send('app:openFiles', { paths });
+async function openRecentFromMain(path: string): Promise<void> {
+  const documents = await openTrustedDocumentPaths([path]);
+  if (documents.length === 0) return;
+  focusedWindow()?.webContents.send('app:openFiles', { snapshots: documents });
+  await buildMenu();
 }
 
 export async function buildMenu(): Promise<void> {
@@ -59,7 +63,9 @@ export async function buildMenu(): Promise<void> {
           ...recent.map((entry) => ({
             label: entry.name,
             toolTip: entry.path,
-            click: () => sendOpenFiles([entry.path]),
+            click: () => {
+              void openRecentFromMain(entry.path);
+            },
           })),
           { type: 'separator' as const },
           {

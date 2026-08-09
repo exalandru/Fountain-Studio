@@ -115,8 +115,19 @@ export const en = {
   'dialog.discard.save': 'Save',
   'dialog.discard.dontSave': 'Don’t Save',
   'dialog.discard.cancel': 'Cancel',
+  'dialog.openDropped.message': {
+    one: 'Open this dropped screenplay?',
+    other: 'Open these {count} dropped screenplays?',
+  },
+  'dialog.openDropped.open': 'Open',
+  'dialog.openDropped.cancel': 'Cancel',
   'dialog.openError.title': 'Cannot open file',
   'dialog.openError.body': '{name} could not be opened.\n\n{error}',
+  'dialog.openError.tooLarge': 'This file is too large to open (maximum {limit}).',
+  'dialog.openError.notRegularFile': 'This path is not a readable screenplay file.',
+  'dialog.openError.tooManyFiles': 'Too many files selected (maximum {count}).',
+  'dialog.openError.batchTooLarge':
+    'These files together are too large to open at once (maximum {limit}).',
 
   // ── Tabs and workspace ───────────────────────────────────────────────────
   'tab.new': 'New screenplay',
@@ -151,7 +162,13 @@ export const en = {
   'status.saved': 'Saved — {time}',
   'status.conflict': 'The file was changed outside the application. Use “Save As…”.',
   'status.saveFailed': 'Save failed: {error}',
+  'status.pathAlreadyOpen':
+    'This screenplay is already open in another tab. Close that tab or choose a different location.',
   'status.appDataFailed': 'Could not save the screenplay layout.',
+  'status.autosaveFailed': 'Crash recovery could not be updated. Your changes remain open.',
+  'status.closePersistenceFailed':
+    'Some pending changes could not be secured. The window stayed open; fix the problem and try again.',
+  'operation.stale': 'The document changed or was closed. Run the operation again.',
   'status.recovered': {
     one: '{count} document recovered after an unexpected shutdown. Check its contents before saving.',
     other:
@@ -283,6 +300,20 @@ export const en = {
   'snapshots.list': 'Snapshots',
   'snapshots.loading': 'Loading versions…',
   'snapshots.empty': 'No snapshot yet. Take one to be able to come back to this state.',
+  'snapshots.damaged': 'The snapshot index is damaged. Snapshot files may still be on disk.',
+  'snapshots.damagedFound': {
+    one: 'The snapshot index is damaged. {count} snapshot file was found and can be repaired.',
+    other: 'The snapshot index is damaged. {count} snapshot files were found and can be repaired.',
+  },
+  'snapshots.repair': 'Repair history',
+  'snapshots.repaired': {
+    one: 'History repaired: {count} snapshot restored to the index.',
+    other: 'History repaired: {count} snapshots restored to the index.',
+  },
+  'snapshots.repairedEmpty': 'History repaired. No recoverable snapshot files were found.',
+  'snapshots.indexDamaged': 'Repair the snapshot history before changing versions.',
+  'snapshots.repairFailed':
+    'The snapshot history could not be repaired. Existing files were left unchanged.',
   'snapshots.nameLabel': 'Snapshot name',
   'snapshots.namePlaceholder': 'before breaking act III',
   'snapshots.take': 'Take a snapshot',
@@ -366,6 +397,7 @@ export const en = {
   'ai.error.network': 'The endpoint could not be reached. Check its URL and your connection.',
   'ai.error.invalidRequest': 'The endpoint rejected this request.',
   'ai.error.cancelled': 'The request was stopped.',
+  'ai.error.responseTooLarge': 'The endpoint response was too large to keep safely.',
   'ai.error.tooLong': 'This character speaks too much to be analysed in one pass.',
   'ai.error.unknown': 'The AI request failed.',
   'ai.tools.contextual': 'Contextual tools',
@@ -602,6 +634,9 @@ export const en = {
   'pdf.close': 'Close PDF export',
   'pdf.rendering': 'Rendering PDF…',
   'pdf.renderFailed': 'Could not render the PDF.',
+  'pdf.baselineLoading': 'Loading and validating the production reference…',
+  'pdf.baselineUnavailable':
+    'The production reference for this export is unavailable or invalid. Restore it or unlock the revision before exporting.',
   'pdf.previousPage': 'Previous page',
   'pdf.nextPage': 'Next page',
   'pdf.pageStatus': 'Page {page} of {count}',
@@ -614,8 +649,7 @@ export const en = {
   'pdf.revisionLockedPages': 'Locked page numbers',
   'pdf.revisionOnlyRevised': 'Revised pages only',
   'pdf.revisionDate': 'Revision date',
-  'pdf.revisionNote':
-    'Locked pages apply to this export. The preview panel keeps showing the natural flow.',
+  'pdf.revisionNote': 'The preview and export both use the validated locked draft.',
 
   // ── Production revisions ─────────────────────────────────────────────────
   'menu.edit.lockProduction': 'Lock for Production…',

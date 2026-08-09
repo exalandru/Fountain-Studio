@@ -113,8 +113,19 @@ export const fr: Catalog = {
   'dialog.discard.save': 'Enregistrer',
   'dialog.discard.dontSave': 'Ne pas enregistrer',
   'dialog.discard.cancel': 'Annuler',
+  'dialog.openDropped.message': {
+    one: 'Ouvrir ce scénario déposé ?',
+    other: 'Ouvrir ces {count} scénarios déposés ?',
+  },
+  'dialog.openDropped.open': 'Ouvrir',
+  'dialog.openDropped.cancel': 'Annuler',
   'dialog.openError.title': 'Ouverture impossible',
   'dialog.openError.body': '{name} n’a pas pu être ouvert.\n\n{error}',
+  'dialog.openError.tooLarge': 'Ce fichier est trop volumineux pour être ouvert (maximum {limit}).',
+  'dialog.openError.notRegularFile': 'Ce chemin n’est pas un fichier de scénario lisible.',
+  'dialog.openError.tooManyFiles': 'Trop de fichiers sélectionnés (maximum {count}).',
+  'dialog.openError.batchTooLarge':
+    'Ces fichiers sont trop volumineux pour être ouverts en une seule fois (maximum {limit}).',
 
   // ── Onglets et espace de travail ─────────────────────────────────────────
   'tab.new': 'Nouveau scénario',
@@ -151,7 +162,14 @@ export const fr: Catalog = {
   'status.conflict':
     'Le fichier a été modifié en dehors de l’application. Utilisez « Enregistrer sous… ».',
   'status.saveFailed': 'Échec de l’enregistrement : {error}',
+  'status.pathAlreadyOpen':
+    'Ce scénario est déjà ouvert dans un autre onglet. Fermez cet onglet ou choisissez un autre emplacement.',
   'status.appDataFailed': 'Impossible d’enregistrer la disposition du scénario.',
+  'status.autosaveFailed':
+    'La récupération après incident n’a pas pu être actualisée. Vos modifications restent ouvertes.',
+  'status.closePersistenceFailed':
+    'Certaines modifications en attente n’ont pas pu être sécurisées. La fenêtre reste ouverte ; corrigez le problème puis réessayez.',
+  'operation.stale': 'Le document a changé ou a été fermé. Relancez l’opération.',
   'status.recovered': {
     one: '{count} document récupéré après un arrêt inattendu. Vérifiez le contenu avant d’enregistrer.',
     other:
@@ -282,6 +300,23 @@ export const fr: Catalog = {
   'snapshots.list': 'Instantanés',
   'snapshots.loading': 'Chargement des versions…',
   'snapshots.empty': 'Aucun instantané. Prenez-en un pour pouvoir revenir à cet état du scénario.',
+  'snapshots.damaged':
+    'L’index des instantanés est endommagé. Des fichiers d’instantané peuvent encore être présents.',
+  'snapshots.damagedFound': {
+    one: 'L’index des instantanés est endommagé. {count} fichier d’instantané a été retrouvé et peut être réparé.',
+    other:
+      'L’index des instantanés est endommagé. {count} fichiers d’instantané ont été retrouvés et peuvent être réparés.',
+  },
+  'snapshots.repair': 'Réparer l’historique',
+  'snapshots.repaired': {
+    one: 'Historique réparé : {count} instantané rétabli dans l’index.',
+    other: 'Historique réparé : {count} instantanés rétablis dans l’index.',
+  },
+  'snapshots.repairedEmpty':
+    'Historique réparé. Aucun fichier d’instantané récupérable n’a été trouvé.',
+  'snapshots.indexDamaged': 'Réparez l’historique des instantanés avant de le modifier.',
+  'snapshots.repairFailed':
+    'L’historique des instantanés n’a pas pu être réparé. Les fichiers existants n’ont pas été modifiés.',
   'snapshots.nameLabel': 'Nom de l’instantané',
   'snapshots.namePlaceholder': 'avant de casser l’acte III',
   'snapshots.take': 'Prendre un instantané',
@@ -373,6 +408,7 @@ export const fr: Catalog = {
   'ai.error.network': 'Serveur inaccessible. Vérifiez son URL et votre connexion.',
   'ai.error.invalidRequest': 'Le serveur a refusé cette requête.',
   'ai.error.cancelled': 'La requête a été arrêtée.',
+  'ai.error.responseTooLarge': 'La réponse du serveur est trop volumineuse pour être conservée.',
   'ai.error.tooLong': 'Ce personnage parle trop pour être analysé en une seule passe.',
   'ai.error.unknown': 'La requête IA a échoué.',
   'ai.tools.contextual': 'Outils contextuels',
@@ -609,6 +645,9 @@ export const fr: Catalog = {
   'pdf.close': 'Fermer l’export PDF',
   'pdf.rendering': 'Génération du PDF…',
   'pdf.renderFailed': 'Impossible de générer le PDF.',
+  'pdf.baselineLoading': 'Chargement et validation de la référence de production…',
+  'pdf.baselineUnavailable':
+    'La référence de production utilisée par cet export est indisponible ou invalide. Restaurez-la ou déverrouillez la révision avant d’exporter.',
   'pdf.previousPage': 'Page précédente',
   'pdf.nextPage': 'Page suivante',
   'pdf.pageStatus': 'Page {page} sur {count}',
@@ -621,8 +660,7 @@ export const fr: Catalog = {
   'pdf.revisionLockedPages': 'Numéros de page verrouillés',
   'pdf.revisionOnlyRevised': 'Pages révisées seulement',
   'pdf.revisionDate': 'Date de la révision',
-  'pdf.revisionNote':
-    'Les pages verrouillées valent pour cet export. Le panneau d’aperçu continue de montrer le flux naturel.',
+  'pdf.revisionNote': 'L’aperçu et l’export utilisent tous deux la version verrouillée validée.',
 
   // ── Révisions de production ──────────────────────────────────────────────
   'menu.edit.lockProduction': 'Verrouiller pour la production…',

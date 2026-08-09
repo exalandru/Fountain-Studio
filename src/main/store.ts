@@ -92,12 +92,19 @@ async function load(): Promise<StoreShape> {
 }
 
 async function persist(): Promise<void> {
-  persistQueue = persistQueue.then(async () => {
-    if (!cache) return;
-    const target = storePath();
-    await writeFileAtomic(target, JSON.stringify(cache, null, 2));
-  });
-  return persistQueue;
+  const operation = persistQueue
+    .catch(() => {
+      // A previous disk failure must not permanently poison later settings writes.
+    })
+    .then(async () => {
+      if (!cache) return;
+      const target = storePath();
+      await writeFileAtomic(target, JSON.stringify(cache, null, 2));
+    });
+  // Keep the internal chain settled so the next enqueue can attach; callers still
+  // observe this write's real success or failure through `operation`.
+  persistQueue = operation.catch(() => undefined);
+  return operation;
 }
 
 export async function getSettings(): Promise<AppSettings> {

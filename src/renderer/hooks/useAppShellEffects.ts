@@ -1,13 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { AppSettings } from '@shared/ipc-contract.js';
+import type { Locale } from '@shared/i18n/index.js';
 import { useDocuments } from '../store/documents.js';
 
 interface AppShellEffectsOptions {
   theme: AppSettings['theme'];
-  spellcheckLanguage: AppSettings['spellcheckLanguage'];
+  /** Interface language — drives the accessible document language. */
+  language: Locale;
   activeName: string | null;
   anyDirty: boolean;
   save: (options: { forceDialog: boolean }) => Promise<boolean>;
+  flushForClose: () => Promise<void>;
+  onClosePersistenceError: (error: unknown) => void;
 }
 
 /**
@@ -18,10 +22,12 @@ interface AppShellEffectsOptions {
  */
 export function useAppShellEffects({
   theme,
-  spellcheckLanguage,
+  language,
   activeName,
   anyDirty,
   save,
+  flushForClose,
+  onClosePersistenceError,
 }: AppShellEffectsOptions) {
   const store = useDocuments.getState;
   const closing = useRef(false);
@@ -44,12 +50,10 @@ export function useAppShellEffects({
     document.body.dataset['theme'] = effectiveDark ? 'dark' : 'light';
   }, [effectiveDark]);
 
-  // html lang follows the spell-check preference when forced to English;
-  // "system" follows the OS / browser language instead of the UI locale.
+  // Accessible document language follows the UI locale, not the spell-checker preference.
   useEffect(() => {
-    document.documentElement.lang =
-      spellcheckLanguage === 'en-US' ? 'en-US' : navigator.language;
-  }, [spellcheckLanguage]);
+    document.documentElement.lang = language;
+  }, [language]);
 
   const patchSettings = useCallback(async (patch: Partial<AppSettings>) => {
     await window.quantum.invoke('settings:patch', patch);
@@ -71,19 +75,8 @@ export function useAppShellEffects({
       void (async () => {
         let proceed = false;
         try {
+          await flushForClose();
           const dirtyDocuments = store().documents.filter((document) => document.dirty);
-          await Promise.all(
-            dirtyDocuments.map((document) =>
-              window.quantum.invoke('autosave:write', {
-                id: document.id,
-                path: document.path,
-                content: document.content,
-                eol: document.eol,
-                mtimeMs: document.mtimeMs,
-              }),
-            ),
-          );
-
           proceed = true;
           for (const snapshot of dirtyDocuments) {
             const current = store().documents.find((document) => document.id === snapshot.id);
@@ -106,6 +99,8 @@ export function useAppShellEffects({
               await window.quantum.invoke('autosave:clear', { id: current.id });
             }
           }
+        } catch (error) {
+          onClosePersistenceError(error);
         } finally {
           try {
             await window.quantum.invoke('window:closeDecision', { proceed });
@@ -115,7 +110,7 @@ export function useAppShellEffects({
         }
       })();
     });
-  }, [save, store]);
+  }, [flushForClose, onClosePersistenceError, save, store]);
 
   return useMemo(() => ({ effectiveDark, patchSettings }), [effectiveDark, patchSettings]);
 }

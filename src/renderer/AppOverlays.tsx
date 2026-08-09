@@ -1,10 +1,9 @@
-import { isolateHistory } from '@codemirror/commands';
-import type { RefObject } from 'react';
-import type { EditorView } from '@codemirror/view';
 import type { InconsistencyState, RewriteState } from '@shared/appdata/index.js';
 import type { ParseResponse } from '@shared/analysis/index.js';
 import type { MenuCommand } from '@shared/ipc-contract.js';
 import type { Translator } from '@shared/i18n/index.js';
+import type { PendingWrites } from '@shared/persistence/PendingWrites.js';
+import type { DocumentOperationContext } from '@shared/documents/operations.js';
 import type { OpenDocument } from './store/documents.js';
 import { AiSettingsDialog } from './ai/AiSettingsDialog.js';
 import { CharacterNameDialog } from './ai/CharacterNameDialog.js';
@@ -24,12 +23,12 @@ import { EditorContextMenu } from './ui/EditorContextMenu.js';
 export interface AppOverlaysProps {
   active: OpenDocument | null;
   analysis: ParseResponse | null;
-  editorView: RefObject<EditorView | null>;
   locale: 'en' | 'fr';
   t: Translator['t'];
   setStatus: (message: string) => void;
   /** Used for error messages that should appear with the warning style. */
   setStatusError: (message: string) => void;
+  pendingWrites: PendingWrites;
   executeCommand: (command: MenuCommand) => void;
   paletteCommands: PaletteCommand[];
   pdfOpen: boolean;
@@ -54,14 +53,29 @@ export interface AppOverlaysProps {
   setCharacterNameSelection: (selection: CharacterNameSelection | null) => void;
   paletteOpen: boolean;
   setPaletteOpen: (open: boolean) => void;
-  updateRewrite: (rewrite: RewriteState) => void;
-  updateInconsistencies: (state: InconsistencyState) => void;
-  updateVoiceConsistency: (characterName: string, state: InconsistencyState) => void;
-  updateRepetitions: (state: InconsistencyState) => void;
+  updateRewrite: (documentId: string, rewrite: RewriteState) => void;
+  updateInconsistencies: (documentId: string, state: InconsistencyState) => void;
+  updateVoiceConsistency: (
+    documentId: string,
+    characterName: string,
+    state: InconsistencyState,
+  ) => void;
+  updateRepetitions: (documentId: string, state: InconsistencyState) => void;
+  commitInconsistencies: (
+    operation: DocumentOperationContext,
+    state: InconsistencyState,
+  ) => boolean;
+  commitVoiceConsistency: (
+    operation: DocumentOperationContext,
+    characterName: string,
+    state: InconsistencyState,
+  ) => boolean;
+  commitRepetitions: (operation: DocumentOperationContext, state: InconsistencyState) => boolean;
   selectInconsistencyReference: (reference: { sceneNumber: string; heading: string }) => void;
   selectEditorRange: (range: { from: number; to: number }) => void;
-  replaceEditorRange: (from: number, to: number, content: string) => void;
-  renameCharacter: (nextName: string) => void;
+  replaceEditorRange: (selection: RewriteSelection, content: string) => boolean;
+  renameCharacter: (selection: CharacterNameSelection, nextName: string) => boolean;
+  restoreSnapshot: (operation: DocumentOperationContext, content: string) => boolean;
   openSynonyms: () => void;
   openRewriteSelection: () => void;
   openRenameCharacter: () => void;
@@ -76,11 +90,11 @@ export interface AppOverlaysProps {
 export function AppOverlays({
   active,
   analysis,
-  editorView,
   locale,
   t,
   setStatus,
   setStatusError,
+  pendingWrites,
   executeCommand,
   paletteCommands,
   pdfOpen,
@@ -109,18 +123,28 @@ export function AppOverlays({
   updateInconsistencies,
   updateVoiceConsistency,
   updateRepetitions,
+  commitInconsistencies,
+  commitVoiceConsistency,
+  commitRepetitions,
   selectInconsistencyReference,
   selectEditorRange,
   replaceEditorRange,
   renameCharacter,
+  restoreSnapshot,
   openSynonyms,
   openRewriteSelection,
   openRenameCharacter,
 }: AppOverlaysProps) {
+  const exactAnalysis =
+    active && analysis?.id === active.id && analysis.revision === active.revision ? analysis : null;
+
   return (
     <>
       {pdfOpen && active ? (
         <PdfExportDialog
+          key={active.id}
+          documentId={active.id}
+          documentRevision={active.revision}
           source={active.content}
           suggestedName={`${active.name.replace(/\.(fountain|txt)$/i, '')}.pdf`}
           path={active.path}
@@ -137,27 +161,29 @@ export function AppOverlays({
       {bibleOpen && active ? (
         <BiblePanel
           key={active.id}
+          documentId={active.id}
+          documentRevision={active.revision}
           path={active.path}
-          analysis={analysis}
+          analysis={exactAnalysis}
           t={t}
+          pendingWrites={pendingWrites}
+          onPersistenceError={setStatusError}
           onClose={() => setBibleOpen(false)}
         />
       ) : null}
       {snapshotsOpen && active ? (
         <SnapshotDialog
+          key={`${active.id}:${active.path ?? ''}`}
+          documentId={active.id}
+          documentRevision={active.revision}
           path={active.path}
           currentContent={active.content}
           t={t}
-          onRestore={(content, name) => {
-            const view = editorView.current;
-            if (!view) return;
-            view.dispatch({
-              changes: { from: 0, to: view.state.doc.length, insert: content },
-              annotations: isolateHistory.of('full'),
-            });
-            view.focus();
+          onRestore={(content, name, operation) => {
+            if (!restoreSnapshot(operation, content)) return false;
             setSnapshotsOpen(false);
             setStatus(t('snapshots.restored', { name }));
+            return true;
           }}
           onClose={() => setSnapshotsOpen(false)}
         />
@@ -170,12 +196,16 @@ export function AppOverlays({
       ) : null}
       {inconsistencyOpen && active ? (
         <InconsistencyPanel
+          key={active.id}
+          documentId={active.id}
+          documentRevision={active.revision}
           screenplay={active.content}
-          analysis={analysis}
+          analysis={exactAnalysis}
           state={active.appData.inconsistencies}
           t={t}
           locale={locale}
-          onStateChange={updateInconsistencies}
+          onStateChange={(state) => updateInconsistencies(active.id, state)}
+          onAnalysisResult={commitInconsistencies}
           onSelectReference={(reference) => {
             selectInconsistencyReference(reference);
             setInconsistencyOpen(false);
@@ -185,11 +215,18 @@ export function AppOverlays({
       ) : null}
       {voiceConsistencyOpen && active ? (
         <VoiceConsistencyPanel
-          analysis={analysis}
+          key={active.id}
+          documentId={active.id}
+          documentRevision={active.revision}
+          screenplay={active.content}
+          analysis={exactAnalysis}
           state={active.appData.voiceConsistency}
           t={t}
           locale={locale}
-          onStateChange={updateVoiceConsistency}
+          onStateChange={(characterName, state) =>
+            updateVoiceConsistency(active.id, characterName, state)
+          }
+          onAnalysisResult={commitVoiceConsistency}
           onSelectReference={(reference) => {
             selectInconsistencyReference(reference);
             setVoiceConsistencyOpen(false);
@@ -199,11 +236,16 @@ export function AppOverlays({
       ) : null}
       {repetitionsOpen && active ? (
         <RepetitionPanel
-          analysis={analysis}
+          key={active.id}
+          documentId={active.id}
+          documentRevision={active.revision}
+          screenplay={active.content}
+          analysis={exactAnalysis}
           state={active.appData.repetitions}
           t={t}
           locale={locale}
-          onStateChange={updateRepetitions}
+          onStateChange={(state) => updateRepetitions(active.id, state)}
+          onAnalysisResult={commitRepetitions}
           onSelectRange={(range) => {
             selectEditorRange(range);
             setRepetitionsOpen(false);
@@ -215,17 +257,19 @@ export function AppOverlays({
           onClose={() => setRepetitionsOpen(false)}
         />
       ) : null}
-      {rewriteSelection && active ? (
+      {rewriteSelection && active?.id === rewriteSelection.operation.documentId ? (
         <RewriteDialog
+          key={rewriteSelection.operation.requestId}
           selection={rewriteSelection}
           state={active.appData.rewrite}
-          onStateChange={updateRewrite}
+          onStateChange={(state) => updateRewrite(rewriteSelection.operation.documentId, state)}
           onReplace={replaceEditorRange}
           onClose={() => setRewriteSelection(null)}
         />
       ) : null}
-      {characterNameSelection ? (
+      {characterNameSelection && active?.id === characterNameSelection.operation.documentId ? (
         <CharacterNameDialog
+          key={characterNameSelection.operation.requestId}
           selection={characterNameSelection}
           onRename={renameCharacter}
           onClose={() => setCharacterNameSelection(null)}

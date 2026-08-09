@@ -1,3 +1,48 @@
+import {
+  assertDocumentGranted,
+  assertSaveAsDestinationAllowed,
+  consumeSaveAsDestination,
+  grantDocumentPath,
+  installDocumentGrantTestHook,
+  reserveSaveAsDestination,
+  revokeDocumentPath,
+  transferDocumentGrant,
+} from './files/document-grants.js';
+import {
+  confirmAndOpenDroppedPaths,
+  openGrantedDocumentPaths,
+  openTrustedDocumentPaths,
+} from './files/trusted-open.js';
+import {
+  grantedAppDataRead,
+  grantedAppDataWrite,
+  grantedBibleImageDelete,
+  grantedBibleImageRead,
+  grantedBibleImageWrite,
+  grantedBibleRead,
+  grantedBibleWrite,
+  grantedSnapshotCreate,
+  grantedSnapshotDelete,
+  grantedSnapshotList,
+  grantedSnapshotRead,
+  grantedSnapshotRename,
+  grantedSnapshotRepair,
+} from './files/document-ops.js';
+import type { DocumentSnapshot, IpcChannel, IpcRequests } from '@shared/ipc-contract.js';
+import type { Translator } from '@shared/i18n/index.js';
+import { clearAutosave, pendingAutosaves, writeAutosave } from './files/autosave.js';
+import { saveDocument } from './files/document.js';
+import { MAX_OPEN_PATHS } from '@shared/documents/limits.js';
+import { saveAsDocumentBundle } from './files/bundle.js';
+import { writeFileAtomic } from './files/atomic.js';
+import { buildMenu } from './menu.js';
+import { applySpellCheckerLanguage } from './spellcheck.js';
+import { resolveCloseDecision } from './window-lifecycle.js';
+import { renderScreenplayPdf } from './pdf/render.js';
+import { validatePdfRevisionBaseline } from './pdf/baseline.js';
+import { addRecent, getSettings, getTranslator, patchSettings } from './store.js';
+import { cancelAiChat, listAiModels, startAiChat, testAiConnection } from './ai/proxy.js';
+import { getAiConfigView, saveAiConfig } from './ai/settings.js';
 import { readFile } from 'node:fs/promises';
 import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron';
 import type { IpcMainInvokeEvent } from 'electron';
@@ -8,33 +53,6 @@ import { isProviderKind } from '@shared/ai/providers/index.js';
 import { isBibleId } from '@shared/bible/index.js';
 import { isSnapshotId, MAX_SNAPSHOT_NAME } from '@shared/snapshots/index.js';
 import { isRevisionColour } from '@shared/revision/index.js';
-import {
-  deleteBibleImage,
-  readBible,
-  readBibleImage,
-  writeBible,
-  writeBibleImage,
-} from './files/bible.js';
-import type { DocumentSnapshot, IpcChannel, IpcRequests } from '@shared/ipc-contract.js';
-import type { Translator } from '@shared/i18n/index.js';
-import { clearAutosave, pendingAutosaves, writeAutosave } from './files/autosave.js';
-import { readAppData, writeAppData } from './files/appdata.js';
-import { readDocument, saveDocument } from './files/document.js';
-import { writeFileAtomic } from './files/atomic.js';
-import { buildMenu } from './menu.js';
-import { applySpellCheckerLanguage } from './spellcheck.js';
-import { resolveCloseDecision } from './window-lifecycle.js';
-import { renderScreenplayPdf } from './pdf/render.js';
-import { addRecent, getSettings, getTranslator, patchSettings } from './store.js';
-import { cancelAiChat, listAiModels, startAiChat, testAiConnection } from './ai/proxy.js';
-import { getAiConfigView, saveAiConfig } from './ai/settings.js';
-import {
-  createSnapshot,
-  deleteSnapshot,
-  listSnapshots,
-  readSnapshot,
-  renameSnapshot,
-} from './files/snapshots.js';
 
 /**
  * IPC handler registration, typed by the shared contract.
@@ -71,9 +89,13 @@ function pdfResourcesDirectory(): string {
 function validPdfRevision(value: unknown): boolean {
   if (value === null) return true;
   if (!isRecord(value)) return false;
+  const baseline = isRecord(value['baseline']) ? value['baseline'] : null;
   return (
-    typeof value['baselineSource'] === 'string' &&
-    value['baselineSource'].length <= 100_000_000 &&
+    baseline !== null &&
+    validPath(baseline['path']) &&
+    isSnapshotId(baseline['snapshotId']) &&
+    typeof baseline['source'] === 'string' &&
+    baseline['source'].length <= 100_000_000 &&
     typeof value['header'] === 'string' &&
     value['header'].length <= 200 &&
     isRevisionColour(value['colour']) &&
@@ -235,10 +257,11 @@ function validateRequest<C extends IpcChannel>(channel: C, value: unknown): IpcR
         record['bible'] !== null;
       break;
     case 'file:openPaths':
+    case 'file:openDropped':
       valid =
         record !== null &&
         Array.isArray(record['paths']) &&
-        record['paths'].length <= 100 &&
+        record['paths'].length <= MAX_OPEN_PATHS &&
         record['paths'].every(validPath);
       break;
     case 'file:save':
@@ -250,6 +273,23 @@ function validateRequest<C extends IpcChannel>(channel: C, value: unknown): IpcR
         (record['eol'] === 'lf' || record['eol'] === 'crlf') &&
         validMtime(record['expectedMtimeMs']) &&
         (record['refuseExisting'] === undefined || typeof record['refuseExisting'] === 'boolean');
+      break;
+    case 'file:saveAsBundle':
+      valid =
+        record !== null &&
+        (record['sourcePath'] === null || validPath(record['sourcePath'])) &&
+        validPath(record['destinationPath']) &&
+        typeof record['content'] === 'string' &&
+        record['content'].length <= 100_000_000 &&
+        (record['eol'] === 'lf' || record['eol'] === 'crlf') &&
+        validMtime(record['expectedMtimeMs']) &&
+        (() => {
+          try {
+            return parseAppData(JSON.stringify(record['appData'])) !== null;
+          } catch {
+            return false;
+          }
+        })();
       break;
     case 'file:exportText':
       valid =
@@ -279,6 +319,7 @@ function validateRequest<C extends IpcChannel>(channel: C, value: unknown): IpcR
         validPdfOptions(record['options']);
       break;
     case 'snapshot:list':
+    case 'snapshot:repair':
       valid = record !== null && validPath(record['path']);
       break;
     case 'snapshot:create':
@@ -386,6 +427,9 @@ function validateRequest<C extends IpcChannel>(channel: C, value: unknown): IpcR
         record['id'].length > 0 &&
         record['id'].length <= 200;
       break;
+    case 'document:release':
+      valid = record !== null && validPath(record['path']);
+      break;
     case 'window:setDirty':
       valid =
         record !== null &&
@@ -450,31 +494,33 @@ function fountainFilters(t: Translator['t']) {
   ];
 }
 
+/** Trusted open used by CLI / OS / menu; rebuilds the recent submenu when needed. */
 export async function openPaths(paths: string[]): Promise<DocumentSnapshot[]> {
-  const documents: DocumentSnapshot[] = [];
-  const { t } = await getTranslator();
-
-  for (const path of paths) {
-    try {
-      const snapshot = await readDocument(path);
-      documents.push(snapshot);
-      await addRecent(path);
-    } catch (error) {
-      dialog.showErrorBox(
-        t('dialog.openError.title'),
-        t('dialog.openError.body', {
-          name: basename(path),
-          error: error instanceof Error ? error.message : String(error),
-        }),
-      );
-    }
-  }
+  const documents = await openTrustedDocumentPaths(paths);
   if (documents.length > 0) await buildMenu();
-
   return documents;
 }
 
+function installTrustedOpenTestHook(enabled: boolean): void {
+  const target = globalThis as typeof globalThis & {
+    __fountainOpenTrustedPaths?: typeof openTrustedDocumentPaths;
+  };
+  if (enabled) {
+    target.__fountainOpenTrustedPaths = async (paths: string[]) => {
+      const documents = await openTrustedDocumentPaths(paths);
+      if (documents.length > 0) await buildMenu();
+      return documents;
+    };
+  } else {
+    delete target.__fountainOpenTrustedPaths;
+  }
+}
+
 export function registerIpcHandlers(): void {
+  const testHooks = !app.isPackaged;
+  installDocumentGrantTestHook(testHooks);
+  installTrustedOpenTestHook(testHooks);
+
   handle('dialog:pickOpen', async (_arg, window) => {
     const { t } = await getTranslator();
     const options = {
@@ -487,7 +533,9 @@ export function registerIpcHandlers(): void {
       ? await dialog.showOpenDialog(window, options)
       : await dialog.showOpenDialog(options);
     if (result.canceled) return [];
-    return openPaths(result.filePaths);
+    const documents = await openTrustedDocumentPaths(result.filePaths);
+    if (documents.length > 0) await buildMenu();
+    return documents;
   });
 
   handle('dialog:pickSaveAs', async ({ suggestedName }, window) => {
@@ -500,7 +548,9 @@ export function registerIpcHandlers(): void {
     const result = window
       ? await dialog.showSaveDialog(window, options)
       : await dialog.showSaveDialog(options);
-    return result.canceled || !result.filePath ? null : result.filePath;
+    if (result.canceled || !result.filePath) return null;
+    reserveSaveAsDestination(result.filePath);
+    return result.filePath;
   });
 
   handle('dialog:confirmDiscard', async ({ name }, window) => {
@@ -519,14 +569,56 @@ export function registerIpcHandlers(): void {
     return response === 0 ? 'save' : response === 1 ? 'discard' : 'cancel';
   });
 
-  handle('file:openPaths', ({ paths }) => openPaths(paths));
+  handle('file:openPaths', async ({ paths }) => {
+    // M4.1 — renderer-supplied paths never create grants; they may only reopen
+    // documents already authorised by a trusted main-process source.
+    const documents = await openGrantedDocumentPaths(paths);
+    if (documents.length > 0) await buildMenu();
+    return documents;
+  });
+
+  handle('file:openDropped', async ({ paths }, window) => {
+    const { t } = await getTranslator();
+    const documents = await confirmAndOpenDroppedPaths(paths, async (unique) => {
+      const options = {
+        type: 'question' as const,
+        buttons: [t('dialog.openDropped.open'), t('dialog.openDropped.cancel')],
+        defaultId: 0,
+        cancelId: 1,
+        message: t('dialog.openDropped.message', { count: unique.length }),
+        detail: unique.map((path) => basename(path)).join('\n'),
+      };
+      const { response } = window
+        ? await dialog.showMessageBox(window, options)
+        : await dialog.showMessageBox(options);
+      return response === 0;
+    });
+    if (documents.length > 0) await buildMenu();
+    return documents;
+  });
 
   handle('file:save', async (request) => {
+    assertDocumentGranted(request.path);
     const settings = await getSettings();
     const outcome = await saveDocument(request, settings.backupCount);
     if (outcome.status === 'saved') {
+      grantDocumentPath(outcome.path);
       await addRecent(outcome.path);
       // The recent-files submenu is part of the native menu, so it has to be rebuilt.
+      await buildMenu();
+    }
+    return outcome;
+  });
+
+  handle('file:saveAsBundle', async (request) => {
+    assertSaveAsDestinationAllowed(request.sourcePath, request.destinationPath);
+    if (request.sourcePath !== null) assertDocumentGranted(request.sourcePath);
+    const settings = await getSettings();
+    const outcome = await saveAsDocumentBundle(request, settings.backupCount);
+    if (outcome.status === 'saved') {
+      consumeSaveAsDestination(request.destinationPath);
+      transferDocumentGrant(request.sourcePath, outcome.path);
+      await addRecent(outcome.path);
       await buildMenu();
     }
     return outcome;
@@ -559,6 +651,7 @@ export function registerIpcHandlers(): void {
   });
 
   handle('pdf:render', async ({ source, options }) => {
+    await validatePdfRevisionBaseline(options);
     const rendered = await renderScreenplayPdf(source, options, pdfResourcesDirectory());
     const { bytes } = rendered;
     return {
@@ -571,6 +664,14 @@ export function registerIpcHandlers(): void {
   });
 
   handle('pdf:export', async ({ source, options, suggestedName }, window) => {
+    try {
+      await validatePdfRevisionBaseline(options);
+    } catch (error) {
+      return {
+        status: 'error',
+        message: error instanceof Error ? error.message : String(error),
+      };
+    }
     const result = window
       ? await dialog.showSaveDialog(window, {
           defaultPath: suggestedName,
@@ -583,7 +684,11 @@ export function registerIpcHandlers(): void {
     if (result.canceled || !result.filePath) return { status: 'cancelled' };
 
     try {
+      // The native dialog may stay open indefinitely. Re-resolve after it closes so a
+      // disappeared or modified production reference cannot be exported from cached bytes.
+      await validatePdfRevisionBaseline(options);
       const rendered = await renderScreenplayPdf(source, options, pdfResourcesDirectory());
+      await validatePdfRevisionBaseline(options);
       await writeFileAtomic(result.filePath, rendered.bytes);
       shell.showItemInFolder(result.filePath);
       return { status: 'exported', path: result.filePath };
@@ -641,11 +746,14 @@ export function registerIpcHandlers(): void {
   });
   handle('ai:chat:cancel', ({ requestId }) => cancelAiChat(requestId));
 
-  handle('snapshot:list', ({ path }) => listSnapshots(path));
-  handle('snapshot:create', ({ path, name, content }) => createSnapshot(path, name, content));
-  handle('snapshot:read', ({ path, id }) => readSnapshot(path, id));
-  handle('snapshot:rename', ({ path, id, name }) => renameSnapshot(path, id, name));
-  handle('snapshot:delete', ({ path, id }) => deleteSnapshot(path, id));
+  handle('snapshot:list', ({ path }) => grantedSnapshotList(path));
+  handle('snapshot:repair', ({ path }) => grantedSnapshotRepair(path));
+  handle('snapshot:create', ({ path, name, content }) =>
+    grantedSnapshotCreate(path, name, content),
+  );
+  handle('snapshot:read', ({ path, id }) => grantedSnapshotRead(path, id));
+  handle('snapshot:rename', ({ path, id, name }) => grantedSnapshotRename(path, id, name));
+  handle('snapshot:delete', ({ path, id }) => grantedSnapshotDelete(path, id));
   handle('editor:contextAction', ({ action, value }, window) => {
     if (!window) return;
     const contents = window.webContents;
@@ -677,11 +785,24 @@ export function registerIpcHandlers(): void {
     }
   });
 
-  handle('autosave:write', ({ id, path, content, eol, mtimeMs }) =>
-    writeAutosave(id, path, content, eol, mtimeMs),
-  );
+  handle('autosave:write', ({ id, path, content, eol, mtimeMs }) => {
+    // Path metadata must not invent grants: only already-authorised screenplays may be
+    // named. Untitled drafts keep `path: null` until Save As grants a destination.
+    if (path !== null) assertDocumentGranted(path);
+    return writeAutosave(id, path, content, eol, mtimeMs);
+  });
   handle('autosave:clear', ({ id }) => clearAutosave(id));
-  handle('autosave:pending', () => pendingAutosaves());
+  handle('autosave:pending', async () => {
+    const pending = await pendingAutosaves();
+    for (const record of pending) {
+      if (record.path) grantDocumentPath(record.path);
+    }
+    return pending;
+  });
+
+  handle('document:release', ({ path }) => {
+    revokeDocumentPath(path);
+  });
 
   handle('window:setDirty', async ({ dirty, name }, window) => {
     if (!window) return;
@@ -694,10 +815,10 @@ export function registerIpcHandlers(): void {
     resolveCloseDecision(window, proceed);
   });
 
-  handle('appdata:read', ({ path }) => readAppData(path));
-  handle('appdata:write', ({ path, data }) => writeAppData(path, data));
-  handle('bible:read', ({ path }) => readBible(path));
-  handle('bible:write', ({ path, bible }) => writeBible(path, bible));
+  handle('appdata:read', ({ path }) => grantedAppDataRead(path));
+  handle('appdata:write', ({ path, data }) => grantedAppDataWrite(path, data));
+  handle('bible:read', ({ path }) => grantedBibleRead(path));
+  handle('bible:write', ({ path, bible }) => grantedBibleWrite(path, bible));
   handle('bible:imagePick', async (_arg, window) => {
     const { t } = await getTranslator();
     const options = {
@@ -718,7 +839,7 @@ export function registerIpcHandlers(): void {
     const mime = extname(chosen).toLowerCase() === '.webp' ? 'image/webp' : type;
     return `data:${mime};base64,${bytes.toString('base64')}`;
   });
-  handle('bible:imageRead', ({ path, id }) => readBibleImage(path, id));
-  handle('bible:imageWrite', ({ path, id, dataUri }) => writeBibleImage(path, id, dataUri));
-  handle('bible:imageDelete', ({ path, id }) => deleteBibleImage(path, id));
+  handle('bible:imageRead', ({ path, id }) => grantedBibleImageRead(path, id));
+  handle('bible:imageWrite', ({ path, id, dataUri }) => grantedBibleImageWrite(path, id, dataUri));
+  handle('bible:imageDelete', ({ path, id }) => grantedBibleImageDelete(path, id));
 }

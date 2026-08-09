@@ -3,6 +3,7 @@ import { access, readFile } from 'node:fs/promises';
 import type { AppData } from '@shared/appdata/index.js';
 import { parseAppData, serializeAppData } from '@shared/appdata/index.js';
 import { writeFileAtomic } from './atomic.js';
+import { withDocumentBundleMutation } from './bundle-mutation.js';
 
 /**
  * Reading and writing the companion `.fountain.appdata.json` file.
@@ -62,7 +63,7 @@ export async function writeAppData(path: string, data: AppData): Promise<void> {
       // A failed write must not prevent a later state change from being persisted.
     })
     .then(async () => {
-      await writeFileAtomic(target, serializeAppData(data));
+      await withDocumentBundleMutation(path, () => writeFileAtomic(target, serializeAppData(data)));
     });
   pendingWrites.set(target, current);
   try {

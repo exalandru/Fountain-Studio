@@ -1788,6 +1788,10 @@ body[data-theme='dark'] .preview-pane {
   box-shadow: 0 2px 14px #0006;
 }
 
+.pdf-preview canvas[hidden] {
+  display: none;
+}
+
 .pdf-preview-controls {
   position: sticky;
   left: 50%;
@@ -2964,6 +2968,13 @@ body[data-theme='dark'] .preview-pane {
   color: var(--text-muted);
   font-size: 11px;
   line-height: 1.4;
+}
+
+.snapshot-repair {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 8px 0 12px;
 }
 
 .snapshot-take input {

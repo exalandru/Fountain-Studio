@@ -44,10 +44,10 @@ interface WorkspaceProps {
   onNewDocument: () => void;
   onSetActive: (id: string) => void;
   onSettingsChange: (patch: Partial<AppSettings>) => void;
-  onEditorChange: (content: string) => void;
-  onCursorOffset: (offset: number) => void;
-  onSelectionRange: (range: { from: number; to: number }) => void;
-  onEditorScroll: (offset: number) => void;
+  onEditorChange: (documentId: string, content: string) => void;
+  onCursorOffset: (documentId: string, offset: number) => void;
+  onSelectionRange: (documentId: string, range: { from: number; to: number }) => void;
+  onEditorScroll: (documentId: string, offset: number) => void;
   onPreviewScroll: (offset: number) => void;
   onViewReady: EditorParameters['onViewReady'];
   onResizePreview: (width: number) => void;

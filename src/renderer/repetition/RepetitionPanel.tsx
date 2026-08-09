@@ -9,6 +9,11 @@ import {
 } from '@shared/ai/index.js';
 import type { SceneView } from '@shared/fountain/ast.js';
 import type { Locale, Translator } from '@shared/i18n/index.js';
+import { parse } from '@shared/fountain/index.js';
+import {
+  beginDocumentOperation,
+  type DocumentOperationContext,
+} from '@shared/documents/operations.js';
 import type { RepeatedPhrase, RepetitionScope } from '@shared/repetition/index.js';
 import { buildSceneDigest, findRepeatedPhrases } from '@shared/repetition/index.js';
 import type { AiRequestHandle } from '../ai/request.js';
@@ -19,12 +24,16 @@ import { Field } from '../ui/Field.js';
 import { Select } from '../ui/Select.js';
 
 interface RepetitionPanelProps {
+  documentId: string;
+  documentRevision: number;
+  screenplay: string;
   analysis: ParseResponse | null;
   /** Structural findings, which unlike the literal ones cost a request and so are kept. */
   state: InconsistencyState;
   t: Translator['t'];
   locale: Locale;
   onStateChange: (state: InconsistencyState) => void;
+  onAnalysisResult: (operation: DocumentOperationContext, state: InconsistencyState) => boolean;
   onSelectRange: (range: { from: number; to: number }) => void;
   onSelectReference: (reference: { sceneNumber: string; heading: string }) => void;
   onClose: () => void;
@@ -43,16 +52,21 @@ const FILTERS: Filter[] = ['all', 'dialogue', 'action'];
  * costs a request and is asked for explicitly.
  */
 export function RepetitionPanel({
+  documentId,
+  documentRevision,
+  screenplay,
   analysis,
   state,
   t,
   locale,
   onStateChange,
+  onAnalysisResult,
   onSelectRange,
   onSelectReference,
   onClose,
 }: RepetitionPanelProps) {
   const requestRef = useRef<AiRequestHandle | null>(null);
+  const latestOperation = useRef<DocumentOperationContext | null>(null);
   const cancelled = useRef(false);
   const [running, setRunning] = useState(false);
   const [phase, setPhase] = useState('');
@@ -61,19 +75,18 @@ export function RepetitionPanel({
   const [filter, setFilter] = useState<Filter>('all');
   const [expanded, setExpanded] = useState<string | null>(null);
 
-  const scenes = useMemo<SceneView[]>(
-    () =>
-      (analysis?.scenes ?? []).map((scene) => ({
-        number: scene.number,
-        heading: scene.heading,
-        location: scene.location,
-        elements: scene.elementIndexes.flatMap((index) => {
-          const element = analysis?.elements[index];
-          return element ? [element] : [];
-        }),
-      })),
-    [analysis],
-  );
+  const scenes = useMemo<SceneView[]>(() => {
+    if (analysis === null) return parse(screenplay).scenes;
+    return analysis.scenes.map((scene) => ({
+      number: scene.number,
+      heading: scene.heading,
+      location: scene.location,
+      elements: scene.elementIndexes.flatMap((index) => {
+        const element = analysis.elements[index];
+        return element ? [element] : [];
+      }),
+    }));
+  }, [analysis, screenplay]);
 
   // Recomputed on open rather than on every keystroke: it is cheap, but not free, and the
   // report is read, not typed into.
@@ -87,6 +100,7 @@ export function RepetitionPanel({
   useEffect(
     () => () => {
       cancelled.current = true;
+      latestOperation.current = null;
       void requestRef.current?.cancel();
     },
     [],
@@ -104,6 +118,11 @@ export function RepetitionPanel({
 
   const analyseStructure = async () => {
     if (running || scenes.length === 0) return;
+    const operation = beginDocumentOperation(
+      { id: documentId, revision: documentRevision },
+      'repetition',
+    );
+    latestOperation.current = operation;
     setRunning(true);
     setElapsedSeconds(0);
     setError(null);
@@ -111,6 +130,7 @@ export function RepetitionPanel({
     setPhase(t('repetition.analysing'));
     try {
       const config = await window.quantum.invoke('ai:config:get', undefined);
+      if (latestOperation.current?.requestId !== operation.requestId) return;
       const handle = startCollectedAiRequest(
         {
           requestId: `repetition-${crypto.randomUUID()}`,
@@ -128,13 +148,18 @@ export function RepetitionPanel({
       );
       requestRef.current = handle;
       const items = parseInconsistencies(await handle.promise);
-      onStateChange({ items, analyzedAt: Date.now() });
+      if (cancelled.current || latestOperation.current?.requestId !== operation.requestId) return;
+      onAnalysisResult(operation, { items, analyzedAt: Date.now() });
     } catch (reason) {
-      if (!cancelled.current) setError(reason instanceof Error ? reason.message : String(reason));
+      if (!cancelled.current && latestOperation.current?.requestId === operation.requestId) {
+        setError(reason instanceof Error ? reason.message : String(reason));
+      }
     } finally {
-      requestRef.current = null;
-      setRunning(false);
-      setPhase('');
+      if (latestOperation.current?.requestId === operation.requestId) {
+        requestRef.current = null;
+        setRunning(false);
+        setPhase('');
+      }
     }
   };
 

@@ -1,11 +1,18 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import type { RefObject } from 'react';
+import { isolateHistory } from '@codemirror/commands';
 import type { EditorView } from '@codemirror/view';
 import type { AppData, InconsistencyState, RewriteState } from '@shared/appdata/index.js';
 import type { ParseResponse } from '@shared/analysis/index.js';
 import type { Translator } from '@shared/i18n/index.js';
+import { parse } from '@shared/fountain/index.js';
 import type { CharacterNameSelection } from '../ai/CharacterNameDialog.js';
 import type { RewriteSelection } from '../ai/RewriteDialog.js';
+import {
+  beginDocumentOperation,
+  commitDocumentOperation,
+  type DocumentOperationContext,
+} from '@shared/documents/operations.js';
 import { useDocuments } from '../store/documents.js';
 
 /**
@@ -15,7 +22,6 @@ import { useDocuments } from '../store/documents.js';
 export function useAiEditorActions(
   editorView: RefObject<EditorView | null>,
   analysis: ParseResponse | null,
-  updateAppData: (update: (current: AppData) => AppData) => void,
   selectEditorRange: (range: { from: number; to: number }) => void,
   t: Translator['t'],
   setStatus: (message: string) => void,
@@ -35,6 +41,25 @@ export function useAiEditorActions(
     useState<CharacterNameSelection | null>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
 
+  useEffect(
+    () =>
+      useDocuments.subscribe((state, previous) => {
+        if (state.activeId === previous.activeId) return;
+        setPdfOpen(false);
+        setSnapshotsOpen(false);
+        setInconsistencyOpen(false);
+        setVoiceConsistencyOpen(false);
+        setRepetitionsOpen(false);
+        setRewriteSelection((selection) =>
+          selection?.operation.documentId === state.activeId ? selection : null,
+        );
+        setCharacterNameSelection((selection) =>
+          selection?.operation.documentId === state.activeId ? selection : null,
+        );
+      }),
+    [],
+  );
+
   const openPdfDialog = useCallback(() => {
     const now = new Date();
     const pad = (value: number) => String(value).padStart(2, '0');
@@ -53,22 +78,28 @@ export function useAiEditorActions(
     (initialTool: 'rewrite' | 'synonyms' = 'rewrite') => {
       const view = editorView.current;
       const current = store().active();
-      if (!view || !current || !analysis) return;
+      if (!view || !current) return;
+      const source = view.state.doc.toString();
+      const currentAnalysis =
+        analysis?.id === current.id && analysis.revision === current.revision
+          ? analysis
+          : parse(source);
       const selection = view.state.selection.main;
       if (selection.empty) {
         setStatus(t('rewrite.selectText'));
         return;
       }
-      const element = analysis.elements.find(
+      const element = currentAnalysis.elements.find(
         (candidate) =>
           selection.from >= candidate.range.from && selection.from <= candidate.range.to,
       );
-      const scene = analysis.scenes.find(
+      const scene = currentAnalysis.scenes.find(
         (candidate) =>
           selection.from >= candidate.range.from && selection.from <= candidate.range.to,
       );
       const coordinates = view.coordsAtPos(selection.from);
       setRewriteSelection({
+        operation: beginDocumentOperation(current, 'rewrite-selection'),
         from: selection.from,
         to: selection.to,
         text: view.state.sliceDoc(selection.from, selection.to),
@@ -76,10 +107,10 @@ export function useAiEditorActions(
         speaker: element?.speaker ?? null,
         sceneHeading: scene?.heading ?? null,
         sceneContext: scene
-          ? current.content.slice(scene.range.from, scene.range.to)
-          : current.content.slice(
+          ? source.slice(scene.range.from, scene.range.to)
+          : source.slice(
               Math.max(0, selection.from - 1_000),
-              Math.min(current.content.length, selection.to + 1_000),
+              Math.min(source.length, selection.to + 1_000),
             ),
         anchor: coordinates ? { x: coordinates.left, y: coordinates.bottom + 8 } : null,
         initialTool,
@@ -93,10 +124,16 @@ export function useAiEditorActions(
   const openRenameCharacter = useCallback(() => {
     const view = editorView.current;
     const current = store().active();
-    if (!view || !current || !analysis) return;
+    if (!view || !current) return;
+    const source = view.state.doc.toString();
+    const workerAnalysis =
+      analysis?.id === current.id && analysis.revision === current.revision ? analysis : null;
+    const parsed = workerAnalysis === null ? parse(source) : null;
+    const elements = workerAnalysis?.elements ?? parsed?.elements ?? [];
+    const scenes = workerAnalysis?.scenes ?? parsed?.scenes ?? [];
     const selection = view.state.selection.main;
     const offset = selection.from;
-    const element = analysis.elements.find(
+    const element = elements.find(
       (candidate) =>
         candidate.kind === 'character' &&
         offset >= candidate.range.from &&
@@ -106,93 +143,171 @@ export function useAiEditorActions(
       setStatus(t('characterName.selectCharacter'));
       return;
     }
-    const scene = analysis.scenes.find(
+    const scene = scenes.find(
       (candidate) => offset >= candidate.range.from && offset <= candidate.range.to,
     );
     const coordinates = view.coordsAtPos(offset);
     setCharacterNameSelection({
+      operation: beginDocumentOperation(current, 'character-rename'),
       name: element.character,
-      existingNames: analysis.characters.map((character) => character.name),
+      existingNames:
+        workerAnalysis?.characters.map((character) => character.name) ??
+        [...(parsed?.characters.values() ?? [])].map((character) => character.name),
       sceneContext: scene
-        ? current.content.slice(scene.range.from, scene.range.to)
-        : current.content.slice(
-            Math.max(0, offset - 1_000),
-            Math.min(current.content.length, offset + 1_000),
-          ),
+        ? source.slice(scene.range.from, scene.range.to)
+        : source.slice(Math.max(0, offset - 1_000), Math.min(source.length, offset + 1_000)),
       anchor: coordinates ? { x: coordinates.left, y: coordinates.bottom + 8 } : null,
     });
   }, [analysis, editorView, setStatus, store, t]);
 
+  const updateDocumentAppData = useCallback(
+    (documentId: string, update: (current: AppData) => AppData) => {
+      const document = store().documents.find((candidate) => candidate.id === documentId);
+      if (document) store().setAppData(documentId, update(document.appData), true);
+    },
+    [store],
+  );
+  const commitAppDataOperation = useCallback(
+    (operation: DocumentOperationContext, update: (current: AppData) => AppData): boolean => {
+      const status = commitDocumentOperation(store().documents, operation, (document) => {
+        store().setAppData(document.id, update(document.appData), true);
+      });
+      if (status === 'current') return true;
+      setStatus(t('operation.stale'));
+      return false;
+    },
+    [setStatus, store, t],
+  );
   const updateRewrite = useCallback(
-    (rewrite: RewriteState) => updateAppData((data) => ({ ...data, rewrite })),
-    [updateAppData],
+    (documentId: string, rewrite: RewriteState) =>
+      updateDocumentAppData(documentId, (data) => ({ ...data, rewrite })),
+    [updateDocumentAppData],
   );
   const updateVoiceConsistency = useCallback(
-    (characterName: string, state: InconsistencyState) =>
-      updateAppData((data) => ({
+    (documentId: string, characterName: string, state: InconsistencyState) =>
+      updateDocumentAppData(documentId, (data) => ({
         ...data,
         voiceConsistency: { ...data.voiceConsistency, [characterName]: state },
       })),
-    [updateAppData],
+    [updateDocumentAppData],
   );
   const updateRepetitions = useCallback(
-    (repetitions: InconsistencyState) => updateAppData((data) => ({ ...data, repetitions })),
-    [updateAppData],
+    (documentId: string, repetitions: InconsistencyState) =>
+      updateDocumentAppData(documentId, (data) => ({ ...data, repetitions })),
+    [updateDocumentAppData],
   );
   const updateInconsistencies = useCallback(
-    (inconsistencies: InconsistencyState) =>
-      updateAppData((data) => ({ ...data, inconsistencies })),
-    [updateAppData],
+    (documentId: string, inconsistencies: InconsistencyState) =>
+      updateDocumentAppData(documentId, (data) => ({ ...data, inconsistencies })),
+    [updateDocumentAppData],
   );
   const selectInconsistencyReference = useCallback(
     (reference: { sceneNumber: string; heading: string }) => {
-      const scene = analysis?.scenes.find(
+      const view = editorView.current;
+      const current = store().active();
+      if (!view || !current) return;
+      const currentAnalysis =
+        analysis?.id === current.id && analysis.revision === current.revision
+          ? analysis
+          : parse(view.state.doc.toString());
+      const scene = currentAnalysis.scenes.find(
         (candidate) =>
           candidate.number === reference.sceneNumber ||
           candidate.heading.toLocaleUpperCase() === reference.heading.toLocaleUpperCase(),
       );
       if (scene) selectEditorRange(scene.range);
     },
-    [analysis, selectEditorRange],
+    [analysis, editorView, selectEditorRange, store],
   );
   const replaceEditorRange = useCallback(
-    (from: number, to: number, content: string) => {
+    (selection: RewriteSelection, content: string): boolean => {
       const view = editorView.current;
-      if (!view) return;
-      view.dispatch({
-        changes: { from, to, insert: content },
-        selection: { anchor: from + content.length },
-        scrollIntoView: true,
+      if (!view || store().activeId !== selection.operation.documentId) return false;
+      const status = commitDocumentOperation(store().documents, selection.operation, () => {
+        view.dispatch({
+          changes: { from: selection.from, to: selection.to, insert: content },
+          selection: { anchor: selection.from + content.length },
+          scrollIntoView: true,
+        });
+        view.focus();
       });
-      view.focus();
+      if (status === 'current') return true;
+      setStatus(t('operation.stale'));
+      return false;
     },
-    [editorView],
+    [editorView, setStatus, store, t],
   );
   const renameCharacter = useCallback(
-    (nextName: string) => {
+    (selection: CharacterNameSelection, nextName: string): boolean => {
       const view = editorView.current;
-      const currentName = characterNameSelection?.name;
-      if (!view || !analysis || !currentName) return;
-      const changes = analysis.elements.flatMap((element) => {
-        if (element.kind !== 'character' || element.character !== currentName) return [];
-        const source = view.state.sliceDoc(element.range.from, element.range.to);
-        const index = source.toLocaleUpperCase('fr-FR').indexOf(currentName);
-        return index < 0
-          ? []
-          : [
-              {
-                from: element.range.from + index,
-                to: element.range.from + index + currentName.length,
-                insert: nextName,
-              },
-            ];
+      if (!view || store().activeId !== selection.operation.documentId) return false;
+      let renamed = 0;
+      const status = commitDocumentOperation(store().documents, selection.operation, () => {
+        const elements = parse(view.state.doc.toString()).elements;
+        const changes = elements.flatMap((element) => {
+          if (element.kind !== 'character' || element.character !== selection.name) return [];
+          const source = view.state.sliceDoc(element.range.from, element.range.to);
+          const index = source.toLocaleUpperCase('fr-FR').indexOf(selection.name);
+          return index < 0
+            ? []
+            : [
+                {
+                  from: element.range.from + index,
+                  to: element.range.from + index + selection.name.length,
+                  insert: nextName,
+                },
+              ];
+        });
+        if (changes.length === 0) return;
+        renamed = changes.length;
+        view.dispatch({ changes });
+        view.focus();
       });
-      if (changes.length === 0) return;
-      view.dispatch({ changes });
-      view.focus();
-      setStatus(t('characterName.renamed', { count: changes.length, name: nextName }));
+      if (status !== 'current') {
+        setStatus(t('operation.stale'));
+        return false;
+      }
+      if (renamed === 0) return false;
+      setStatus(t('characterName.renamed', { count: renamed, name: nextName }));
+      return true;
     },
-    [analysis, characterNameSelection?.name, editorView, setStatus, t],
+    [editorView, setStatus, store, t],
+  );
+  const restoreSnapshot = useCallback(
+    (operation: DocumentOperationContext, content: string): boolean => {
+      const view = editorView.current;
+      if (!view || store().activeId !== operation.documentId) return false;
+      const status = commitDocumentOperation(store().documents, operation, () => {
+        view.dispatch({
+          changes: { from: 0, to: view.state.doc.length, insert: content },
+          annotations: isolateHistory.of('full'),
+        });
+        view.focus();
+      });
+      if (status === 'current') return true;
+      setStatus(t('operation.stale'));
+      return false;
+    },
+    [editorView, setStatus, store, t],
+  );
+
+  const commitInconsistencies = useCallback(
+    (operation: DocumentOperationContext, inconsistencies: InconsistencyState) =>
+      commitAppDataOperation(operation, (data) => ({ ...data, inconsistencies })),
+    [commitAppDataOperation],
+  );
+  const commitVoiceConsistency = useCallback(
+    (operation: DocumentOperationContext, characterName: string, state: InconsistencyState) =>
+      commitAppDataOperation(operation, (data) => ({
+        ...data,
+        voiceConsistency: { ...data.voiceConsistency, [characterName]: state },
+      })),
+    [commitAppDataOperation],
+  );
+  const commitRepetitions = useCallback(
+    (operation: DocumentOperationContext, repetitions: InconsistencyState) =>
+      commitAppDataOperation(operation, (data) => ({ ...data, repetitions })),
+    [commitAppDataOperation],
   );
 
   return {
@@ -236,5 +351,9 @@ export function useAiEditorActions(
     selectInconsistencyReference,
     replaceEditorRange,
     renameCharacter,
+    restoreSnapshot,
+    commitInconsistencies,
+    commitVoiceConsistency,
+    commitRepetitions,
   };
 }

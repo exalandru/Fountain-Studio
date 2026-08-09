@@ -17,6 +17,11 @@ import {
   parseInconsistencies,
 } from '@shared/ai/index.js';
 import type { Locale, Translator } from '@shared/i18n/index.js';
+import { parse } from '@shared/fountain/index.js';
+import {
+  beginDocumentOperation,
+  type DocumentOperationContext,
+} from '@shared/documents/operations.js';
 import type { AiRequestHandle } from './request.js';
 import { startCollectedAiRequest } from './request.js';
 import { Button } from '../ui/Button.js';
@@ -25,12 +30,15 @@ import { Field } from '../ui/Field.js';
 import { Select } from '../ui/Select.js';
 
 interface InconsistencyPanelProps {
+  documentId: string;
+  documentRevision: number;
   screenplay: string;
   analysis: ParseResponse | null;
   state: InconsistencyState;
   t: Translator['t'];
   locale: Locale;
   onStateChange: (state: InconsistencyState) => void;
+  onAnalysisResult: (operation: DocumentOperationContext, state: InconsistencyState) => boolean;
   onSelectReference: (reference: { sceneNumber: string; heading: string }) => void;
   onClose: () => void;
 }
@@ -47,16 +55,20 @@ const TYPES: Array<'all' | InconsistencyType> = [
 const SEVERITIES: Array<'all' | InconsistencySeverity> = ['all', 'info', 'minor', 'major'];
 
 export function InconsistencyPanel({
+  documentId,
+  documentRevision,
   screenplay,
   analysis,
   state,
   t,
   locale,
   onStateChange,
+  onAnalysisResult,
   onSelectReference,
   onClose,
 }: InconsistencyPanelProps) {
   const requestRef = useRef<AiRequestHandle | null>(null);
+  const latestOperation = useRef<DocumentOperationContext | null>(null);
   const cancelled = useRef(false);
   const [running, setRunning] = useState(false);
   const [phase, setPhase] = useState('');
@@ -68,6 +80,7 @@ export function InconsistencyPanel({
   useEffect(
     () => () => {
       cancelled.current = true;
+      latestOperation.current = null;
       void requestRef.current?.cancel();
     },
     [],
@@ -114,7 +127,13 @@ export function InconsistencyPanel({
   };
 
   const analyse = async () => {
-    if (!analysis || running) return;
+    if (running) return;
+
+    const operation = beginDocumentOperation(
+      { id: documentId, revision: documentRevision },
+      'consistency',
+    );
+    latestOperation.current = operation;
 
     setRunning(true);
     setElapsedSeconds(0);
@@ -122,6 +141,7 @@ export function InconsistencyPanel({
     cancelled.current = false;
     try {
       const config = await window.quantum.invoke('ai:config:get', undefined);
+      if (latestOperation.current?.requestId !== operation.requestId) return;
       let output = '';
       if (approximateTokens(screenplay) <= 50_000) {
         output = await request(
@@ -130,8 +150,9 @@ export function InconsistencyPanel({
           t('consistency.directPass'),
         );
       } else {
+        const sceneRanges = analysis?.scenes ?? parse(screenplay).scenes;
         const chunks = chunkScenes(
-          analysis.scenes.map((scene) => ({
+          sceneRanges.map((scene) => ({
             content: screenplay.slice(scene.range.from, scene.range.to),
           })),
         );
@@ -155,13 +176,18 @@ export function InconsistencyPanel({
       if (items.length === 0 && !output.includes('"items":[]')) {
         throw new Error(t('consistency.invalidResponse'));
       }
-      onStateChange({ items, analyzedAt: Date.now() });
+      if (cancelled.current || latestOperation.current?.requestId !== operation.requestId) return;
+      onAnalysisResult(operation, { items, analyzedAt: Date.now() });
     } catch (reason) {
-      if (!cancelled.current) setError(reason instanceof Error ? reason.message : String(reason));
+      if (!cancelled.current && latestOperation.current?.requestId === operation.requestId) {
+        setError(reason instanceof Error ? reason.message : String(reason));
+      }
     } finally {
-      requestRef.current = null;
-      setRunning(false);
-      setPhase('');
+      if (latestOperation.current?.requestId === operation.requestId) {
+        requestRef.current = null;
+        setRunning(false);
+        setPhase('');
+      }
     }
   };
 

@@ -137,7 +137,11 @@ describe('PDF revisions', () => {
   const revision = (over: Partial<NonNullable<PdfExportOptions['revision']>> = {}) => ({
     ...baseOptions,
     revision: {
-      baselineSource: source,
+      baseline: {
+        path: '/tmp/screenplay.fountain',
+        snapshotId: 'snap-unit-baseline',
+        source,
+      },
       header: 'RÉVISION BLEUE — 31/07/26',
       colour: 'blue' as const,
       colourMode: 'both' as const,
@@ -261,15 +265,32 @@ describe('PDF revisions', () => {
     expect(labels).toEqual(labels.map((_label, index) => String(index + 1)));
   });
 
-  it('does not read a baseline it was not given', async () => {
+  it('rejects revision rendering when the structured baseline is absent', async () => {
+    const malformed = revision() as PdfExportOptions & {
+      revision: Omit<NonNullable<PdfExportOptions['revision']>, 'baseline'>;
+    };
+    delete (malformed.revision as Partial<NonNullable<PdfExportOptions['revision']>>).baseline;
+
+    await expect(renderScreenplayPdf(source, malformed, RESOURCES)).rejects.toThrow(
+      'PDF_REVISION_BASELINE_INVALID',
+    );
+  });
+
+  it('treats an empty validated baseline as real revision input', async () => {
     const rendered = await renderScreenplayPdf(
       source,
-      revision({ baselineSource: '', onlyRevisedPages: true, lockedPages: true }),
+      revision({
+        baseline: {
+          path: '/tmp/screenplay.fountain',
+          snapshotId: 'snap-empty-baseline',
+          source: '',
+        },
+        onlyRevisedPages: true,
+        lockedPages: true,
+      }),
       RESOURCES,
     );
 
-    // No reference means nothing to compare: the export falls back to the whole screenplay
-    // rather than filtering every page away.
     expect(rendered.pageCount).toBeGreaterThan(1);
   });
 });

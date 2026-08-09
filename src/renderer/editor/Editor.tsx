@@ -40,10 +40,10 @@ export interface EditorProps {
   typewriterMode: boolean;
   formattedMode: boolean;
   completionIndex: CompletionIndex;
-  onChange: (content: string) => void;
-  onCursorOffset?: (offset: number) => void;
-  onSelectionRange?: (range: { from: number; to: number }) => void;
-  onScrollOffset?: (offset: number) => void;
+  onChange: (documentId: string, content: string) => void;
+  onCursorOffset?: (documentId: string, offset: number) => void;
+  onSelectionRange?: (documentId: string, range: { from: number; to: number }) => void;
+  onScrollOffset?: (documentId: string, offset: number) => void;
   externalScrollOffset?: number | null;
   onViewReady?: (view: EditorView | null) => void;
 }
@@ -183,10 +183,10 @@ function EditorComponent({
         completionCompartment.current.of(fountainCompletion(completionIndex)),
         themeCompartment.current.of(dark ? darkTheme : lightTheme),
         EditorView.updateListener.of((update) => {
-          if (update.docChanged) onChangeRef.current(update.state.doc.toString());
+          if (update.docChanged) onChangeRef.current(documentId, update.state.doc.toString());
           if (update.docChanged || update.selectionSet) {
-            onCursorRef.current?.(update.state.selection.main.head);
-            onSelectionRef.current?.({
+            onCursorRef.current?.(documentId, update.state.selection.main.head);
+            onSelectionRef.current?.(documentId, {
               from: update.state.selection.main.from,
               to: update.state.selection.main.to,
             });
@@ -213,8 +213,8 @@ function EditorComponent({
     const instance = new EditorView({ state, parent: host.current });
     view.current = instance;
     onViewReady?.(instance);
-    onCursorRef.current?.(instance.state.selection.main.head);
-    onSelectionRef.current?.({
+    onCursorRef.current?.(documentId, instance.state.selection.main.head);
+    onSelectionRef.current?.(documentId, {
       from: instance.state.selection.main.from,
       to: instance.state.selection.main.to,
     });
@@ -229,7 +229,7 @@ function EditorComponent({
       cancelAnimationFrame(typewriterFrame.current);
       frame = requestAnimationFrame(() => {
         const block = instance.lineBlockAtHeight(instance.scrollDOM.scrollTop);
-        onScrollRef.current?.(block.from);
+        onScrollRef.current?.(documentId, block.from);
       });
     };
     instance.scrollDOM.addEventListener('scroll', handleScroll, { passive: true });

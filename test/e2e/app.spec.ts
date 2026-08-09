@@ -443,30 +443,57 @@ test('the command palette runs focus mode and typewriter settings', async () => 
 });
 
 test('the spell-check language is independent from the interface language', async () => {
-  const system = await page.evaluate(() =>
-    window.quantum.invoke('settings:patch', { spellcheckLanguage: 'system' }),
+  // Start with UI English; html lang must track UI, not the spell-checker.
+  await page.evaluate(() =>
+    window.quantum.invoke('settings:patch', { language: 'en', spellcheckLanguage: 'system' }),
   );
-  expect(system).toMatchObject({ language: 'en', spellcheckLanguage: 'system' });
-  // html lang follows the OS language when spellcheck is "system".
-  await expect
-    .poll(() => page.evaluate(() => document.documentElement.lang))
-    .toBe(await page.evaluate(() => navigator.language));
+  await expect.poll(() => page.evaluate(() => document.documentElement.lang)).toBe('en');
 
+  // A — historical bug: French UI + English spellchecker must not announce en-US.
+  await page.evaluate(() =>
+    window.quantum.invoke('settings:patch', { language: 'fr', spellcheckLanguage: 'en-US' }),
+  );
+  await expect.poll(() => page.evaluate(() => document.documentElement.lang)).toBe('fr');
+  expect(await page.evaluate(() => window.quantum.invoke('settings:get', undefined))).toMatchObject(
+    { language: 'fr', spellcheckLanguage: 'en-US' },
+  );
+
+  // B — inverse: English UI + system spellchecker keeps html lang on UI.
+  await page.evaluate(() =>
+    window.quantum.invoke('settings:patch', { language: 'en', spellcheckLanguage: 'system' }),
+  );
+  await expect.poll(() => page.evaluate(() => document.documentElement.lang)).toBe('en');
+
+  // D — changing only the spellchecker must not move html lang.
   await page.evaluate(() =>
     window.quantum.invoke('settings:patch', { spellcheckLanguage: 'en-US' }),
   );
-  await expect.poll(() => page.evaluate(() => document.documentElement.lang)).toBe('en-US');
+  expect(await page.evaluate(() => window.quantum.invoke('settings:get', undefined))).toMatchObject(
+    { language: 'en', spellcheckLanguage: 'en-US' },
+  );
+  expect(await page.evaluate(() => document.documentElement.lang)).toBe('en');
+
+  // C — hot UI switch alone updates html lang immediately.
+  await page.evaluate(() => window.quantum.invoke('settings:patch', { language: 'fr' }));
+  await expect.poll(() => page.evaluate(() => document.documentElement.lang)).toBe('fr');
+  expect(await page.evaluate(() => window.quantum.invoke('settings:get', undefined))).toMatchObject(
+    { language: 'fr', spellcheckLanguage: 'en-US' },
+  );
+
+  await page.evaluate(() =>
+    window.quantum.invoke('settings:patch', { language: 'en', spellcheckLanguage: 'system' }),
+  );
 });
 
 test('action lines stay spell-checkable while scene and character lines do not', async () => {
   // Native Chromium underlines inside CodeMirror are platform-dependent (macOS often
   // ignores setSpellCheckerLanguages). What we can guarantee is the editor wiring:
-  // contenteditable on, action/dialogue without spellcheck=false, preference in html lang.
+  // contenteditable on, action/dialogue without spellcheck=false.
   // Keep a title page so later PDF export still sees two pages.
   await page.evaluate(() =>
-    window.quantum.invoke('settings:patch', { spellcheckLanguage: 'en-US' }),
+    window.quantum.invoke('settings:patch', { language: 'en', spellcheckLanguage: 'en-US' }),
   );
-  await expect.poll(() => page.evaluate(() => document.documentElement.lang)).toBe('en-US');
+  await expect.poll(() => page.evaluate(() => document.documentElement.lang)).toBe('en');
 
   const editor = page.locator('.cm-content');
   await expect(editor).toHaveAttribute('spellcheck', 'true');
@@ -703,8 +730,11 @@ test('switching to French retranslates the interface and the native menu', async
   // Renderer: the status bar is rebuilt from the French catalogue.
   await expect(page.locator('.statusbar')).toContainText('scène');
   await expect(page.locator('.statusbar')).toContainText('lieu');
-  // UI language and spellcheck language stay independent: html lang tracks the latter.
-  expect(await page.evaluate(() => document.documentElement.lang)).toBe('en-US');
+  // UI language and spellcheck stay independent: html lang tracks the UI only.
+  expect(await page.evaluate(() => document.documentElement.lang)).toBe('fr');
+  expect(await page.evaluate(() => window.quantum.invoke('settings:get', undefined))).toMatchObject(
+    { language: 'fr', spellcheckLanguage: 'en-US' },
+  );
 
   // Main process: the native menu was rebuilt, since labels cannot be updated in place.
   const labels = await menuLabels();

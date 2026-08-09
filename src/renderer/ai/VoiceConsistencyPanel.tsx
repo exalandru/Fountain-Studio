@@ -10,6 +10,11 @@ import {
 } from '@shared/ai/index.js';
 import type { ParseResponse } from '@shared/analysis/index.js';
 import type { Locale, Translator } from '@shared/i18n/index.js';
+import { parse } from '@shared/fountain/index.js';
+import {
+  beginDocumentOperation,
+  type DocumentOperationContext,
+} from '@shared/documents/operations.js';
 import type { AiRequestHandle } from './request.js';
 import { startCollectedAiRequest } from './request.js';
 import { Button } from '../ui/Button.js';
@@ -18,6 +23,9 @@ import { Field } from '../ui/Field.js';
 import { Select } from '../ui/Select.js';
 
 interface VoiceConsistencyPanelProps {
+  documentId: string;
+  documentRevision: number;
+  screenplay: string;
   /** `null` until the first analysis lands; the character list comes from it. */
   analysis: ParseResponse | null;
   /** One entry per character, so each voice keeps its own findings. */
@@ -25,20 +33,30 @@ interface VoiceConsistencyPanelProps {
   t: Translator['t'];
   locale: Locale;
   onStateChange: (characterName: string, state: InconsistencyState) => void;
+  onAnalysisResult: (
+    operation: DocumentOperationContext,
+    characterName: string,
+    state: InconsistencyState,
+  ) => boolean;
   onSelectReference: (reference: { sceneNumber: string; heading: string }) => void;
   onClose: () => void;
 }
 
 export function VoiceConsistencyPanel({
+  documentId,
+  documentRevision,
+  screenplay,
   analysis,
   state,
   t,
   locale,
   onStateChange,
+  onAnalysisResult,
   onSelectReference,
   onClose,
 }: VoiceConsistencyPanelProps) {
   const requestRef = useRef<AiRequestHandle | null>(null);
+  const latestOperation = useRef<DocumentOperationContext | null>(null);
   const cancelled = useRef(false);
   const [running, setRunning] = useState(false);
   const [phase, setPhase] = useState('');
@@ -48,17 +66,22 @@ export function VoiceConsistencyPanel({
 
   // Speaking characters only, and the busiest first: that is the order in which a writer
   // wonders whether a voice holds together.
+  const parsed = useMemo(
+    () => (analysis === null ? parse(screenplay) : null),
+    [analysis, screenplay],
+  );
   const characters = useMemo(
     () =>
-      (analysis?.characters ?? [])
+      (analysis?.characters ?? [...(parsed?.characters.values() ?? [])])
         .filter((character) => character.speeches > 0)
         .map((character) => character.name),
-    [analysis],
+    [analysis, parsed],
   );
 
   useEffect(
     () => () => {
       cancelled.current = true;
+      latestOperation.current = null;
       void requestRef.current?.cancel();
     },
     [],
@@ -100,7 +123,14 @@ export function VoiceConsistencyPanel({
   };
 
   const analyse = async () => {
-    if (!selectedCharacter || running || !analysis) return;
+    if (!selectedCharacter || running) return;
+    const character = selectedCharacter;
+
+    const operation = beginDocumentOperation(
+      { id: documentId, revision: documentRevision },
+      'voice',
+    );
+    latestOperation.current = operation;
 
     setRunning(true);
     setElapsedSeconds(0);
@@ -108,18 +138,21 @@ export function VoiceConsistencyPanel({
     cancelled.current = false;
     try {
       const config = await window.quantum.invoke('ai:config:get', undefined);
+      if (latestOperation.current?.requestId !== operation.requestId) return;
       // `AnalyzedScene` holds indexes into the flat element list rather than a nested AST,
       // so the scene's own elements are gathered here.
-      const scenes = analysis.scenes.map((scene) => ({
-        number: scene.number,
-        heading: scene.heading,
-        location: scene.location,
-        elements: scene.elementIndexes.flatMap((index) => {
-          const element = analysis.elements[index];
-          return element ? [element] : [];
-        }),
-      }));
-      const context = buildCharacterVoiceContext(scenes, selectedCharacter);
+      const scenes = analysis
+        ? analysis.scenes.map((scene) => ({
+            number: scene.number,
+            heading: scene.heading,
+            location: scene.location,
+            elements: scene.elementIndexes.flatMap((index) => {
+              const element = analysis.elements[index];
+              return element ? [element] : [];
+            }),
+          }))
+        : (parsed?.scenes ?? []);
+      const context = buildCharacterVoiceContext(scenes, character);
 
       // Judging a voice means holding all of it at once, so this analysis is deliberately
       // never chunked. The guard is a safety net, at the same threshold as the inconsistency
@@ -130,18 +163,23 @@ export function VoiceConsistencyPanel({
 
       const output = await request(
         config.activeProfileId,
-        buildVoiceConsistencyPrompt(selectedCharacter, context),
-        t('voice.analysing', { character: selectedCharacter }),
+        buildVoiceConsistencyPrompt(character, context),
+        t('voice.analysing', { character }),
       );
 
       const items = parseInconsistencies(output);
-      onStateChange(selectedCharacter, { items, analyzedAt: Date.now() });
+      if (cancelled.current || latestOperation.current?.requestId !== operation.requestId) return;
+      onAnalysisResult(operation, character, { items, analyzedAt: Date.now() });
     } catch (reason) {
-      if (!cancelled.current) setError(reason instanceof Error ? reason.message : String(reason));
+      if (!cancelled.current && latestOperation.current?.requestId === operation.requestId) {
+        setError(reason instanceof Error ? reason.message : String(reason));
+      }
     } finally {
-      requestRef.current = null;
-      setRunning(false);
-      setPhase('');
+      if (latestOperation.current?.requestId === operation.requestId) {
+        requestRef.current = null;
+        setRunning(false);
+        setPhase('');
+      }
     }
   };
 

@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { _electron as electron } from '@playwright/test';
 import { expect, test } from '@playwright/test';
+import { openTrustedScreenplays } from './helpers/open.js';
 
 function longScreenplay(): string {
   const lines: string[] = [];
@@ -40,9 +41,7 @@ test('a feature-length preview stays virtualised and syncs both scroll direction
   try {
     const page = await app.firstWindow();
     await page.waitForSelector('.cm-content');
-    await app.evaluate(({ BrowserWindow }, path) => {
-      BrowserWindow.getAllWindows()[0]?.webContents.send('app:openFiles', { paths: [path] });
-    }, screenplay);
+    await openTrustedScreenplays(app, [screenplay]);
 
     await expect(page.locator('.statusbar')).toContainText('300 scenes');
     const widths = await page.evaluate(() => {

@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { _electron as electron } from '@playwright/test';
 import type { ElectronApplication, Locator, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
+import { openTrustedScreenplays } from './helpers/open.js';
 
 /**
  * The corkboard.
@@ -98,9 +99,7 @@ test.beforeAll(async () => {
   page = await app.firstWindow();
   await page.setViewportSize({ width: 1400, height: 900 });
   await page.waitForSelector('.cm-content');
-  await app.evaluate(({ BrowserWindow }, path) => {
-    BrowserWindow.getAllWindows()[0]?.webContents.send('app:openFiles', { paths: [path] });
-  }, screenplay);
+  await openTrustedScreenplays(app, [screenplay]);
   await expect(page.locator('.cm-content')).toContainText('Alice observe les serveurs.');
 });
 

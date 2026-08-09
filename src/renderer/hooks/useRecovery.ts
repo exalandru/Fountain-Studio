@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import type { RefObject } from 'react';
+import { sharedDocumentPathCoordinator } from '@shared/documents/index.js';
 import type { Translator } from '@shared/i18n/index.js';
 import type { NewDocumentStrings } from '../store/documents.js';
 import { useDocuments } from '../store/documents.js';
@@ -24,28 +25,55 @@ export function useRecovery({ stringsRef, setStatus, setStatusError, t }: Recove
       const pending = await window.quantum.invoke('autosave:pending', undefined);
       if (cancelled) return;
 
+      let recovered = 0;
       for (const record of pending) {
         const strings = stringsRef.current;
         if (!strings) continue;
-        const id = store().restore(
-          record.path,
-          record.content,
-          strings,
-          record.eol,
-          record.mtimeMs,
-          record.id,
-        );
-        if (!record.path) continue;
 
-        try {
-          const appData = await window.quantum.invoke('appdata:read', { path: record.path });
-          if (!cancelled && appData) store().setAppData(id, appData);
-        } catch {
-          if (!cancelled) setStatusError(t('status.appDataFailed'));
+        const restoreOne = async () => {
+          const before = store().documents.length;
+          const id = store().restore(
+            record.path,
+            record.content,
+            strings,
+            record.eol,
+            record.mtimeMs,
+            record.id,
+          );
+          // An already-open path focuses the existing tab; that is not a recovery.
+          if (store().documents.length === before) return null;
+          recovered += 1;
+
+          if (!record.path) return id;
+
+          try {
+            const appData = await window.quantum.invoke('appdata:read', { path: record.path });
+            const current = store().documents.find((document) => document.id === id);
+            if (
+              !cancelled &&
+              appData &&
+              current?.path === record.path &&
+              current.appDataRevision === 0
+            ) {
+              store().setAppData(id, appData);
+            }
+          } catch {
+            if (!cancelled) setStatusError(t('status.appDataFailed'));
+          }
+          return id;
+        };
+
+        if (record.path) {
+          await sharedDocumentPathCoordinator(window.quantum.platform).runExclusive(
+            record.path,
+            restoreOne,
+          );
+        } else {
+          await restoreOne();
         }
       }
 
-      if (pending.length > 0) setStatus(t('status.recovered', { count: pending.length }));
+      if (recovered > 0) setStatus(t('status.recovered', { count: recovered }));
       if (store().documents.length === 0 && stringsRef.current) {
         store().newDocument(stringsRef.current);
       }

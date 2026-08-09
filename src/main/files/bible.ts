@@ -20,6 +20,7 @@ import {
   serializeBible,
 } from '@shared/bible/index.js';
 import { writeFileAtomic } from './atomic.js';
+import { withDocumentBundleMutation } from './bundle-mutation.js';
 
 /** Derives the sidecar path from the screenplay path. */
 export function biblePath(screenplayPath: string): string {
@@ -81,7 +82,9 @@ export async function writeBible(screenplayPath: string, bible: Bible): Promise<
       // A failed write must not prevent a later state change from being persisted.
     })
     .then(async () => {
-      await writeFileAtomic(target, serializeBible(sortedBible));
+      await withDocumentBundleMutation(screenplayPath, () =>
+        writeFileAtomic(target, serializeBible(sortedBible)),
+      );
       return sortedBible;
     });
   pendingWrites.set(target, current);
@@ -155,16 +158,20 @@ export async function writeBibleImage(
     throw new Error('bible image is empty or too large');
   }
   const directory = bibleImagesDirectory(screenplayPath);
-  await mkdir(directory, { recursive: true });
-  await writeFileAtomic(join(directory, bibleImageName(id)), bytes);
+  await withDocumentBundleMutation(screenplayPath, async () => {
+    await mkdir(directory, { recursive: true });
+    await writeFileAtomic(join(directory, bibleImageName(id)), bytes);
+  });
   return bibleImageName(id);
 }
 
 /** Removes a sheet's picture. Called when a sheet is deleted, so the folder does not silt up. */
 export async function deleteBibleImage(screenplayPath: string, id: string): Promise<void> {
-  await unlink(join(bibleImagesDirectory(screenplayPath), bibleImageName(id))).catch(
-    () => undefined,
-  );
+  await withDocumentBundleMutation(screenplayPath, async () => {
+    await unlink(join(bibleImagesDirectory(screenplayPath), bibleImageName(id))).catch(
+      () => undefined,
+    );
+  });
 }
 
 /** Pictures whose sheet is gone, so a deletion that failed once does not leave them for ever. */
@@ -172,10 +179,12 @@ export async function pruneBibleImages(
   screenplayPath: string,
   keep: readonly string[],
 ): Promise<void> {
-  const wanted = new Set(keep.map(bibleImageName));
-  const directory = bibleImagesDirectory(screenplayPath);
-  const entries = await readdir(directory).catch(() => [] as string[]);
-  for (const entry of entries) {
-    if (!wanted.has(entry)) await unlink(join(directory, entry)).catch(() => undefined);
-  }
+  await withDocumentBundleMutation(screenplayPath, async () => {
+    const wanted = new Set(keep.map(bibleImageName));
+    const directory = bibleImagesDirectory(screenplayPath);
+    const entries = await readdir(directory).catch(() => [] as string[]);
+    for (const entry of entries) {
+      if (!wanted.has(entry)) await unlink(join(directory, entry)).catch(() => undefined);
+    }
+  });
 }

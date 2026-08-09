@@ -99,8 +99,8 @@ describe('what a revision marks', () => {
     expect(Math.min(...marked)).toBe(3);
   });
 
-  it('treats an absent baseline as nothing to compare', () => {
-    expect(revisedLines('', baseline).size).toBe(0);
+  it('treats an empty baseline as a valid draft before all current lines', () => {
+    expect(revisedLines('', baseline).size).toBeGreaterThan(0);
   });
 
   it('marks a whole element when one of its lines moved', () => {

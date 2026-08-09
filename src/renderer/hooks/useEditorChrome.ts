@@ -58,26 +58,25 @@ export function useEditorChrome(
   }, [activeId, analysis?.elements, cursorOffset, editorSelection]);
 
   const handleEditorChange = useCallback(
-    (content: string) => {
-      const id = store().activeId;
-      if (id) store().setContent(id, content);
+    (documentId: string, content: string) => {
+      store().setContent(documentId, content);
     },
     [store],
   );
   const handleCursorOffset = useCallback(
-    (offset: number) => setCursorPosition({ documentId: store().activeId, offset }),
-    [store],
+    (documentId: string, offset: number) => setCursorPosition({ documentId, offset }),
+    [],
   );
   const handleSelectionRange = useCallback(
-    (range: { from: number; to: number }) =>
-      setEditorSelection({ documentId: store().activeId, ...range }),
-    [store],
+    (documentId: string, range: { from: number; to: number }) =>
+      setEditorSelection({ documentId, ...range }),
+    [],
   );
   const handleEditorScroll = useCallback(
-    (offset: number) => {
-      const current = store().active();
+    (documentId: string, offset: number) => {
+      const current = store().documents.find((document) => document.id === documentId);
       if (current?.appData.preview.syncScroll) {
-        setEditorScrollPosition({ documentId: current.id, offset });
+        setEditorScrollPosition({ documentId, offset });
       }
     },
     [store],

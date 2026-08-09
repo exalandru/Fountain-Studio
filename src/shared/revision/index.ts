@@ -79,7 +79,6 @@ export function nextRevisionColour(current: RevisionColour): RevisionColour {
  */
 export function revisedLines(baseline: string, current: string): Set<number> {
   const marked = new Set<number>();
-  if (baseline.length === 0) return marked;
 
   const { lines } = diffLines(baseline, current);
   let lastAfter = 0;

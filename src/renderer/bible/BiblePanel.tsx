@@ -15,8 +15,15 @@ import { normaliseBibleImage } from './image.js';
 import type { SceneView } from '@shared/fountain/ast.js';
 import { foldDiacritics, foldedEquals, foldedIncludes } from '@shared/text/index.js';
 import type { Translator } from '@shared/i18n/index.js';
+import type { PendingWrites } from '@shared/persistence/PendingWrites.js';
+import {
+  beginDocumentOperation,
+  type DocumentOperationContext,
+  validateDocumentOperation,
+} from '@shared/documents/operations.js';
 import type { AiRequestHandle } from '../ai/request.js';
 import { startCollectedAiRequest } from '../ai/request.js';
+import { useDocuments } from '../store/documents.js';
 import { Button } from '../ui/Button.js';
 import { Dialog } from '../ui/Dialog.js';
 import { Field } from '../ui/Field.js';
@@ -42,10 +49,14 @@ function initials(name: string): string {
 }
 
 interface BiblePanelProps {
+  documentId: string;
+  documentRevision: number;
   /** `null` when the screenplay has never been saved: there is no sidecar to write beside. */
   path: string | null;
   analysis: ParseResponse | null;
   t: Translator['t'];
+  pendingWrites: PendingWrites;
+  onPersistenceError: (message: string) => void;
   onClose: () => void;
 }
 
@@ -57,7 +68,16 @@ interface BiblePanelProps {
  * moment the author cuts a scene. The prose is the author's, saved to a sidecar, and the
  * model may only ever draft into fields that are still empty.
  */
-export function BiblePanel({ path, analysis, t, onClose }: BiblePanelProps) {
+export function BiblePanel({
+  documentId,
+  documentRevision,
+  path,
+  analysis,
+  t,
+  pendingWrites,
+  onPersistenceError,
+  onClose,
+}: BiblePanelProps) {
   // An unsaved screenplay has nowhere to store a bible, so the state starts settled rather
   // than being emptied by an effect.
   const [bible, setBible] = useState<Bible | null>(path === null ? createBible() : null);
@@ -75,8 +95,12 @@ export function BiblePanel({ path, analysis, t, onClose }: BiblePanelProps) {
   /** Sheet id → data URI, or null once we know there is no picture. */
   const [pictures, setPictures] = useState<ReadonlyMap<string, string | null>>(new Map());
   const requestRef = useRef<AiRequestHandle | null>(null);
+  const latestDraft = useRef<DocumentOperationContext | null>(null);
   const cancelled = useRef(false);
-  /** Set while a textarea is being typed into; written out on blur, not on every keystroke. */
+  const mounted = useRef(true);
+  const bibleRef = useRef<Bible | null>(bible);
+  const flushInFlight = useRef<Promise<void> | null>(null);
+  /** Cleared only after the main process acknowledges the exact submitted revision. */
   const dirty = useRef(false);
   /**
    * Counts local changes, so a write's echo cannot undo an edit made while it was in flight.
@@ -86,6 +110,11 @@ export function BiblePanel({ path, analysis, t, onClose }: BiblePanelProps) {
    * reply overwrites what was typed in between.
    */
   const revision = useRef(0);
+
+  const adoptBible = useCallback((next: Bible) => {
+    bibleRef.current = next;
+    if (mounted.current) setBible(next);
+  }, []);
 
   const scenes = useMemo<SceneView[]>(
     () =>
@@ -112,22 +141,33 @@ export function BiblePanel({ path, analysis, t, onClose }: BiblePanelProps) {
 
   useEffect(() => {
     if (path === null) return;
+    let cancelledHere = false;
     void window.quantum
       .invoke('bible:read', { path })
-      .then(setBible)
+      .then((next) => {
+        if (!cancelledHere) adoptBible(next);
+      })
       .catch((error: unknown) => {
-        setBible(createBible());
-        setFeedback(t('bible.failed', { error: String(error) }));
+        if (cancelledHere) return;
+        const message = t('bible.failed', { error: String(error) });
+        adoptBible(createBible());
+        setFeedback(message);
+        onPersistenceError(message);
       });
-  }, [path, t]);
+    return () => {
+      cancelledHere = true;
+    };
+  }, [adoptBible, onPersistenceError, path, t]);
 
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
       cancelled.current = true;
+      latestDraft.current = null;
       void requestRef.current?.cancel();
-    },
-    [],
-  );
+    };
+  }, []);
 
   useEffect(() => {
     if (!running) return;
@@ -164,36 +204,76 @@ export function BiblePanel({ path, analysis, t, onClose }: BiblePanelProps) {
     };
   }, [bible, path, pictures]);
 
-  const persist = useCallback(
-    async (next: Bible) => {
-      revision.current += 1;
-      const mine = revision.current;
-      setBible(next);
+  const writeRevision = useCallback(
+    async (next: Bible, submittedRevision: number) => {
       if (path === null) return;
-      setBusy(true);
+      if (mounted.current) setBusy(true);
       try {
         const written = await window.quantum.invoke('bible:write', { path, bible: next });
         // The reply is only worth adopting when nothing has changed since: it is the sorted,
         // re-validated form of what we sent, not newer truth.
-        if (revision.current === mine) setBible(written);
-        setFeedback(null);
+        if (revision.current === submittedRevision) {
+          dirty.current = false;
+          adoptBible(written);
+        }
+        if (mounted.current) setFeedback(null);
       } catch (error) {
-        setFeedback(
-          t('bible.failed', { error: error instanceof Error ? error.message : String(error) }),
-        );
+        const message = t('bible.failed', {
+          error: error instanceof Error ? error.message : String(error),
+        });
+        if (mounted.current) setFeedback(message);
+        onPersistenceError(message);
+        throw error;
       } finally {
-        setBusy(false);
+        if (mounted.current) setBusy(false);
       }
     },
-    [path, t],
+    [adoptBible, onPersistenceError, path, t],
   );
 
-  /** Writes only if something actually changed since the last save. */
+  const flushPendingBible = useCallback((): Promise<void> => {
+    if (flushInFlight.current) return flushInFlight.current;
+    const operation = (async () => {
+      while (dirty.current) {
+        const current = bibleRef.current;
+        if (current === null || path === null) return;
+        await writeRevision(current, revision.current);
+      }
+    })();
+    flushInFlight.current = operation;
+    void operation.then(
+      () => {
+        if (flushInFlight.current === operation) flushInFlight.current = null;
+      },
+      () => {
+        if (flushInFlight.current === operation) flushInFlight.current = null;
+      },
+    );
+    return operation;
+  }, [path, writeRevision]);
+
+  useEffect(() => pendingWrites.register(flushPendingBible), [flushPendingBible, pendingWrites]);
+
+  const persist = useCallback(
+    async (next: Bible) => {
+      revision.current += 1;
+      dirty.current = true;
+      adoptBible(next);
+      try {
+        await flushPendingBible();
+      } catch {
+        // writeRevision reported the failure and deliberately left this revision dirty.
+      }
+    },
+    [adoptBible, flushPendingBible],
+  );
+
+  /** Starts a write without clearing dirty state before the main process acknowledges it. */
   const flush = useCallback(() => {
-    if (!dirty.current || bible === null) return;
-    dirty.current = false;
-    void persist(bible);
-  }, [bible, persist]);
+    void flushPendingBible().catch(() => {
+      // writeRevision already exposed the error; the next blur or close retries the same data.
+    });
+  }, [flushPendingBible]);
 
   const candidates = useMemo(
     () =>
@@ -218,17 +298,16 @@ export function BiblePanel({ path, analysis, t, onClose }: BiblePanelProps) {
   const orphaned = reconciliation.orphaned.some((entry) => entry.id === selectedId);
 
   const update = (id: string, change: (entry: BibleEntry) => BibleEntry) => {
+    const current = bibleRef.current;
+    if (current === null) return;
     revision.current += 1;
-    setBible((current) =>
-      current === null
-        ? current
-        : {
-            ...current,
-            entries: current.entries.map((entry) =>
-              entry.id === id ? { ...change(entry), updatedAt: Date.now() } : entry,
-            ),
-          },
-    );
+    dirty.current = true;
+    adoptBible({
+      ...current,
+      entries: current.entries.map((entry) =>
+        entry.id === id ? { ...change(entry), updatedAt: Date.now() } : entry,
+      ),
+    });
   };
 
   const add = useCallback(
@@ -282,7 +361,6 @@ export function BiblePanel({ path, analysis, t, onClose }: BiblePanelProps) {
   const reattach = useCallback(
     async (id: string, name: string) => {
       if (bible === null) return;
-      dirty.current = false;
       await persist({
         ...bible,
         entries: bible.entries.map((entry) =>
@@ -433,6 +511,12 @@ export function BiblePanel({ path, analysis, t, onClose }: BiblePanelProps) {
 
   const draft = async () => {
     if (selected === null || running) return;
+    const operation = beginDocumentOperation(
+      { id: documentId, revision: documentRevision, path },
+      'bible',
+    );
+    const submittedBibleRevision = revision.current;
+    latestDraft.current = operation;
     setRunning(true);
     setElapsedSeconds(0);
     setFeedback(null);
@@ -446,9 +530,10 @@ export function BiblePanel({ path, analysis, t, onClose }: BiblePanelProps) {
         return;
       }
       const config = await window.quantum.invoke('ai:config:get', undefined);
+      if (latestDraft.current?.requestId !== operation.requestId) return;
       const fields = bibleFieldsFor(selected.kind);
       const handle = startCollectedAiRequest({
-        requestId: `bible-${crypto.randomUUID()}`,
+        requestId: operation.requestId,
         profileId: config.activeProfileId,
         mode: 'factual',
         temperature: 0.2,
@@ -471,7 +556,22 @@ export function BiblePanel({ path, analysis, t, onClose }: BiblePanelProps) {
       });
       requestRef.current = handle;
       const drafted = parseBibleDraft(await handle.promise, fields);
-      if (cancelled.current || bible === null) return;
+      const operationStatus = validateDocumentOperation(
+        useDocuments.getState().documents,
+        operation,
+        latestDraft.current?.requestId,
+      );
+      if (
+        cancelled.current ||
+        bible === null ||
+        operationStatus !== 'current' ||
+        revision.current !== submittedBibleRevision
+      ) {
+        if (!cancelled.current && operationStatus !== 'superseded') {
+          setFeedback(t('operation.stale'));
+        }
+        return;
+      }
 
       // The author always wins: the draft fills what is empty and never overwrites a word
       // they wrote themselves.
@@ -488,12 +588,14 @@ export function BiblePanel({ path, analysis, t, onClose }: BiblePanelProps) {
         ),
       });
     } catch (error) {
-      if (!cancelled.current) {
+      if (!cancelled.current && latestDraft.current?.requestId === operation.requestId) {
         setFeedback(error instanceof Error ? error.message : String(error));
       }
     } finally {
-      requestRef.current = null;
-      setRunning(false);
+      if (latestDraft.current?.requestId === operation.requestId) {
+        requestRef.current = null;
+        setRunning(false);
+      }
     }
   };
 
@@ -804,7 +906,6 @@ export function BiblePanel({ path, analysis, t, onClose }: BiblePanelProps) {
                       maxLength={120}
                       onChange={(event) => {
                         update(selected.id, (entry) => ({ ...entry, name: event.target.value }));
-                        dirty.current = true;
                       }}
                       onBlur={flush}
                     />
@@ -894,7 +995,6 @@ export function BiblePanel({ path, analysis, t, onClose }: BiblePanelProps) {
                             ...entry,
                             fields: { ...entry.fields, [field]: event.target.value },
                           }));
-                          dirty.current = true;
                         }}
                         onBlur={flush}
                       />

@@ -1,13 +1,16 @@
 import type { BrowserWindow } from 'electron';
 import type { AiChatRequest, AiConnectionProfile, AiErrorCode } from '@shared/ai/index.js';
+import { sameAiEndpointOrigin } from '@shared/ai/index.js';
+import { aiRequestLimits } from '@shared/ai/limits.js';
 import type {
   AiProviderAdapter,
   AiRequestPlan,
-  AiStreamFrame,
   ProviderCapabilities,
 } from '@shared/ai/providers/index.js';
 import { providerAdapter } from '@shared/ai/providers/index.js';
+import { AiGuardError, AiRequestGuard } from './guard.js';
 import { getAiApiKey, resolveAiProfile } from './settings.js';
+import { readProviderStream, readResponseText } from './stream.js';
 
 const requests = new Map<string, AbortController>();
 
@@ -29,6 +32,15 @@ const CAPABILITY_KEYS = ['reasoning', 'disableReasoning', 'temperature'] as cons
 /** A degraded retry only ever drops fields, so three attempts exhaust the ladder. */
 const MAX_ATTEMPTS = 3;
 
+export class AiOriginError extends Error {
+  constructor(
+    message = 'Stored API key cannot be used with a different endpoint origin. Re-enter the key.',
+  ) {
+    super(message);
+    this.name = 'AiOriginError';
+  }
+}
+
 class HttpError extends Error {
   constructor(
     readonly status: number,
@@ -36,6 +48,26 @@ class HttpError extends Error {
   ) {
     super(`HTTP ${status}`);
   }
+}
+
+/**
+ * M4 — stored credentials only leave main against the disk profile's origin.
+ * An explicit non-empty key override may probe a renderer-supplied endpoint (user typed it).
+ */
+export async function authorizeAiNetworkProfile(
+  requested: AiConnectionProfile,
+  apiKeyOverride?: string,
+): Promise<{ profile: AiConnectionProfile; apiKey: string }> {
+  if (apiKeyOverride !== undefined && apiKeyOverride.length > 0) {
+    return { profile: requested, apiKey: apiKeyOverride };
+  }
+
+  const disk = await resolveAiProfile(requested.id);
+  if (!sameAiEndpointOrigin(disk.baseUrl, requested.baseUrl)) {
+    throw new AiOriginError();
+  }
+  // Same origin: allow unsaved provider/model edits, but keep the stored key bound to that origin.
+  return { profile: requested, apiKey: await getAiApiKey(disk.id) };
 }
 
 function supportKey(profile: AiConnectionProfile): string {
@@ -78,30 +110,23 @@ function effectiveCapabilities(
   };
 }
 
-async function fetchPlan(
-  plan: AiRequestPlan,
-  timeoutMs: number,
-  external?: AbortController,
-): Promise<Response> {
-  const controller = external ?? new AbortController();
-  const timeout = setTimeout(
-    () => controller.abort(new DOMException('Timed out', 'TimeoutError')),
-    timeoutMs,
-  );
-  try {
-    return await fetch(plan.url, {
-      method: plan.method,
-      headers: plan.headers,
-      ...(plan.body === undefined ? {} : { body: plan.body }),
-      signal: controller.signal,
-    });
-  } finally {
-    clearTimeout(timeout);
-  }
+async function fetchPlan(plan: AiRequestPlan, controller: AbortController): Promise<Response> {
+  // Refuse automatic redirects so a trusted origin cannot forward Authorization /
+  // provider key headers to a different host without an explicit new request plan.
+  return fetch(plan.url, {
+    method: plan.method,
+    headers: plan.headers,
+    ...(plan.body === undefined ? {} : { body: plan.body }),
+    signal: controller.signal,
+    redirect: 'error',
+  });
 }
 
-async function responseError(response: Response): Promise<never> {
-  const body = (await response.text()).slice(0, 20_000);
+async function responseError(response: Response, guard: AiRequestGuard): Promise<never> {
+  const limits = aiRequestLimits(60_000, { maxContentChars: 20_000, maxResponseBytes: 20_000 });
+  const body = (
+    await readResponseText(response, guard, limits, { countTowardContent: false })
+  ).slice(0, 20_000);
   throw new HttpError(response.status, body);
 }
 
@@ -120,15 +145,26 @@ async function sendWithDegradation(
   profile: AiConnectionProfile,
   build: (capabilities: ProviderCapabilities) => AiRequestPlan,
   initial: ProviderCapabilities,
-  controller?: AbortController,
+  controller: AbortController,
+  guard: AiRequestGuard,
 ): Promise<{ response: Response; capabilities: ProviderCapabilities }> {
   let capabilities = initial;
   for (let attempt = 1; ; attempt += 1) {
-    const response = await fetchPlan(build(capabilities), profile.timeoutMs, controller);
+    guard.throwIfAborted();
+    const response = await fetchPlan(build(capabilities), controller);
+    guard.noteNetworkProgress(0);
+    guard.throwIfAborted();
     if (response.ok || !isParameterRejection(response) || attempt >= MAX_ATTEMPTS) {
       return { response, capabilities };
     }
-    const body = (await response.text()).slice(0, 20_000);
+    const body = (
+      await readResponseText(
+        response,
+        guard,
+        aiRequestLimits(profile.timeoutMs, { maxContentChars: 20_000, maxResponseBytes: 20_000 }),
+        { countTowardContent: false },
+      )
+    ).slice(0, 20_000);
     const next = adapter.degrade(capabilities, response.status, body);
     // The body is already consumed, so the rejection has to be raised here.
     if (!next) throw new HttpError(response.status, body);
@@ -137,45 +173,86 @@ async function sendWithDegradation(
   }
 }
 
+async function withGuardedRequest<T>(
+  timeoutMs: number,
+  run: (controller: AbortController, guard: AiRequestGuard) => Promise<T>,
+): Promise<T> {
+  const controller = new AbortController();
+  const limits = aiRequestLimits(timeoutMs);
+  const guard = new AiRequestGuard(controller, limits);
+  try {
+    return await run(controller, guard);
+  } finally {
+    guard.dispose();
+  }
+}
+
 export async function listAiModels(
   profile: AiConnectionProfile,
   apiKeyOverride?: string,
 ): Promise<string[]> {
-  const adapter = providerAdapter(profile.provider);
-  const apiKey = apiKeyOverride ?? (await getAiApiKey(profile.id));
-  const response = await fetchPlan(adapter.modelsRequest(profile, apiKey), profile.timeoutMs);
-  if (!response.ok) return responseError(response);
-  return adapter.parseModels((await response.json()) as unknown);
+  return withGuardedRequest(profile.timeoutMs, async (controller, guard) => {
+    const authorized = await authorizeAiNetworkProfile(profile, apiKeyOverride);
+    const adapter = providerAdapter(authorized.profile.provider);
+    const response = await fetchPlan(
+      adapter.modelsRequest(authorized.profile, authorized.apiKey),
+      controller,
+    );
+    guard.noteNetworkProgress(0);
+    if (!response.ok) await responseError(response, guard);
+    const limits = aiRequestLimits(authorized.profile.timeoutMs);
+    const text = await readResponseText(response, guard, limits);
+    return adapter.parseModels(JSON.parse(text) as unknown);
+  });
 }
 
 export async function testAiConnection(
   profile: AiConnectionProfile,
   apiKeyOverride?: string,
 ): Promise<{ latencyMs: number; model: string }> {
-  const adapter = providerAdapter(profile.provider);
-  const apiKey = apiKeyOverride ?? (await getAiApiKey(profile.id));
-  const started = performance.now();
-  const { response } = await sendWithDegradation(
-    adapter,
-    profile,
-    (capabilities) => adapter.probeRequest(profile, apiKey, capabilities),
-    effectiveCapabilities(profile),
-  );
-  if (!response.ok) return responseError(response);
-  return {
-    latencyMs: Math.max(0, Math.round(performance.now() - started)),
-    model: adapter.parseProbe((await response.json()) as unknown, profile.model),
-  };
+  return withGuardedRequest(profile.timeoutMs, async (controller, guard) => {
+    const authorized = await authorizeAiNetworkProfile(profile, apiKeyOverride);
+    const adapter = providerAdapter(authorized.profile.provider);
+    const started = performance.now();
+    const { response } = await sendWithDegradation(
+      adapter,
+      authorized.profile,
+      (capabilities) => adapter.probeRequest(authorized.profile, authorized.apiKey, capabilities),
+      effectiveCapabilities(authorized.profile),
+      controller,
+      guard,
+    );
+    if (!response.ok) await responseError(response, guard);
+    const limits = aiRequestLimits(authorized.profile.timeoutMs);
+    const text = await readResponseText(response, guard, limits);
+    return {
+      latencyMs: Math.max(0, Math.round(performance.now() - started)),
+      model: adapter.parseProbe(JSON.parse(text) as unknown, authorized.profile.model),
+    };
+  });
 }
 
 function classifyError(error: unknown): { code: AiErrorCode; message: string } {
-  if (error instanceof HttpError) {
-    const lower = error.body.toLowerCase();
-    if (error.status === 401 || error.status === 403) {
+  const candidate =
+    error instanceof Error &&
+    'cause' in error &&
+    (error as { cause: unknown }).cause instanceof AiGuardError
+      ? ((error as { cause: unknown }).cause as AiGuardError)
+      : error;
+
+  if (candidate instanceof AiGuardError) {
+    return { code: candidate.code, message: candidate.message };
+  }
+  if (candidate instanceof AiOriginError) {
+    return { code: 'unauthorized', message: candidate.message };
+  }
+  if (candidate instanceof HttpError) {
+    const lower = candidate.body.toLowerCase();
+    if (candidate.status === 401 || candidate.status === 403) {
       return { code: 'unauthorized', message: 'The API key was refused by the endpoint.' };
     }
     // 529 is Anthropic's overload status; both mean « come back shortly ».
-    if (error.status === 429 || error.status === 529) {
+    if (candidate.status === 429 || candidate.status === 529) {
       return { code: 'rateLimit', message: 'The endpoint rate limit was reached.' };
     }
     if (
@@ -184,104 +261,38 @@ function classifyError(error: unknown): { code: AiErrorCode; message: string } {
     ) {
       return { code: 'contextLength', message: 'The attached context is too long for this model.' };
     }
-    if (error.status === 400 || error.status === 422) {
+    if (candidate.status === 400 || candidate.status === 422) {
       return {
         code: 'invalidRequest',
-        message: error.body || 'The endpoint rejected the request.',
+        message: candidate.body || 'The endpoint rejected the request.',
       };
     }
     return {
       code: 'unknown',
-      message: error.body || `The endpoint returned HTTP ${error.status}.`,
+      message: candidate.body || `The endpoint returned HTTP ${candidate.status}.`,
     };
   }
-  if (error instanceof DOMException && error.name === 'AbortError') {
+  if (candidate instanceof DOMException && candidate.name === 'AbortError') {
     return { code: 'cancelled', message: 'The request was cancelled.' };
   }
-  if (error instanceof DOMException && error.name === 'TimeoutError') {
+  if (candidate instanceof DOMException && candidate.name === 'TimeoutError') {
     return { code: 'timeout', message: 'The endpoint did not answer before the timeout.' };
   }
-  if (error instanceof TypeError) {
+  if (candidate instanceof TypeError) {
     return { code: 'network', message: 'The endpoint could not be reached.' };
   }
-  return { code: 'unknown', message: error instanceof Error ? error.message : String(error) };
-}
-
-interface StreamOutcome {
-  contentReceived: boolean;
-  reasoningReceived: boolean;
-  /** An error the provider reported inside the stream rather than by HTTP status. */
-  error?: string;
-}
-
-/**
- * Decodes a provider stream. Server-sent events are accumulated per event and flushed on
- * the blank separator line; newline-delimited JSON is one complete object per line, with
- * no prefix and no terminator.
- */
-async function readStream(
-  response: Response,
-  framing: AiProviderAdapter['framing'],
-  parseFrame: (data: string) => AiStreamFrame,
-  onChunk: (chunk: string) => void,
-  onReasoning: () => void,
-): Promise<StreamOutcome> {
-  const outcome: StreamOutcome = { contentReceived: false, reasoningReceived: false };
-  const accept = (data: string) => {
-    const frame = parseFrame(data);
-    if (frame.error && outcome.error === undefined) outcome.error = frame.error;
-    if (frame.reasoning && !outcome.reasoningReceived) {
-      outcome.reasoningReceived = true;
-      onReasoning();
-    }
-    if (frame.content) {
-      outcome.contentReceived = true;
-      onChunk(frame.content);
-    }
-  };
-
-  // A server that ignored `stream` answers with a single JSON body.
   if (
-    framing === 'sse' &&
-    !(response.headers.get('content-type') ?? '').includes('text/event-stream')
+    typeof candidate === 'object' &&
+    candidate !== null &&
+    'name' in candidate &&
+    (candidate as { name: string }).name === 'AbortError'
   ) {
-    accept(await response.text());
-    return outcome;
+    return { code: 'cancelled', message: 'The request was cancelled.' };
   }
-  if (!response.body) return outcome;
-
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = '';
-  let dataLines: string[] = [];
-  const flushEvent = () => {
-    if (dataLines.length === 0) return false;
-    const data = dataLines.join('\n');
-    dataLines = [];
-    if (data === '[DONE]') return true;
-    accept(data);
-    return false;
+  return {
+    code: 'unknown',
+    message: candidate instanceof Error ? candidate.message : String(candidate),
   };
-
-  for (;;) {
-    const { done, value } = await reader.read();
-    buffer += decoder.decode(value, { stream: !done });
-    const lines = buffer.split(/\r?\n/);
-    buffer = done ? '' : (lines.pop() ?? '');
-    for (const line of lines) {
-      if (framing === 'ndjson') {
-        if (line.trim()) accept(line);
-      } else if (line === '') {
-        if (flushEvent()) return outcome;
-      } else if (line.startsWith('data:')) {
-        dataLines.push(line.slice(5).trimStart());
-      }
-    }
-    if (done) {
-      if (framing === 'sse') flushEvent();
-      return outcome;
-    }
-  }
 }
 
 export function startAiChat(window: BrowserWindow, request: AiChatRequest): void {
@@ -290,30 +301,47 @@ export function startAiChat(window: BrowserWindow, request: AiChatRequest): void
   requests.set(request.requestId, controller);
 
   const send = <T>(channel: string, payload: T) => {
-    if (!window.isDestroyed()) window.webContents.send(channel, payload);
+    if (!window.isDestroyed() && requests.get(request.requestId) === controller) {
+      window.webContents.send(channel, payload);
+    }
   };
 
   void (async () => {
+    let guard: AiRequestGuard | null = null;
     try {
       const profile = await resolveAiProfile(request.profileId);
+      const limits = aiRequestLimits(profile.timeoutMs);
+      guard = new AiRequestGuard(controller, limits);
       const adapter = providerAdapter(profile.provider);
       const apiKey = await getAiApiKey(profile.id);
+      guard.throwIfAborted();
       const { response, capabilities } = await sendWithDegradation(
         adapter,
         profile,
         (current) => adapter.chatRequest(profile, apiKey, request, current),
         effectiveCapabilities(profile, request),
         controller,
+        guard,
       );
-      if (!response.ok) await responseError(response);
+      if (!response.ok) await responseError(response, guard);
 
-      const stream = await readStream(
+      let finished = false;
+      const stream = await readProviderStream(
         response,
         adapter.framing,
         (data) => adapter.parseFrame(data),
-        (chunk) => send('ai:chunk', { requestId: request.requestId, chunk }),
-        () => send('ai:reasoning', { requestId: request.requestId }),
+        (chunk) => {
+          if (finished || requests.get(request.requestId) !== controller) return;
+          send('ai:chunk', { requestId: request.requestId, chunk });
+        },
+        () => {
+          if (finished || requests.get(request.requestId) !== controller) return;
+          send('ai:reasoning', { requestId: request.requestId });
+        },
+        guard,
+        limits,
       );
+      finished = true;
       if (stream.error !== undefined) {
         send('ai:error', {
           requestId: request.requestId,
@@ -336,7 +364,10 @@ export function startAiChat(window: BrowserWindow, request: AiChatRequest): void
     } catch (error) {
       send('ai:error', { requestId: request.requestId, ...classifyError(error) });
     } finally {
-      requests.delete(request.requestId);
+      guard?.dispose();
+      if (requests.get(request.requestId) === controller) {
+        requests.delete(request.requestId);
+      }
     }
   })();
 }

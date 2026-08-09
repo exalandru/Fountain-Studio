@@ -4,8 +4,15 @@ import type { PDFDocumentProxy, PDFDocumentLoadingTask, RenderTask } from 'pdfjs
 import PdfJsWorker from 'pdfjs-dist/build/pdf.worker.mjs?worker';
 import type { PdfExportOptions, PdfRevisionOptions } from '@shared/ipc-contract.js';
 import type { RevisionState } from '@shared/appdata/index.js';
+import { isPdfBaselineErrorMessage } from '@shared/pdf/index.js';
 import { REVISION_PAPER } from '@shared/revision/index.js';
+import {
+  beginDocumentOperation,
+  type DocumentOperationContext,
+  validateDocumentOperation,
+} from '@shared/documents/operations.js';
 import { useTranslator } from '../hooks/useTranslator.js';
+import { useDocuments } from '../store/documents.js';
 import { Button } from '../ui/Button.js';
 import { Checkbox } from '../ui/Checkbox.js';
 import { Dialog } from '../ui/Dialog.js';
@@ -41,6 +48,8 @@ const DEFAULT_REVISION: RevisionChoices = {
 };
 
 interface PdfExportDialogProps {
+  documentId: string;
+  documentRevision: number;
   source: string;
   suggestedName: string;
   /** Needed to read the locked draft back out of its snapshot. */
@@ -53,8 +62,21 @@ interface PdfExportDialogProps {
   onClose: () => void;
 }
 
+type BaselineState =
+  | { status: 'not-required' }
+  | { status: 'loading'; snapshotId: string; operation: DocumentOperationContext | null }
+  | {
+      status: 'ready';
+      snapshotId: string;
+      operation: DocumentOperationContext;
+      content: string;
+    }
+  | { status: 'error'; snapshotId: string; reason: 'unavailable' | 'invalid' };
+
 /** PDF options with a pdf.js preview of the exact bytes produced by the main process. */
 export function PdfExportDialog({
+  documentId,
+  documentRevision,
   source,
   suggestedName,
   path,
@@ -66,18 +88,48 @@ export function PdfExportDialog({
 }: PdfExportDialogProps) {
   const { t, locale } = useTranslator();
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const latestBaselineRequest = useRef<string | null>(null);
+  const previewGeneration = useRef(0);
+  const exportingRef = useRef(false);
   const [options, setOptions] = useState<PdfExportOptions>(DEFAULT_OPTIONS);
-  const [pdfDocument, setPdfDocument] = useState<PDFDocumentProxy | null>(null);
+  const [pdfDocument, setPdfDocument] = useState<{
+    value: PDFDocumentProxy;
+    signature: string;
+  } | null>(null);
   const [pageCount, setPageCount] = useState(0);
   const [previewPage, setPreviewPage] = useState(1);
   const [rendering, setRendering] = useState(true);
-  const [renderError, setRenderError] = useState<string | null>(null);
+  const [renderError, setRenderError] = useState<{
+    signature: string;
+    message: string;
+  } | null>(null);
   const [exporting, setExporting] = useState(false);
+  const [previewReadySignature, setPreviewReadySignature] = useState<string | null>(null);
   const [choices, setChoices] = useState<RevisionChoices>(DEFAULT_REVISION);
   const [date, setDate] = useState(issueDate);
-  /** The locked draft, read from its snapshot. `null` until it arrives. */
-  const [baseline, setBaseline] = useState<string | null>(null);
-  const locked = revision?.snapshotId != null && path !== null;
+  const requiredSnapshotId = revision?.snapshotId ?? null;
+  const baselineRequired = requiredSnapshotId !== null;
+  const [baseline, setBaseline] = useState<BaselineState>(() =>
+    requiredSnapshotId === null
+      ? { status: 'not-required' }
+      : { status: 'loading', snapshotId: requiredSnapshotId, operation: null },
+  );
+  const baselineStatus = useMemo<BaselineState>(() => {
+    if (requiredSnapshotId === null) return { status: 'not-required' };
+    if (path === null) {
+      return { status: 'error', snapshotId: requiredSnapshotId, reason: 'unavailable' };
+    }
+    const current =
+      baseline.status === 'ready' &&
+      baseline.snapshotId === requiredSnapshotId &&
+      baseline.operation.documentId === documentId &&
+      baseline.operation.documentRevision === documentRevision &&
+      baseline.operation.documentPath === path;
+    if (current || (baseline.status === 'error' && baseline.snapshotId === requiredSnapshotId)) {
+      return baseline;
+    }
+    return { status: 'loading', snapshotId: requiredSnapshotId, operation: null };
+  }, [baseline, documentId, documentRevision, path, requiredSnapshotId]);
 
   useEffect(() => {
     const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -85,22 +137,40 @@ export function PdfExportDialog({
   }, []);
 
   useEffect(() => {
-    if (!locked || path === null || revision?.snapshotId == null) return;
-    let cancelled = false;
+    if (requiredSnapshotId === null) {
+      latestBaselineRequest.current = null;
+      return;
+    }
+    if (path === null) {
+      latestBaselineRequest.current = null;
+      return;
+    }
+    const operation = beginDocumentOperation(
+      { id: documentId, revision: documentRevision, path },
+      'pdf-baseline',
+    );
+    latestBaselineRequest.current = operation.requestId;
     void window.quantum
-      .invoke('snapshot:read', { path, id: revision.snapshotId })
+      .invoke('snapshot:read', { path, id: requiredSnapshotId })
       .then((content) => {
-        if (!cancelled) setBaseline(content);
+        const status = validateDocumentOperation(
+          useDocuments.getState().documents,
+          operation,
+          latestBaselineRequest.current ?? '',
+        );
+        if (status !== 'current') return;
+        setBaseline({ status: 'ready', snapshotId: requiredSnapshotId, operation, content });
       })
-      // A reference that cannot be read is a screenplay with nothing to compare against, which
-      // is exactly how an unlocked one behaves. Better than refusing to export at all.
       .catch(() => {
-        if (!cancelled) setBaseline('');
+        if (latestBaselineRequest.current !== operation.requestId) return;
+        setBaseline({ status: 'error', snapshotId: requiredSnapshotId, reason: 'unavailable' });
       });
     return () => {
-      cancelled = true;
+      if (latestBaselineRequest.current === operation.requestId) {
+        latestBaselineRequest.current = null;
+      }
     };
-  }, [locked, path, revision?.snapshotId]);
+  }, [documentId, documentRevision, path, requiredSnapshotId]);
 
   /**
    * The options actually sent to the renderer.
@@ -108,14 +178,21 @@ export function PdfExportDialog({
    * The header is composed here because only this side knows the locale, and upper case because
    * that is how a production reads it off the top of a page.
    */
-  const effective = useMemo<PdfExportOptions>(() => {
-    if (!locked || baseline === null || revision === null) return { ...options, revision: null };
+  const effective = useMemo<PdfExportOptions | null>(() => {
+    if (!baselineRequired) return { ...options, revision: null };
+    if (revision === null || path === null || baselineStatus.status !== 'ready') {
+      return null;
+    }
     const colourName = t(`revision.colour.${revision.colour}`);
     const shown = date.length > 0 ? new Date(date).toLocaleDateString(locale) : '';
     return {
       ...options,
       revision: {
-        baselineSource: baseline,
+        baseline: {
+          path,
+          snapshotId: baselineStatus.snapshotId,
+          source: baselineStatus.content,
+        },
         header: t('revision.pdfHeader', { colour: colourName, date: shown }).toLocaleUpperCase(
           locale,
         ),
@@ -123,34 +200,58 @@ export function PdfExportDialog({
         ...choices,
       },
     };
-  }, [baseline, choices, date, locale, locked, options, revision, t]);
+  }, [baselineStatus, baselineRequired, choices, date, locale, options, path, revision, t]);
+
+  const previewSignature = useMemo(
+    () => (effective === null ? null : JSON.stringify({ source, options: effective })),
+    [effective, source],
+  );
+  const currentRenderError =
+    renderError?.signature === previewSignature ? renderError.message : null;
 
   useEffect(() => {
+    const generation = ++previewGeneration.current;
     let cancelled = false;
     let loading: PDFDocumentLoadingTask | null = null;
+    if (effective === null || previewSignature === null) {
+      return;
+    }
     const timer = setTimeout(() => {
       void (async () => {
-        setRendering(true);
-        setRenderError(null);
         setPdfDocument(null);
+        setPageCount(0);
+        setPreviewReadySignature(null);
+        setRenderError(null);
+        setRendering(true);
         try {
           const rendered = await window.quantum.invoke('pdf:render', {
             source,
             options: effective,
           });
-          if (cancelled) return;
+          if (cancelled || previewGeneration.current !== generation) return;
           loading = getDocument({ data: new Uint8Array(rendered.bytes) });
           const pdf = await loading.promise;
-          if (cancelled) {
+          if (cancelled || previewGeneration.current !== generation) {
             await loading.destroy();
             return;
           }
           setPageCount(pdf.numPages);
           setPreviewPage((current) => Math.min(Math.max(1, current), pdf.numPages));
-          setPdfDocument(pdf);
+          setPdfDocument({ value: pdf, signature: previewSignature });
         } catch (error) {
-          if (!cancelled) {
-            setRenderError(error instanceof Error ? error.message : String(error));
+          if (!cancelled && previewGeneration.current === generation) {
+            if (isPdfBaselineErrorMessage(error) && requiredSnapshotId !== null) {
+              setBaseline({
+                status: 'error',
+                snapshotId: requiredSnapshotId,
+                reason: 'invalid',
+              });
+            } else {
+              setRenderError({
+                signature: previewSignature,
+                message: error instanceof Error ? error.message : String(error),
+              });
+            }
             setRendering(false);
           }
         }
@@ -161,17 +262,19 @@ export function PdfExportDialog({
       clearTimeout(timer);
       if (loading) void loading.destroy();
     };
-  }, [effective, source]);
+  }, [effective, previewSignature, requiredSnapshotId, source]);
 
   useEffect(() => {
     if (!pdfDocument) return;
     let cancelled = false;
     let renderTask: RenderTask | null = null;
+    let completed = false;
 
     void (async () => {
       setRendering(true);
+      setPreviewReadySignature(null);
       try {
-        const page = await pdfDocument.getPage(previewPage);
+        const page = await pdfDocument.value.getPage(previewPage);
         const viewport = page.getViewport({ scale: 0.72 });
         const canvas = canvasRef.current;
         if (!canvas || cancelled) return;
@@ -189,10 +292,19 @@ export function PdfExportDialog({
           transform: ratio === 1 ? undefined : [ratio, 0, 0, ratio, 0, 0],
         });
         await renderTask.promise;
+        completed = true;
       } catch (error) {
-        if (!cancelled) setRenderError(error instanceof Error ? error.message : String(error));
+        if (!cancelled) {
+          setRenderError({
+            signature: pdfDocument.signature,
+            message: error instanceof Error ? error.message : String(error),
+          });
+        }
       } finally {
-        if (!cancelled) setRendering(false);
+        if (!cancelled) {
+          setRendering(false);
+          if (completed) setPreviewReadySignature(pdfDocument.signature);
+        }
       }
     })();
 
@@ -207,6 +319,15 @@ export function PdfExportDialog({
   };
 
   const exportPdf = async () => {
+    if (
+      effective === null ||
+      previewSignature === null ||
+      previewReadySignature !== previewSignature ||
+      exportingRef.current
+    ) {
+      return;
+    }
+    exportingRef.current = true;
     setExporting(true);
     try {
       const outcome = await window.quantum.invoke('pdf:export', {
@@ -215,8 +336,15 @@ export function PdfExportDialog({
         suggestedName,
       });
       if (outcome.status === 'exported') onExported(outcome.path);
-      else if (outcome.status === 'error') onError(outcome.message);
+      else if (outcome.status === 'error') {
+        if (isPdfBaselineErrorMessage(outcome.message) && requiredSnapshotId !== null) {
+          setBaseline({ status: 'error', snapshotId: requiredSnapshotId, reason: 'invalid' });
+        } else {
+          onError(outcome.message);
+        }
+      }
     } finally {
+      exportingRef.current = false;
       setExporting(false);
     }
   };
@@ -233,7 +361,14 @@ export function PdfExportDialog({
           <Button onClick={onClose}>{t('pdf.cancel')}</Button>
           <Button
             variant="primary"
-            disabled={rendering || renderError !== null || exporting}
+            disabled={
+              effective === null ||
+              previewSignature === null ||
+              previewReadySignature !== previewSignature ||
+              rendering ||
+              currentRenderError !== null ||
+              exporting
+            }
             onClick={() => void exportPdf()}
           >
             {t('pdf.export')}
@@ -291,7 +426,7 @@ export function PdfExportDialog({
               onChange={(event) => patch('watermark', event.target.value)}
             />
           </Field>
-          {locked && revision !== null ? (
+          {baselineRequired && revision !== null ? (
             <fieldset className="pdf-revision">
               <legend>
                 {t('pdf.revision')}
@@ -376,16 +511,35 @@ export function PdfExportDialog({
           </div>
         </form>
         <div className="pdf-preview" aria-label={t('pdf.preview')}>
-          {rendering ? <div className="panel-placeholder">{t('pdf.rendering')}</div> : null}
-          {renderError ? (
+          {baselineStatus.status === 'loading' ? (
+            <div className="panel-placeholder">{t('pdf.baselineLoading')}</div>
+          ) : null}
+          {baselineStatus.status === 'error' ? (
+            <div className="panel-placeholder" role="alert">
+              {t('pdf.baselineUnavailable')}
+            </div>
+          ) : null}
+          {baselineStatus.status !== 'loading' &&
+          baselineStatus.status !== 'error' &&
+          (rendering ||
+            (previewSignature !== null && previewReadySignature !== previewSignature)) ? (
+            <div className="panel-placeholder">{t('pdf.rendering')}</div>
+          ) : null}
+          {baselineStatus.status !== 'error' && currentRenderError ? (
             <div className="panel-placeholder">
               {t('pdf.renderFailed')}
               <br />
-              {renderError}
+              {currentRenderError}
             </div>
           ) : null}
-          <canvas ref={canvasRef} />
-          {!renderError && pageCount > 0 ? (
+          <canvas
+            ref={canvasRef}
+            hidden={previewSignature === null || previewReadySignature !== previewSignature}
+          />
+          {!currentRenderError &&
+          previewSignature !== null &&
+          previewReadySignature === previewSignature &&
+          pageCount > 0 ? (
             <div className="pdf-preview-controls">
               <button
                 type="button"

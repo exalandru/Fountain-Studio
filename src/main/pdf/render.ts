@@ -3,6 +3,7 @@ import PDFDocument from 'pdfkit';
 import type { Element, Screenplay } from '@shared/fountain/index.js';
 import { parse } from '@shared/fountain/index.js';
 import type { PdfExportOptions } from '@shared/ipc-contract.js';
+import { PDF_BASELINE_ERROR } from '@shared/pdf/index.js';
 import type { PaginationItem, ScreenplayPage } from '@shared/pagination/index.js';
 import { paginateScreenplay } from '@shared/pagination/index.js';
 import {
@@ -401,19 +402,27 @@ export async function renderScreenplayPdf(
   const original = parse(source);
   const screenplay = options.includeNotes ? withNotes(original) : original;
   const revision = options.revision;
-  const baseline = revision?.baselineSource ?? '';
-  const revised =
-    revision && baseline.length > 0
-      ? revisedElements(screenplay.elements, revisedLines(baseline, source))
-      : new Set<number>();
+  if (
+    revision !== null &&
+    (!revision.baseline ||
+      typeof revision.baseline.source !== 'string' ||
+      typeof revision.baseline.snapshotId !== 'string' ||
+      typeof revision.baseline.path !== 'string')
+  ) {
+    throw new Error(PDF_BASELINE_ERROR.invalid);
+  }
+  const baseline = revision?.baseline.source;
+  const revised = revision
+    ? revisedElements(screenplay.elements, revisedLines(baseline ?? '', source))
+    : new Set<number>();
   const tint = paperTint(options);
 
   const pagination = paginateScreenplay(screenplay, {
     format: options.format,
     includeNotes: options.includeNotes,
     includeSynopses: options.includeSynopses,
-    ...(revision?.lockedPages === true && baseline.length > 0
-      ? { lockedPageStarts: lockedPageStarts(baseline, source, options) }
+    ...(revision?.lockedPages === true
+      ? { lockedPageStarts: lockedPageStarts(baseline ?? '', source, options) }
       : {}),
   });
   const from = Math.min(pagination.pages.length, Math.max(1, options.pageFrom ?? 1));
@@ -424,10 +433,9 @@ export async function renderScreenplayPdf(
   const selected = pagination.pages.slice(from - 1, to);
   // Only the pages a reader needs to swap into their copy. The title page stays: a set of
   // revised pages is still issued under a title.
-  const pages =
-    revision?.onlyRevisedPages === true && baseline.length > 0
-      ? selected.filter((page) => page.elementIndexes.some((index) => revised.has(index)))
-      : selected;
+  const pages = revision?.onlyRevisedPages
+    ? selected.filter((page) => page.elementIndexes.some((index) => revised.has(index)))
+    : selected;
   const size = options.format === 'a4' ? 'A4' : 'LETTER';
   const document = new PDFDocument({ autoFirstPage: false, size, margin: 0, compress: true });
   document.registerFont('CourierPrime', fontPath(resourcesDirectory, 'CourierPrime-Regular.ttf'));

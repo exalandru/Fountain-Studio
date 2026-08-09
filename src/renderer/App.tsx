@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { AppData } from '@shared/appdata/index.js';
+import { PendingWrites } from '@shared/persistence/PendingWrites.js';
 import { statisticsToCsv, statisticsToJson } from '@shared/stats/index.js';
 import { AppOverlays } from './AppOverlays.js';
 import { useAiEditorActions } from './hooks/useAiEditorActions.js';
@@ -37,8 +38,9 @@ export function App() {
   type StatusInfo = { text: string; tone: 'info' | 'error' };
   const [statusObj, setStatusObj] = useState<StatusInfo | null>(null);
 
-  const setStatus = (text: string) => setStatusObj({ text, tone: 'info' });
-  const setStatusError = (text: string) => setStatusObj({ text, tone: 'error' });
+  const setStatus = useCallback((text: string) => setStatusObj({ text, tone: 'info' }), []);
+  const setStatusError = useCallback((text: string) => setStatusObj({ text, tone: 'error' }), []);
+  const [pendingWrites] = useState(() => new PendingWrites());
 
   useEffect(() => {
     if (!statusObj) return undefined;
@@ -70,20 +72,13 @@ export function App() {
     stringsRef.current = documentStrings;
   }, [documentStrings]);
 
-  const { closeTab, openDialog, openPaths, save } = useDocumentIO({
+  const { closeTab, openDialog, openDropped, save } = useDocumentIO({
     locale,
     t,
     stringsRef,
     setStatus,
     setStatusError,
-  });
-
-  const { effectiveDark, patchSettings } = useAppShellEffects({
-    theme: settings.theme,
-    spellcheckLanguage: settings.spellcheckLanguage,
-    activeName,
-    anyDirty,
-    save,
+    pendingWrites,
   });
 
   useRecovery({ stringsRef, setStatus, setStatusError, t });
@@ -97,16 +92,36 @@ export function App() {
     [store],
   );
 
-  const activePath = active?.path ?? null;
-  const activeAppData = active?.appData ?? null;
-  const activeAppDataRevision = active?.appDataRevision ?? 0;
-  useAutosave({
-    activePath,
-    activeAppData,
-    activeAppDataRevision,
+  const { flushCrashRecovery } = useAutosave({
+    documents,
     autosaveSeconds: settings.autosaveSeconds,
+    pendingWrites,
     setStatusError,
     t,
+  });
+
+  const flushForClose = useCallback(async () => {
+    const outcomes = await Promise.allSettled([flushCrashRecovery(), pendingWrites.flush()]);
+    const failures = outcomes.flatMap((outcome) =>
+      outcome.status === 'rejected' ? [outcome.reason] : [],
+    );
+    if (failures.length > 0) {
+      throw new AggregateError(failures, 'Could not persist all pending data before close');
+    }
+  }, [flushCrashRecovery, pendingWrites]);
+  const onClosePersistenceError = useCallback(
+    () => setStatusError(t('status.closePersistenceFailed')),
+    [setStatusError, t],
+  );
+
+  const { effectiveDark, patchSettings } = useAppShellEffects({
+    theme: settings.theme,
+    language: settings.language,
+    activeName,
+    anyDirty,
+    save,
+    flushForClose,
+    onClosePersistenceError,
   });
 
   const layout = useWorkspaceLayout(updateAppData);
@@ -127,7 +142,6 @@ export function App() {
   const ai = useAiEditorActions(
     chrome.editorView,
     analysis,
-    updateAppData,
     chrome.selectEditorRange,
     t,
     setStatus,
@@ -137,7 +151,7 @@ export function App() {
     closeTab,
     editorView: chrome.editorView,
     openDialog,
-    openPaths,
+    openDropped,
     onExportPdf: ai.openPdfDialog,
     onOpenSnapshots: ai.openSnapshots,
     onOpenBible: ai.openBible,
@@ -216,7 +230,7 @@ export function App() {
         setStatusError(t('status.exportFailed', { error: outcome.message }));
       }
     },
-    [analysis, store, t],
+    [analysis, setStatus, setStatusError, store, t],
   );
 
   const activeSceneId =
@@ -286,11 +300,11 @@ export function App() {
       <AppOverlays
         active={active}
         analysis={analysis}
-        editorView={chrome.editorView}
         locale={locale}
         t={t}
         setStatus={setStatus}
         setStatusError={setStatusError}
+        pendingWrites={pendingWrites}
         executeCommand={executeCommand}
         paletteCommands={paletteCommands}
         pdfOpen={ai.pdfOpen}
@@ -319,10 +333,14 @@ export function App() {
         updateInconsistencies={ai.updateInconsistencies}
         updateVoiceConsistency={ai.updateVoiceConsistency}
         updateRepetitions={ai.updateRepetitions}
+        commitInconsistencies={ai.commitInconsistencies}
+        commitVoiceConsistency={ai.commitVoiceConsistency}
+        commitRepetitions={ai.commitRepetitions}
         selectInconsistencyReference={ai.selectInconsistencyReference}
         selectEditorRange={chrome.selectEditorRange}
         replaceEditorRange={ai.replaceEditorRange}
         renameCharacter={ai.renameCharacter}
+        restoreSnapshot={ai.restoreSnapshot}
         openSynonyms={ai.openSynonyms}
         openRewriteSelection={ai.openRewriteSelection}
         openRenameCharacter={ai.openRenameCharacter}

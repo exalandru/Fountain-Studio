@@ -13,7 +13,7 @@ Your screenplay stays a plain-text `.fountain` file you can open in any editor. 
 
 ## Features
 
-- Fully compatible with the Fountain format
+- Broad Fountain syntax support for standard screenplay workflows (scene headings, dialogue, dual dialogue, notes, boneyards, title page, and related constructs — see [docs/compatibility.md](docs/compatibility.md))
 - Automatic formatting and a live preview
 - Navigation by scene, location and character
 - Corkboard, with drag-and-drop reordering
@@ -25,6 +25,8 @@ Your screenplay stays a plain-text `.fountain` file you can open in any editor. 
 - Statistics
 - English and French interface
 - And more...
+
+Automated tests cover large-screenplay parsing/analysis and an Electron editor-interaction witness. They document latency distributions for the measured environment; they do not publish a fixed typing SLA. Details: [docs/compatibility.md](docs/compatibility.md).
 
 
 

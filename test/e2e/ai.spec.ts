@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { _electron as electron } from '@playwright/test';
 import type { ElectronApplication, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
+import { openTrustedScreenplays } from './helpers/open.js';
 
 test.describe.configure({ mode: 'serial' });
 
@@ -587,9 +588,7 @@ test.beforeAll(async () => {
   });
   page = await app.firstWindow();
   await page.waitForSelector('.cm-content');
-  await app.evaluate(({ BrowserWindow }, path) => {
-    BrowserWindow.getAllWindows()[0]?.webContents.send('app:openFiles', { paths: [path] });
-  }, screenplay);
+  await openTrustedScreenplays(app, [screenplay]);
   await expect(page.locator('.cm-content')).toContainText('SECRET_SCENE_M5');
 });
 

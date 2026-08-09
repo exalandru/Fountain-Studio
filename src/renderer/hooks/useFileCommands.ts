@@ -11,7 +11,7 @@ interface FileCommandsOptions {
   closeTab: (id: string) => Promise<void>;
   editorView: RefObject<EditorView | null>;
   openDialog: () => Promise<void>;
-  openPaths: (paths: string[]) => Promise<void>;
+  openDropped: (paths: string[]) => Promise<void>;
   onExportPdf: () => void;
   onOpenSnapshots: () => void;
   onOpenBible: () => void;
@@ -42,7 +42,7 @@ export function useFileCommands({
   closeTab,
   editorView,
   openDialog,
-  openPaths,
+  openDropped,
   onExportPdf,
   onOpenSnapshots,
   onOpenBible,
@@ -171,7 +171,7 @@ export function useFileCommands({
         else rejected.push(file.name);
       }
 
-      if (paths.length > 0) void openPaths(paths);
+      if (paths.length > 0) void openDropped(paths);
       if (rejected.length > 0) {
         setStatus(t('status.unsupportedFormat', { files: rejected.join(', ') }));
       }
@@ -184,7 +184,7 @@ export function useFileCommands({
       window.removeEventListener('drop', onDrop);
       window.removeEventListener('dragover', onDragOver);
     };
-  }, [openPaths, setStatus, t]);
+  }, [openDropped, setStatus, t]);
 
   return executeCommand;
 }

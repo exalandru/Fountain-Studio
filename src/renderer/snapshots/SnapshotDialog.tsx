@@ -3,18 +3,24 @@ import type { DiffHunk, SceneChange } from '@shared/diff/index.js';
 import { collapseToHunks, diffLines, diffScenes } from '@shared/diff/index.js';
 import { parse } from '@shared/fountain/index.js';
 import type { Translator } from '@shared/i18n/index.js';
-import type { SnapshotMeta } from '@shared/snapshots/index.js';
+import type { SnapshotCatalog } from '@shared/snapshots/index.js';
+import {
+  beginDocumentOperation,
+  type DocumentOperationContext,
+} from '@shared/documents/operations.js';
 import { Button } from '../ui/Button.js';
 import { Dialog } from '../ui/Dialog.js';
 import { Field } from '../ui/Field.js';
 import { TextInput } from '../ui/TextInput.js';
 
 interface SnapshotDialogProps {
+  documentId: string;
+  documentRevision: number;
   /** `null` when the screenplay has never been saved: there is no folder to write beside. */
   path: string | null;
   currentContent: string;
   t: Translator['t'];
-  onRestore: (content: string, name: string) => void;
+  onRestore: (content: string, name: string, operation: DocumentOperationContext) => boolean;
   onClose: () => void;
 }
 
@@ -26,6 +32,8 @@ interface SnapshotDialogProps {
  * thinks in — and the lines underneath, collapsed to the changed regions.
  */
 export function SnapshotDialog({
+  documentId,
+  documentRevision,
   path,
   currentContent,
   t,
@@ -34,14 +42,20 @@ export function SnapshotDialog({
 }: SnapshotDialogProps) {
   // An unsaved screenplay has nowhere to store snapshots, so the list is empty from the
   // start rather than being emptied by an effect.
-  const [snapshots, setSnapshots] = useState<SnapshotMeta[] | null>(path === null ? [] : null);
+  const [catalog, setCatalog] = useState<SnapshotCatalog | null>(
+    path === null ? { status: 'ok', snapshots: [], issues: [] } : null,
+  );
+  const snapshots = catalog?.snapshots ?? null;
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedContent, setSelectedContent] = useState<string | null>(null);
+  const [selectedOperation, setSelectedOperation] = useState<DocumentOperationContext | null>(null);
   const [name, setName] = useState('');
   const [draftName, setDraftName] = useState('');
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
   const listRef = useRef<HTMLUListElement | null>(null);
+  const listGeneration = useRef(0);
+  const latestRead = useRef<string | null>(null);
 
   /** Maps the main process's error codes onto translated wording. */
   const describe = useCallback(
@@ -49,6 +63,8 @@ export function SnapshotDialog({
       const message = error instanceof Error ? error.message : String(error);
       if (message.includes('limitReached')) return t('snapshots.limitReached');
       if (message.includes('notFound')) return t('snapshots.notFound');
+      if (message.includes('indexDamaged')) return t('snapshots.indexDamaged');
+      if (message.includes('repairFailed')) return t('snapshots.repairFailed');
       return t('snapshots.failed', { error: message });
     },
     [t],
@@ -56,13 +72,20 @@ export function SnapshotDialog({
 
   useEffect(() => {
     if (path === null) return;
+    const generation = ++listGeneration.current;
     void window.quantum
       .invoke('snapshot:list', { path })
-      .then(setSnapshots)
+      .then((next) => {
+        if (listGeneration.current === generation) setCatalog(next);
+      })
       .catch((error: unknown) => {
-        setSnapshots([]);
+        if (listGeneration.current !== generation) return;
+        setCatalog({ status: 'error', snapshots: [], issues: [] });
         setFeedback(describe(error));
       });
+    return () => {
+      listGeneration.current += 1;
+    };
   }, [describe, path]);
 
   const select = useCallback(
@@ -70,14 +93,26 @@ export function SnapshotDialog({
       if (path === null) return;
       setSelectedId(id);
       setSelectedContent(null);
+      setSelectedOperation(null);
       setFeedback(null);
       setDraftName(snapshots?.find((snapshot) => snapshot.id === id)?.name ?? '');
+      const operation = beginDocumentOperation(
+        { id: documentId, revision: documentRevision, path },
+        'snapshot-read',
+      );
+      latestRead.current = operation.requestId;
       void window.quantum
         .invoke('snapshot:read', { path, id })
-        .then(setSelectedContent)
-        .catch((error: unknown) => setFeedback(describe(error)));
+        .then((content) => {
+          if (latestRead.current !== operation.requestId) return;
+          setSelectedContent(content);
+          setSelectedOperation(operation);
+        })
+        .catch((error: unknown) => {
+          if (latestRead.current === operation.requestId) setFeedback(describe(error));
+        });
     },
-    [describe, path, snapshots],
+    [describe, documentId, documentRevision, path, snapshots],
   );
 
   const take = useCallback(async () => {
@@ -90,7 +125,7 @@ export function SnapshotDialog({
         name: name.trim() || t('snapshots.namePlaceholder'),
         content: currentContent,
       });
-      setSnapshots(next);
+      setCatalog({ status: 'ok', snapshots: next, issues: [] });
       setName('');
       const created = next[0];
       if (created) {
@@ -105,13 +140,40 @@ export function SnapshotDialog({
     }
   }, [currentContent, describe, name, path, select, t]);
 
+  const repair = useCallback(async () => {
+    if (path === null) return;
+    setBusy(true);
+    setFeedback(null);
+    try {
+      const next = await window.quantum.invoke('snapshot:repair', { path });
+      setCatalog(next);
+      if (next.status === 'ok') {
+        setFeedback(
+          next.snapshots.length > 0
+            ? t('snapshots.repaired', { count: next.snapshots.length })
+            : t('snapshots.repairedEmpty'),
+        );
+      } else if (next.snapshots.length > 0) {
+        setFeedback(t('snapshots.repaired', { count: next.snapshots.length }));
+      }
+    } catch (error) {
+      setFeedback(describe(error));
+    } finally {
+      setBusy(false);
+    }
+  }, [describe, path, t]);
+
   const rename = useCallback(
     async (id: string) => {
       if (path === null) return;
       setBusy(true);
       setFeedback(null);
       try {
-        setSnapshots(await window.quantum.invoke('snapshot:rename', { path, id, name: draftName }));
+        setCatalog({
+          status: 'ok',
+          snapshots: await window.quantum.invoke('snapshot:rename', { path, id, name: draftName }),
+          issues: [],
+        });
       } catch (error) {
         setFeedback(describe(error));
       } finally {
@@ -128,7 +190,7 @@ export function SnapshotDialog({
       setFeedback(null);
       try {
         const next = await window.quantum.invoke('snapshot:delete', { path, id });
-        setSnapshots(next);
+        setCatalog({ status: 'ok', snapshots: next, issues: [] });
         if (selectedId === id) {
           setSelectedId(null);
           setSelectedContent(null);
@@ -185,9 +247,18 @@ export function SnapshotDialog({
         <>
           <Button
             variant="primary"
-            disabled={selected === null || selectedContent === null || busy}
+            disabled={
+              selected === null || selectedContent === null || selectedOperation === null || busy
+            }
             onClick={() => {
-              if (selected && selectedContent !== null) onRestore(selectedContent, selected.name);
+              if (
+                selected &&
+                selectedContent !== null &&
+                selectedOperation !== null &&
+                !onRestore(selectedContent, selected.name, selectedOperation)
+              ) {
+                setFeedback(t('operation.stale'));
+              }
             }}
           >
             {t('snapshots.restore')}
@@ -227,7 +298,20 @@ export function SnapshotDialog({
               ))}
             </ul>
 
-            {snapshots.length === 0 ? (
+            {catalog !== null && catalog.status !== 'ok' ? (
+              <div className="snapshot-repair" role="status">
+                <p className="ai-warning">
+                  {catalog.snapshots.length > 0
+                    ? t('snapshots.damagedFound', { count: catalog.snapshots.length })
+                    : t('snapshots.damaged')}
+                </p>
+                <Button disabled={busy} onClick={() => void repair()}>
+                  {t('snapshots.repair')}
+                </Button>
+              </div>
+            ) : null}
+
+            {snapshots.length === 0 && catalog?.status === 'ok' ? (
               <p className="snapshot-empty">{t('snapshots.empty')}</p>
             ) : null}
 
@@ -236,13 +320,18 @@ export function SnapshotDialog({
                 value={name}
                 maxLength={120}
                 placeholder={t('snapshots.namePlaceholder')}
+                disabled={busy || catalog?.status !== 'ok'}
                 onChange={(event) => setName(event.target.value)}
                 onKeyDown={(event) => {
-                  if (event.key === 'Enter' && !busy) void take();
+                  if (event.key === 'Enter' && !busy && catalog?.status === 'ok') void take();
                 }}
               />
             </Field>
-            <Button className="rail-add" disabled={busy} onClick={() => void take()}>
+            <Button
+              className="rail-add"
+              disabled={busy || catalog?.status !== 'ok'}
+              onClick={() => void take()}
+            >
               <span aria-hidden="true">+</span>
               {t('snapshots.take')}
             </Button>
