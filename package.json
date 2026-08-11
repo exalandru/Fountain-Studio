@@ -1,7 +1,7 @@
 {
   "name": "fountain-studio",
   "productName": "Fountain Studio",
-  "version": "0.6.0",
+  "version": "1.0.0",
   "description": "Desktop screenwriting application for the Fountain format, with AI assistance",
   "author": "Corin Alexandru <corin.alex@gmail.com>",
   "license": "AGPL-3.0-or-later",

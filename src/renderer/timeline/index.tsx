@@ -30,11 +30,19 @@ export const Timeline = memo(function Timeline({
 
   useEffect(() => {
     const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    activeRef.current?.scrollIntoView({
-      behavior: reduced ? 'auto' : 'smooth',
-      block: 'nearest',
-      inline: 'center',
-    });
+    const el = activeRef.current;
+    const track = trackRef.current;
+    if (!el || !track) return;
+
+    // Keep scrolling inside the track only. Element.scrollIntoView({ inline: 'center' })
+    // also scrolls overflow:hidden ancestors (e.g. .app), which shifts the whole layout
+    // and leaves an empty band on the right — especially near the end of the track.
+    const elRect = el.getBoundingClientRect();
+    const trackRect = track.getBoundingClientRect();
+    const delta = elRect.left + elRect.width / 2 - (trackRect.left + trackRect.width / 2);
+    const max = Math.max(0, track.scrollWidth - track.clientWidth);
+    const next = Math.max(0, Math.min(max, track.scrollLeft + delta));
+    track.scrollTo({ left: next, behavior: reduced ? 'auto' : 'smooth' });
   }, [activeSceneId]);
 
   return (
