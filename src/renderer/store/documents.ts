@@ -9,13 +9,16 @@ import {
   resolveSavedRevision,
   type PathPlatform,
 } from '@shared/documents/index.js';
-import type { AppSettings, DocumentSnapshot, Eol } from '@shared/ipc-contract.js';
+import type { AppSettings, DocumentSnapshot, Eol, SaveOutcome } from '@shared/ipc-contract.js';
 import { DEFAULT_SETTINGS } from '@shared/ipc-contract.js';
 
 function hostPlatform(): PathPlatform {
-  if (typeof window !== 'undefined' && window.quantum?.platform) {
-    return window.quantum.platform;
-  }
+  // No DOM dependency: this store also ships in Node-only test projects.
+  const runtime = globalThis as typeof globalThis & {
+    window?: { quantum?: { platform?: string } };
+  };
+  const platform = runtime.window?.quantum?.platform;
+  if (typeof platform === 'string') return platform;
   return detectPathPlatform();
 }
 
@@ -34,6 +37,12 @@ export interface OpenDocument {
   content: string;
   eol: Eol;
   mtimeMs: number | null;
+  /**
+   * Fingerprint (SHA-256) of the disk version this session is based on (H3).
+   * `null` for documents without a filesystem base (new, or crash-recovered).
+   * Never updated by a failed save: a conflict leaves it pointing at the old base.
+   */
+  fileHash: string | null;
   dirty: boolean;
   /** Incremented on every change — used to drop stale analyses. */
   revision: number;
@@ -80,9 +89,17 @@ interface DocumentsState {
   setAppData: (id: string, appData: AppData, changed?: boolean) => void;
   /**
    * Commits the metadata of a completed disk write. Returns true only when no newer
-   * edit happened while the write was in flight.
+   * edit happened while the write was in flight. Never called for a conflicted save:
+   * the previous `fileHash` remains the base, so the next save detects the conflict
+   * again (H3 / H6 — a conflict never acknowledges dirty or pending state).
    */
-  markSaved: (id: string, path: string, mtimeMs: number, savedRevision: number) => boolean;
+  markSaved: (
+    id: string,
+    path: string,
+    mtimeMs: number,
+    savedRevision: number,
+    fileHash: string,
+  ) => boolean;
   setActive: (id: string) => void;
   close: (id: string) => void;
   setSettings: (settings: AppSettings) => void;
@@ -114,6 +131,38 @@ function newId(): string {
   return crypto.randomUUID();
 }
 
+export interface SaveFingerprintCommit {
+  id: string;
+  path: string;
+  mtimeMs: number;
+  savedRevision: number;
+  fileHash: string;
+}
+
+/**
+ * Only a `saved` outcome may advance the session's filesystem base. Anything else
+ * (conflict, error, cancelled) yields `null`, so the previous fingerprint stays as
+ * the base and the next Save detects the same conflict again (H3.6).
+ *
+ * Extracted from the hook so the renderer wiring is unit-testable: a witness that
+ * a conflict can never reach `markSaved` with a newer fingerprint.
+ */
+export function saveFingerprintCommit(
+  outcome: SaveOutcome,
+  id: string,
+  savedRevision: number,
+): SaveFingerprintCommit | null {
+  return outcome.status === 'saved'
+    ? {
+        id,
+        path: outcome.path,
+        mtimeMs: outcome.mtimeMs,
+        savedRevision,
+        fileHash: outcome.hash,
+      }
+    : null;
+}
+
 export const useDocuments = create<DocumentsState>((set, get) => ({
   documents: [],
   activeId: null,
@@ -133,6 +182,7 @@ export const useDocuments = create<DocumentsState>((set, get) => ({
       content: newDocumentTemplate(strings),
       eol: 'lf',
       mtimeMs: null,
+      fileHash: null,
       dirty: false,
       revision: 0,
       refuseExistingOnSave: false,
@@ -170,6 +220,7 @@ export const useDocuments = create<DocumentsState>((set, get) => ({
           content: snapshot.content,
           eol: snapshot.eol,
           mtimeMs: snapshot.mtimeMs,
+          fileHash: snapshot.hash,
           dirty: false,
           revision: 0,
           refuseExistingOnSave: false,
@@ -211,6 +262,8 @@ export const useDocuments = create<DocumentsState>((set, get) => ({
           content,
           eol,
           mtimeMs: mtimeMs ?? null,
+          // Recovery records predate fingerprints: mtime is the legacy authority.
+          fileHash: null,
           dirty: true,
           revision: 0,
           refuseExistingOnSave: refuseRecoveredExistingFile(path, mtimeMs),
@@ -252,7 +305,7 @@ export const useDocuments = create<DocumentsState>((set, get) => ({
     }));
   },
 
-  markSaved(id, path, mtimeMs, savedRevision) {
+  markSaved(id, path, mtimeMs, savedRevision, fileHash) {
     let fullySaved = false;
     const platform = hostPlatform();
     set((state) => {
@@ -280,6 +333,7 @@ export const useDocuments = create<DocumentsState>((set, get) => ({
                   path,
                   name: nameFromPath(path),
                   mtimeMs,
+                  fileHash,
                   dirty: decision.dirty,
                   refuseExistingOnSave: false,
                 };

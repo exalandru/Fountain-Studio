@@ -16,7 +16,7 @@ import {
 import { companionPath } from './appdata.js';
 import { bibleImagesDirectory, biblePath } from './bible.js';
 import { beginBundleTransition, withBundleMutation } from './bundle-mutation.js';
-import { fromLf, saveDocument } from './document.js';
+import { fromLf, saveDocument, sha256Hex } from './document.js';
 import { writeFileAtomic } from './atomic.js';
 import { inspectSnapshotCatalog } from './snapshots.js';
 
@@ -374,6 +374,7 @@ export async function saveAsDocumentBundle(
           content: request.content,
           eol: request.eol,
           expectedMtimeMs: request.expectedMtimeMs,
+          expectedHash: request.expectedHash,
         },
         backupCount,
       );
@@ -387,7 +388,10 @@ export async function saveAsDocumentBundle(
       await observe('prepared');
       return publishBundle(request, prepared, observe);
     });
-    return { status: 'saved', path: request.destinationPath, mtimeMs };
+    // The published screenplay bytes are exactly fromLf(content, eol): they become
+    // the new filesystem base for the next save, without re-reading the disk.
+    const publishedHash = sha256Hex(Buffer.from(fromLf(request.content, request.eol), 'utf8'));
+    return { status: 'saved', path: request.destinationPath, mtimeMs, hash: publishedHash };
   } catch (error) {
     return {
       status: 'error',

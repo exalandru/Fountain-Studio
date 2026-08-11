@@ -74,6 +74,11 @@ function validMtime(value: unknown): value is number | null {
   return value === null || (typeof value === 'number' && Number.isFinite(value) && value >= 0);
 }
 
+/** SHA-256 hex fingerprints are fixed-width; accept only the sane envelope. */
+function validHash(value: unknown): value is string | null {
+  return value === null || (typeof value === 'string' && value.length > 0 && value.length <= 128);
+}
+
 function pdfResourcesDirectory(): string {
   return app.isPackaged
     ? join(process.resourcesPath, 'app.asar.unpacked', 'resources')
@@ -272,6 +277,7 @@ function validateRequest<C extends IpcChannel>(channel: C, value: unknown): IpcR
         record['content'].length <= 100_000_000 &&
         (record['eol'] === 'lf' || record['eol'] === 'crlf') &&
         validMtime(record['expectedMtimeMs']) &&
+        (record['expectedHash'] === undefined || validHash(record['expectedHash'])) &&
         (record['refuseExisting'] === undefined || typeof record['refuseExisting'] === 'boolean');
       break;
     case 'file:saveAsBundle':
@@ -283,6 +289,7 @@ function validateRequest<C extends IpcChannel>(channel: C, value: unknown): IpcR
         record['content'].length <= 100_000_000 &&
         (record['eol'] === 'lf' || record['eol'] === 'crlf') &&
         validMtime(record['expectedMtimeMs']) &&
+        (record['expectedHash'] === undefined || validHash(record['expectedHash'])) &&
         (() => {
           try {
             return parseAppData(JSON.stringify(record['appData'])) !== null;

@@ -30,16 +30,32 @@ export interface DocumentSnapshot {
   /** Content normalised to LF. The original line ending is kept in `eol`. */
   content: string;
   eol: Eol;
-  /** Modification time of the file when read, used to detect external changes. */
+  /** Modification time of the file when read, used for legacy recovery fallback. */
   mtimeMs: number | null;
+  /**
+   * SHA-256 of the exact bytes adopted as the document content base (H3).
+   *
+   * Never of a later observation, and never of a normalised text: the fingerprint
+   * identifies one filesystem version. The next save compares the disk against this
+   * base and refuses to publish over a different one. Distinct from the logical
+   * H4 `revision`, which counts keystrokes.
+   */
+  hash: string;
 }
 
 export interface SaveRequest {
   path: string;
   content: string;
   eol: Eol;
-  /** mtime known to the renderer; the main process refuses to overwrite a changed file. */
+  /** mtime fallback used only when `expectedHash` is unavailable (legacy recovery). */
   expectedMtimeMs: number | null;
+  /**
+   * Fingerprint of the disk version this edit session is based on.
+   *
+   * When present it is the sole authority for conflict detection: the save is
+   * refused if the current disk bytes differ, even when the mtime is identical.
+   */
+  expectedHash?: string | null;
   /**
    * Refuse an existing target when its previous state is unknown.
    *
@@ -55,13 +71,22 @@ export interface SaveAsBundleRequest {
   content: string;
   eol: Eol;
   expectedMtimeMs: number | null;
+  /** Same-path Save As behaves as a normal save and uses the fingerprint the same way. */
+  expectedHash?: string | null;
   appData: AppData;
 }
 
+export type ConflictReason = 'changed-externally' | 'missing' | 'unstable' | 'mtime';
+
 export type SaveOutcome =
-  | { status: 'saved'; path: string; mtimeMs: number }
+  | { status: 'saved'; path: string; mtimeMs: number; hash: string }
   | { status: 'cancelled' }
-  | { status: 'conflict'; path: string; mtimeMs: number }
+  | {
+      status: 'conflict';
+      path: string;
+      mtimeMs: number | null;
+      reason?: ConflictReason;
+    }
   | { status: 'error'; message: string };
 
 export type ExportOutcome =

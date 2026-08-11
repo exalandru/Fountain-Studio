@@ -125,6 +125,8 @@ export const en = {
   'dialog.openError.body': '{name} could not be opened.\n\n{error}',
   'dialog.openError.tooLarge': 'This file is too large to open (maximum {limit}).',
   'dialog.openError.notRegularFile': 'This path is not a readable screenplay file.',
+  'dialog.openError.unstable':
+    'This file is being modified by another application right now. Try again in a moment.',
   'dialog.openError.tooManyFiles': 'Too many files selected (maximum {count}).',
   'dialog.openError.batchTooLarge':
     'These files together are too large to open at once (maximum {limit}).',
@@ -161,6 +163,12 @@ export const en = {
   'status.analysis': 'analysis {ms} ms',
   'status.saved': 'Saved — {time}',
   'status.conflict': 'The file was changed outside the application. Use “Save As…”.',
+  'status.conflictChanged':
+    'The file was changed outside the application. Use “Save As…” to keep both versions.',
+  'status.conflictMissing':
+    'The file no longer exists at its original location. Use “Save As…” to restore it.',
+  'status.conflictUnstable':
+    'The file is being modified by another application right now. Try again in a moment, or use “Save As…”.',
   'status.saveFailed': 'Save failed: {error}',
   'status.pathAlreadyOpen':
     'This screenplay is already open in another tab. Close that tab or choose a different location.',

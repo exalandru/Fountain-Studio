@@ -25,6 +25,8 @@ function openErrorDetail(t: Awaited<ReturnType<typeof getTranslator>>['t'], erro
         return t('dialog.openError.tooLarge', { limit: formatOpenByteLimit(MAX_OPEN_FILE_BYTES) });
       case 'notRegularFile':
         return t('dialog.openError.notRegularFile');
+      case 'unstable':
+        return t('dialog.openError.unstable');
       case 'tooManyFiles':
         return t('dialog.openError.tooManyFiles', { count: String(MAX_OPEN_PATHS) });
       case 'batchTooLarge':

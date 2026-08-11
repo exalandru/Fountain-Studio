@@ -4,6 +4,7 @@
     "src/main/**/*.ts",
     "src/preload/**/*.ts",
     "src/shared/**/*.ts",
+    "src/renderer/store/documents.ts",
     "scripts/**/*.ts",
     "test/unit/**/*.ts",
     "electron.vite.config.ts",

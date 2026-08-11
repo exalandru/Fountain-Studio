@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { constants } from 'node:fs';
 import { access, copyFile, readFile, rename, stat, unlink } from 'node:fs/promises';
 import type { DocumentSnapshot, Eol, SaveOutcome, SaveRequest } from '@shared/ipc-contract.js';
@@ -8,18 +9,20 @@ import {
   MAX_OPEN_FILE_BYTES,
   MAX_OPEN_PATHS,
 } from '@shared/documents/limits.js';
-import { writeFileAtomic } from './atomic.js';
+import { commitSiblingTemporary, writeSiblingTemporary } from './atomic.js';
 
 /**
  * Reading and writing `.fountain` files.
  *
- * The specification (§7) requires that no data loss be possible, hence three
+ * The specification (§7) requires that no data loss be possible, hence four
  * safeguards stacked together: atomic writes (temporary file plus rename), rotating
- * `.bak` backups, and external-change detection through mtime.
+ * `.bak` backups, stable reads through a content fingerprint (SHA-256 of the exact
+ * bytes adopted), and external-change detection comparing that fingerprint to the
+ * disk version that the current save is about to replace.
  */
 
 export type DocumentOpenErrorCode =
-  'tooLarge' | 'notRegularFile' | 'tooManyFiles' | 'batchTooLarge';
+  'tooLarge' | 'notRegularFile' | 'tooManyFiles' | 'batchTooLarge' | 'unstable';
 
 /** Structured failure for open UX; never carries stack traces into dialogs. */
 export class DocumentOpenError extends Error {
@@ -121,13 +124,13 @@ export function assertOpenBatchBudget(
 }
 
 /**
- * Stat-before-read gate: regular file (symlink-to-file accepted via `stat`) and size.
- * Does not read file contents.
+ * Stat-before-read gate: regular file (symlink-to-file accepted via `stat`), size,
+ * and the metadata of the same observation. Does not read file contents.
  */
 export async function assertReadableDocument(
   path: string,
   maxBytes = MAX_OPEN_FILE_BYTES,
-): Promise<{ size: number }> {
+): Promise<{ size: number; mtimeMs: number }> {
   let stats;
   try {
     stats = await stat(path);
@@ -146,7 +149,7 @@ export async function assertReadableDocument(
     throw new DocumentOpenError('tooLarge');
   }
 
-  return { size };
+  return { size, mtimeMs: stats.mtimeMs };
 }
 
 /**
@@ -196,22 +199,107 @@ export async function readDocument(
   options?: ReadDocumentOptions,
 ): Promise<DocumentSnapshot> {
   const maxBytes = options?.maxBytes ?? MAX_OPEN_FILE_BYTES;
-  await assertReadableDocument(path, maxBytes);
+  const stable = await readStableFile(path, maxBytes);
 
-  const raw = stripBom(await readFile(path, 'utf8'));
-  // Defensive post-read bound (TOCTOU grow). Full external races remain H3.
-  if (Buffer.byteLength(raw, 'utf8') > maxBytes) {
-    throw new DocumentOpenError('tooLarge');
-  }
-
-  const stats = await stat(path);
+  const raw = stable.bytes.toString('utf8');
+  const text = stripBom(raw);
 
   return {
     path,
-    content: toLf(raw),
-    eol: detectEol(raw),
-    mtimeMs: stats.mtimeMs,
+    content: toLf(text),
+    eol: detectEol(text),
+    mtimeMs: stable.mtimeMs,
+    hash: stable.hash,
   };
+}
+
+/**
+ * Bound on stable-read attempts.
+ *
+ * A normal file is stable on the second independent observation. One more attempt
+ * lets a single transient mid-flight write settle before failing. Beyond that, the
+ * file is being actively rewritten — a deterministic failure that refuses to adopt
+ * any inconsistent version.
+ */
+export const MAX_STABLE_READ_ATTEMPTS = 3;
+
+/** SHA-256 over exact bytes; the fingerprint identity for a filesystem version. */
+export function sha256Hex(bytes: Uint8Array): string {
+  return createHash('sha256').update(bytes).digest('hex');
+}
+
+export interface StableFileRead {
+  /** Exact bytes adopted as the document content base. */
+  bytes: Buffer;
+  /** `sha256Hex` of `bytes` — never of a later observation. */
+  hash: string;
+  mtimeMs: number;
+}
+
+/**
+ * Content-stable read (H3).
+ *
+ * Each attempt: M2 gate (regular file, `stat.size <= maxBytes` — no allocation
+ * before validation) → one full read → defensive post-read bound → SHA-256 of those
+ * exact bytes. Two consecutive attempts with the same hash prove the content was not
+ * rewritten while being read, so the adopted bytes and the reported metadata come
+ * from the same version. The fingerprint is always computed on the bytes that are
+ * actually returned to the caller — never on a later reopen.
+ *
+ * The reported mtime is the gate observation that immediately precedes the accepted
+ * read — never an observation taken after adoption. A write that lands on disk after
+ * the gate either changes what the read returns (hash mismatch → retry re-pairs the
+ * next gate with the next read) or is invisible to the adopted version. Pairing the
+ * mtime with a post-adoption stat instead could attach a newer version's timestamp
+ * to older bytes; that would let the legacy recovery path later accept (and
+ * overwrite) a disk version the adopted content never matched.
+ */
+export async function readStableFile(
+  path: string,
+  maxBytes = MAX_OPEN_FILE_BYTES,
+): Promise<StableFileRead> {
+  let previousHash: string | null = null;
+
+  for (let attempt = 1; attempt <= MAX_STABLE_READ_ATTEMPTS; attempt++) {
+    let bytes: Buffer;
+    let attemptMtime: number;
+    try {
+      // Per-attempt M2 gate: size, file type and the metadata of this same
+      // observation are captured before every read.
+      const gate = await assertReadableDocument(path, maxBytes);
+      attemptMtime = gate.mtimeMs;
+      bytes = await readFile(path);
+    } catch (error) {
+      // A transient deletion/recreation in flight may leave one attempt looking like
+      // ENOENT anywhere in the gate or read. The next attempt revalidates. Anything
+      // else is final — throttling every identical error through the retry bound
+      // keeps this bounded.
+      if (isErrno(error, 'ENOENT') && attempt < MAX_STABLE_READ_ATTEMPTS) continue;
+      throw error instanceof Error ? error : new Error(String(error));
+    }
+
+    // Defensive post-read bound (TOCTOU grow): the file may have grown past the gate.
+    if (bytes.length > maxBytes) {
+      throw new DocumentOpenError('tooLarge');
+    }
+
+    const hash = sha256Hex(bytes);
+    if (previousHash !== null && hash === previousHash) {
+      return { bytes, hash, mtimeMs: attemptMtime };
+    }
+    previousHash = hash;
+  }
+
+  throw new DocumentOpenError('unstable', 'file is changing while being read');
+}
+
+function isErrno(error: unknown, code: string): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    (error as NodeJS.ErrnoException).code === code
+  );
 }
 
 /**
@@ -284,36 +372,164 @@ async function rotateBackups(path: string, keep: number): Promise<void> {
   await copyFile(path, name(1));
 }
 
+export type ConflictReason = 'changed-externally' | 'missing' | 'unstable' | 'mtime';
+
+/**
+ * Upper bound of what the app itself can have published on disk, in bytes:
+ * the renderer caps authored content at 100 000 000 characters and UTF-8 needs
+ * at most 4 bytes per character. Anything above this size cannot be the app's
+ * own base, so the save verification can refuse to read it without risking a
+ * false "changed" on a legitimate file.
+ */
+const MAX_PUBLISHABLE_BYTES = 4 * MAX_OPEN_FILE_BYTES;
+
+/**
+ * Final check immediately before the atomic rename.
+ *
+ * The disk version is observed here — after the expensive preparation (backup
+ * rotation, temp write) — so the gap between the last comparison and the publish is
+ * limited to the rename itself. With classic filesystem primitives a writer that
+ * commits strictly between that observation and the rename cannot be caught; that
+ * residual window is documented as not fully eliminable without a compare-and-swap.
+ */
+async function verifyBaseUnchanged(
+  path: string,
+  request: SaveRequest,
+  existedInitially: boolean,
+): Promise<
+  { status: 'ok' } | { status: 'conflict'; mtimeMs: number | null; reason: ConflictReason }
+> {
+  const { expectedHash, expectedMtimeMs } = request;
+
+  if (expectedHash !== null && expectedHash !== undefined) {
+    if (!existedInitially) {
+      // The base is known but the file is gone: no silent recreation. The author
+      // keeps LOCAL in memory and can choose Save As.
+      return { status: 'conflict', mtimeMs: null, reason: 'missing' };
+    }
+    // The verification bound follows the file actually on disk, capped at what the
+    // app itself could have published. The open-path M2 cap (MAX_OPEN_FILE_BYTES)
+    // must not apply here: a large file the app previously saved must still verify,
+    // otherwise every further save of it would falsely report "changed outside".
+    let currentSize: number;
+    try {
+      const current = await stat(path);
+      currentSize = current.size;
+    } catch (error) {
+      if (isErrno(error, 'ENOENT')) {
+        return { status: 'conflict', mtimeMs: null, reason: 'missing' };
+      }
+      throw error;
+    }
+    if (currentSize > MAX_PUBLISHABLE_BYTES) {
+      // Too large to be any version this app authored: the entry was replaced
+      // externally. Declared without reading it.
+      return { status: 'conflict', mtimeMs: null, reason: 'changed-externally' };
+    }
+    try {
+      const verifyMaxBytes = Math.max(MAX_OPEN_FILE_BYTES, currentSize);
+      const observed = await readStableFile(path, verifyMaxBytes);
+      if (observed.hash !== expectedHash) {
+        return { status: 'conflict', mtimeMs: observed.mtimeMs, reason: 'changed-externally' };
+      }
+      return { status: 'ok' };
+    } catch (error) {
+      if (isErrno(error, 'ENOENT')) {
+        return { status: 'conflict', mtimeMs: null, reason: 'missing' };
+      }
+      if (error instanceof DocumentOpenError) {
+        if (error.code === 'unstable') {
+          return { status: 'conflict', mtimeMs: null, reason: 'unstable' };
+        }
+        // Size/type violations mean the entry was replaced externally.
+        return { status: 'conflict', mtimeMs: null, reason: 'changed-externally' };
+      }
+      throw error;
+    }
+  }
+
+  // Legacy fallback: documents restored from recovery carry an mtime but no
+  // fingerprint. mtime remains the only available authority there.
+  if (expectedMtimeMs !== null) {
+    if (!existedInitially) {
+      // The base is known (a recorded mtime) but the file is gone: same fail-safe
+      // as the fingerprint path — no silent recreation.
+      return { status: 'conflict', mtimeMs: null, reason: 'missing' };
+    }
+    try {
+      const current = await stat(path);
+      // One millisecond of tolerance: some file systems round mtime. This tolerance
+      // never applies when a fingerprint is available — hash comparison is then the
+      // sole authority.
+      if (Math.abs(current.mtimeMs - expectedMtimeMs) > 1) {
+        return { status: 'conflict', mtimeMs: current.mtimeMs, reason: 'mtime' };
+      }
+      return { status: 'ok' };
+    } catch (error) {
+      if (isErrno(error, 'ENOENT')) {
+        return { status: 'conflict', mtimeMs: null, reason: 'missing' };
+      }
+      throw error;
+    }
+  }
+
+  return { status: 'ok' };
+}
+
 export async function saveDocument(
   request: SaveRequest,
   backupCount: number,
 ): Promise<SaveOutcome> {
-  const { path, content, eol, expectedMtimeMs, refuseExisting = false } = request;
+  const { path, content, eol, refuseExisting = false } = request;
 
+  // Hash of the exact bytes that will be published — the new filesystem base on success.
+  const publishedBytes = Buffer.from(fromLf(content, eol), 'utf8');
+  const publishedHash = sha256Hex(publishedBytes);
+
+  let temporary: string | null = null;
   try {
+    // Unknown previous state: refuse an existing target outright.
     if (refuseExisting && (await fileExists(path))) {
       const current = await stat(path);
       return { status: 'conflict', path, mtimeMs: current.mtimeMs };
     }
 
-    // Refuse to overwrite if the file changed since it was read.
-    if (expectedMtimeMs !== null && (await fileExists(path))) {
-      const current = await stat(path);
-      // One millisecond of tolerance: some file systems round mtime.
-      if (Math.abs(current.mtimeMs - expectedMtimeMs) > 1) {
-        return { status: 'conflict', path, mtimeMs: current.mtimeMs };
-      }
+    const existedInitially = await fileExists(path);
+
+    if (existedInitially) {
+      // Backups rotate BEFORE the final verification, while the source is still the
+      // previous version. Moving the full-file copy after the verdict would re-observe
+      // the source between verification and publish — widening the residual TOCTOU
+      // window with a bulk read. Accepted tradeoff (F-2): a conflicted save still
+      // advances the .bak chain, mirroring what a successful publish would have done;
+      // the backup copies are never discarded, only their slots shift.
+      await rotateBackups(path, backupCount);
     }
 
-    await rotateBackups(path, backupCount);
-    await writeFileAtomic(path, fromLf(content, eol));
+    // Prepare before verification: the expensive work happens first, so the final
+    // check can be placed immediately before the atomic publish.
+    temporary = await writeSiblingTemporary(path, publishedBytes);
+
+    const verdict = await verifyBaseUnchanged(path, request, existedInitially);
+    if (verdict.status === 'conflict') {
+      await unlink(temporary).catch(() => undefined);
+      temporary = null;
+      return { status: 'conflict', path, mtimeMs: verdict.mtimeMs, reason: verdict.reason };
+    }
+
+    await commitSiblingTemporary(temporary, path);
+    temporary = null;
 
     const stats = await stat(path);
-    return { status: 'saved', path, mtimeMs: stats.mtimeMs };
+    return { status: 'saved', path, mtimeMs: stats.mtimeMs, hash: publishedHash };
   } catch (error) {
     return {
       status: 'error',
       message: error instanceof Error ? error.message : String(error),
     };
+  } finally {
+    if (temporary !== null) {
+      await unlink(temporary).catch(() => undefined);
+    }
   }
 }

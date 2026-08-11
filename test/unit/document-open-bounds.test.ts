@@ -112,14 +112,16 @@ describe('readDocument open bounds (M2)', () => {
     const path = await writeBytes('exact.fountain', 32);
     const snapshot = await readDocument(path, { maxBytes: 32 });
     expect(snapshot.content).toHaveLength(32);
-    expect(harness.readCalls).toBe(1);
+    // Stable read (H3): two independent observations are required to prove the
+    // content was not rewritten while being read.
+    expect(harness.readCalls).toBe(2);
   });
 
   it('opens a file just under the limit', async () => {
     const { readDocument } = await loadDocument();
     const path = await writeBytes('under.fountain', 31);
     await expect(readDocument(path, { maxBytes: 32 })).resolves.toMatchObject({ path });
-    expect(harness.readCalls).toBe(1);
+    expect(harness.readCalls).toBe(2);
   });
 
   it('refuses a directory without reading it as UTF-8', async () => {
@@ -255,7 +257,8 @@ describe('planDocumentOpen batch bounds (M2)', () => {
 
     expect(outcome.documents.map((document) => document.path)).toEqual([ok]);
     expect(outcome.failures).toHaveLength(1);
-    expect(harness.readCalls).toBe(1);
+    // Stable read (H3): two observations for the accepted peer, none for the oversize one.
+    expect(harness.readCalls).toBe(2);
   });
 
   it('planDocumentOpen throws tooManyFiles before stating paths', async () => {

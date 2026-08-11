@@ -9,7 +9,7 @@ import type { Locale, Translator } from '@shared/i18n/index.js';
 import type { DocumentSnapshot } from '@shared/ipc-contract.js';
 import type { PendingWrites } from '@shared/persistence/PendingWrites.js';
 import type { NewDocumentStrings } from '../store/documents.js';
-import { useDocuments } from '../store/documents.js';
+import { saveFingerprintCommit, useDocuments } from '../store/documents.js';
 
 interface DocumentIOOptions {
   locale: Locale;
@@ -110,6 +110,27 @@ export function useDocumentIO({
     [setStatusError, store, t],
   );
 
+  const reportSaveConflict = useCallback(
+    (reason: 'changed-externally' | 'missing' | 'unstable' | 'mtime' | undefined) => {
+      switch (reason) {
+        case 'missing':
+          setStatus(t('status.conflictMissing'));
+          break;
+        case 'unstable':
+          setStatus(t('status.conflictUnstable'));
+          break;
+        case 'mtime':
+          // Legacy fallback reached its own mismatch: keep the historical message.
+          setStatus(t('status.conflict'));
+          break;
+        default:
+          // 'changed-externally' means the fingerprint no longer matches.
+          setStatus(t('status.conflictChanged'));
+      }
+    },
+    [setStatus, t],
+  );
+
   const save = useCallback(
     async (options: { forceDialog: boolean }): Promise<boolean> => {
       const current = store().active();
@@ -171,11 +192,21 @@ export function useDocumentIO({
               content: fresh.content,
               eol: fresh.eol,
               expectedMtimeMs: fresh.mtimeMs,
+              expectedHash: fresh.fileHash,
               appData: fresh.appData,
             });
 
             if (outcome.status === 'saved') {
-              store().markSaved(current.id, outcome.path, outcome.mtimeMs, fresh.revision);
+              const commit = saveFingerprintCommit(outcome, current.id, fresh.revision);
+              if (commit) {
+                store().markSaved(
+                  commit.id,
+                  commit.path,
+                  commit.mtimeMs,
+                  commit.savedRevision,
+                  commit.fileHash,
+                );
+              }
               const savedDocument = store().documents.find(
                 (document) => document.id === current.id,
               );
@@ -207,7 +238,7 @@ export function useDocumentIO({
             }
 
             if (outcome.status === 'conflict') {
-              setStatus(t('status.conflict'));
+              reportSaveConflict(outcome.reason);
             } else if (outcome.status === 'error') {
               setStatusError(t('status.saveFailed', { error: outcome.message }));
             }
@@ -221,44 +252,49 @@ export function useDocumentIO({
           content: fresh.content,
           eol: fresh.eol,
           expectedMtimeMs: fresh.mtimeMs,
+          expectedHash: fresh.fileHash,
           refuseExisting: fresh.refuseExistingOnSave,
         });
 
         if (outcome.status === 'saved') {
-          const fullySaved = store().markSaved(
-            current.id,
-            outcome.path,
-            outcome.mtimeMs,
-            fresh.revision,
-          );
-          const savedDocument = store().documents.find((document) => document.id === current.id);
-          if (savedDocument && savedDocument.appDataRevision > 0) {
-            await window.quantum.invoke('appdata:write', {
-              path: outcome.path,
-              data: savedDocument.appData,
-            });
+          const commit = saveFingerprintCommit(outcome, current.id, fresh.revision);
+          if (commit) {
+            const fullySaved = store().markSaved(
+              commit.id,
+              commit.path,
+              commit.mtimeMs,
+              commit.savedRevision,
+              commit.fileHash,
+            );
+            const savedDocument = store().documents.find((document) => document.id === current.id);
+            if (savedDocument && savedDocument.appDataRevision > 0) {
+              await window.quantum.invoke('appdata:write', {
+                path: commit.path,
+                data: savedDocument.appData,
+              });
+            }
+            if (fullySaved) {
+              void window.quantum.invoke('autosave:clear', { id: current.id });
+            } else if (savedDocument) {
+              void window.quantum.invoke('autosave:write', {
+                id: savedDocument.id,
+                path: savedDocument.path,
+                content: savedDocument.content,
+                eol: savedDocument.eol,
+                mtimeMs: savedDocument.mtimeMs,
+              });
+            }
+            setStatus(
+              t('status.saved', {
+                time: new Date().toLocaleTimeString(locale),
+              }),
+            );
+            return fullySaved;
           }
-          if (fullySaved) {
-            void window.quantum.invoke('autosave:clear', { id: current.id });
-          } else if (savedDocument) {
-            void window.quantum.invoke('autosave:write', {
-              id: savedDocument.id,
-              path: savedDocument.path,
-              content: savedDocument.content,
-              eol: savedDocument.eol,
-              mtimeMs: savedDocument.mtimeMs,
-            });
-          }
-          setStatus(
-            t('status.saved', {
-              time: new Date().toLocaleTimeString(locale),
-            }),
-          );
-          return fullySaved;
         }
 
         if (outcome.status === 'conflict') {
-          setStatus(t('status.conflict'));
+          reportSaveConflict(outcome.reason);
         } else if (outcome.status === 'error') {
           setStatusError(t('status.saveFailed', { error: outcome.message }));
         }
@@ -269,7 +305,16 @@ export function useDocumentIO({
         saving.current.delete(current.id);
       }
     },
-    [flushSaveAsTransactions, locale, pendingWrites, setStatus, setStatusError, store, t],
+    [
+      flushSaveAsTransactions,
+      locale,
+      pendingWrites,
+      reportSaveConflict,
+      setStatus,
+      setStatusError,
+      store,
+      t,
+    ],
   );
 
   const openDialog = useCallback(async () => {

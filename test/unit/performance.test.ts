@@ -1,8 +1,12 @@
 import { describe, expect, it } from 'vitest';
+import { mkdtemp, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { collapseToHunks, diffLines, diffScenes } from '../../src/shared/diff/index.js';
 import { analyzeForEditor } from '../../src/shared/fountain/editor-analysis.js';
 import { parse } from '../../src/shared/fountain/parse.js';
 import { findRepeatedPhrases } from '../../src/shared/repetition/index.js';
+import { readDocument, sha256Hex } from '../../src/main/files/document.js';
 
 /**
  * The specification requires fluid typing (< 16 ms) on a 120-page screenplay. Editor
@@ -181,5 +185,58 @@ describe('literal repetition on a feature screenplay', () => {
     expect(longest.total).toBeGreaterThan(200);
     // And the occurrence list stays bounded even at three hundred repeats.
     expect(longest.occurrences.length).toBeLessThanOrEqual(30);
+  });
+});
+
+describe('H3 file layer: stable read + fingerprint cost', () => {
+  // The stable read (two observations + SHA-256 of the adopted bytes) is what a
+  // document open and every save's final check now pay. Measured on real disks:
+  // ~40 KB screenplay in well under a millisecond; the 100 MiB open limit is the
+  // worst authorised case. Thresholds are deliberately far above those measures
+  // so CI noise can never flake the suite, while a pathological regression (a
+  // whole open re-read per keystroke, an unbounded retry loop) blows straight
+  // through them.
+
+  async function measure(size: number, passes: number): Promise<number> {
+    const directory = await mkdtemp(join(tmpdir(), 'fountain-studio-h3perf-'));
+    const path = join(directory, 'measure.fountain');
+    const fill = Buffer.alloc(size);
+    for (let i = 0; i < size; i++) fill[i] = 0x61 + (i % 26);
+    await writeFile(path, fill);
+
+    const runs: number[] = [];
+    for (let i = 0; i < passes; i++) {
+      const start = performance.now();
+      const snapshot = await readDocument(path);
+      runs.push(performance.now() - start);
+      expect(snapshot.hash).toHaveLength(64);
+    }
+    runs.sort((a, b) => a - b);
+    return runs[Math.floor(runs.length / 2)] ?? Infinity;
+  }
+
+  it('a typical 40 KB screenplay opens and fingerprints without measurable latency', async () => {
+    const median = await measure(40 * 1024, 15);
+    console.log(`  H3 stable read, 40 KB: ${median.toFixed(1)} ms (median)`);
+    expect(median).toBeLessThan(100);
+  });
+
+  it('a 100 MiB document — the open limit — still verifies within a save budget', async () => {
+    const median = await measure(100 * 1024 * 1024, 5);
+    // Saving in place first verifies (two reads + hash), then republishes the whole
+    // content; only the verification cost is measured here.
+    console.log(`  H3 stable read, 100 MiB: ${median.toFixed(1)} ms (median)`);
+    expect(median).toBeLessThan(2_500);
+  });
+
+  it('hashing itself is linear and cheap for screenwriting files', () => {
+    const kilobytes = 40 * 1024;
+    const fill = Buffer.alloc(kilobytes, 0x61);
+    const started = performance.now();
+    for (let i = 0; i < 100; i++) sha256Hex(fill);
+    const elapsed = performance.now() - started;
+    const perMegabyte = (elapsed / 100 / kilobytes) * 1024 * 1024;
+    console.log(`  sha256: ${perMegabyte.toFixed(1)} ms per MiB`);
+    expect(perMegabyte).toBeLessThan(100);
   });
 });

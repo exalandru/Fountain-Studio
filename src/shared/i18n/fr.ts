@@ -123,6 +123,8 @@ export const fr: Catalog = {
   'dialog.openError.body': '{name} n’a pas pu être ouvert.\n\n{error}',
   'dialog.openError.tooLarge': 'Ce fichier est trop volumineux pour être ouvert (maximum {limit}).',
   'dialog.openError.notRegularFile': 'Ce chemin n’est pas un fichier de scénario lisible.',
+  'dialog.openError.unstable':
+    'Ce fichier est en cours de modification par une autre application. Réessayez dans un instant.',
   'dialog.openError.tooManyFiles': 'Trop de fichiers sélectionnés (maximum {count}).',
   'dialog.openError.batchTooLarge':
     'Ces fichiers sont trop volumineux pour être ouverts en une seule fois (maximum {limit}).',
@@ -161,6 +163,12 @@ export const fr: Catalog = {
   'status.saved': 'Enregistré — {time}',
   'status.conflict':
     'Le fichier a été modifié en dehors de l’application. Utilisez « Enregistrer sous… ».',
+  'status.conflictChanged':
+    'Le fichier a été modifié en dehors de l’application. Utilisez « Enregistrer sous… » pour conserver les deux versions.',
+  'status.conflictMissing':
+    'Le fichier n’existe plus à son emplacement d’origine. Utilisez « Enregistrer sous… » pour le restaurer.',
+  'status.conflictUnstable':
+    'Le fichier est en cours de modification par une autre application. Réessayez dans un instant ou utilisez « Enregistrer sous… ».',
   'status.saveFailed': 'Échec de l’enregistrement : {error}',
   'status.pathAlreadyOpen':
     'Ce scénario est déjà ouvert dans un autre onglet. Fermez cet onglet ou choisissez un autre emplacement.',
