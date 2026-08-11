@@ -81,6 +81,9 @@ test('Save As duplicates the complete bundle, reopens it and routes every future
     await bible.getByLabel('Name of the new sheet').fill('ALICE');
     await bible.getByRole('button', { name: 'New sheet' }).click();
     await bible.getByLabel('Role in the story').fill('Original Bible role');
+    // Bible field edits persist on blur (see bible.spec.ts), not on every keystroke.
+    // Waiting for disk before that completion signal races incidental focus steals.
+    await bible.getByLabel('What they want').click();
     await waitForFile(`${source}.bible.json`, 'Original Bible role');
     await bible.getByRole('button', { name: 'Close', exact: true }).click();
 
@@ -145,8 +148,10 @@ test('Save As duplicates the complete bundle, reopens it and routes every future
     );
     await bible.getByLabel('Role in the story').fill('B_ONLY_BIBLE_ROLE');
     await expect(bible.getByLabel('Role in the story')).toHaveValue('B_ONLY_BIBLE_ROLE');
-    await bible.getByRole('button', { name: 'Close', exact: true }).click();
+    // Persist on blur before Close so the disk oracle does not depend on unmount timing.
+    await bible.getByLabel('What they want').click();
     await waitForFile(`${destination}.bible.json`, 'B_ONLY_BIBLE_ROLE');
+    await bible.getByRole('button', { name: 'Close', exact: true }).click();
 
     await runCommand(running.app, 'file.snapshots');
     const snapshots = running.page.locator('.snapshot-dialog');
