@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import {
   buildCharacterNamesPrompt,
   CHARACTER_NAMES_SYSTEM_PROMPT,
-  parseShortSuggestions,
+  parseCharacterNameSuggestions,
 } from '@shared/ai/index.js';
 import type { CharacterNameStyle } from '@shared/ai/index.js';
 import { useTranslator } from '../hooks/useTranslator.js';
@@ -28,6 +28,10 @@ interface CharacterNameDialogProps {
   onRename: (selection: CharacterNameSelection, name: string) => boolean;
   onClose: () => void;
 }
+
+const NAME_REPAIR_INSTRUCTION = `Your previous reply was not valid for this task.
+Return only a JSON object {"suggestions":["..."]} with at most ten distinct character names and no commentary.
+No Markdown fences.`;
 
 export function CharacterNameDialog({ selection, onRename, onClose }: CharacterNameDialogProps) {
   const { t } = useTranslator();
@@ -80,38 +84,52 @@ export function CharacterNameDialog({ selection, onRename, onClose }: CharacterN
     setBusy(true);
     setError(null);
     setSuggestions([]);
+    const isCurrent = () => latestOperation.current?.requestId === operation.requestId;
+    const primaryUserContent = buildCharacterNamesPrompt(
+      selection.name,
+      selection.existingNames,
+      selection.sceneContext,
+      style,
+    );
     try {
       const config = await window.quantum.invoke('ai:config:get', undefined);
-      if (latestOperation.current?.requestId !== operation.requestId) return;
-      const request = startCollectedAiRequest({
-        requestId: operation.requestId,
-        profileId: config.activeProfileId,
-        mode: 'creative',
-        temperature: 0.9,
-        reasoning: 'disabled',
-        systemPrompt: CHARACTER_NAMES_SYSTEM_PROMPT,
-        messages: [
-          {
-            role: 'user',
-            content: buildCharacterNamesPrompt(
-              selection.name,
-              selection.existingNames,
-              selection.sceneContext,
-              style,
-            ),
-          },
-        ],
-      });
-      requestRef.current = request;
-      const parsed = parseShortSuggestions(await request.promise);
-      if (latestOperation.current?.requestId !== operation.requestId) return;
+      if (!isCurrent()) return;
+
+      const runOnce = async (messages: Array<{ role: 'user' | 'assistant'; content: string }>) => {
+        const request = startCollectedAiRequest({
+          requestId: operation.requestId,
+          profileId: config.activeProfileId,
+          mode: 'creative',
+          temperature: 0.9,
+          reasoning: 'disabled',
+          systemPrompt: CHARACTER_NAMES_SYSTEM_PROMPT,
+          messages,
+        });
+        requestRef.current = request;
+        return request.promise;
+      };
+
+      let output = await runOnce([{ role: 'user', content: primaryUserContent }]);
+      if (!isCurrent()) return;
+      let parsed = parseCharacterNameSuggestions(output);
+      if (parsed.length === 0) {
+        // Gate before starting: regenerate/unmount must not orphan a second network call.
+        if (!isCurrent()) return;
+        output = await runOnce([
+          { role: 'user', content: primaryUserContent },
+          { role: 'assistant', content: output.slice(0, 4_000) },
+          { role: 'user', content: NAME_REPAIR_INSTRUCTION },
+        ]);
+        if (!isCurrent()) return;
+        parsed = parseCharacterNameSuggestions(output);
+      }
       if (parsed.length === 0) throw new Error(t('characterName.invalidResponse'));
       setSuggestions(parsed);
     } catch (reason) {
-      if (latestOperation.current?.requestId !== operation.requestId) return;
+      if (!isCurrent()) return;
       setError(reason instanceof Error ? reason.message : String(reason));
     } finally {
-      if (latestOperation.current?.requestId === operation.requestId) {
+      if (isCurrent()) {
         requestRef.current = null;
         setBusy(false);
       }

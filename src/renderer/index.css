@@ -3280,8 +3280,9 @@ body[data-theme='dark'] .preview-pane {
  * `height: 100%` resolves against the whole dialog and then relies on flex shrinking it back
  * past the header — which it can only do down to its own automatic minimum. On a short window
  * that minimum is the larger number, so the pane stayed taller than the space it had and the
- * dialog's `overflow: hidden` cut the structural block's button in half. `min-height: 0` is
- * what switches that automatic minimum off; the scrolling child is `.consistency-results`.
+ * dialog's `overflow: hidden` cut content in half. `min-height: 0` is what switches that
+ * automatic minimum off. The scrolling child depends on the dialog: inconsistency uses
+ * `.consistency-results`; narrative repetitions use `.repetition-tabpanel` (one per tab).
  */
 .consistency-pane {
   display: flex;
@@ -3538,21 +3539,88 @@ body[data-theme='dark'] .preview-pane {
   min-width: 190px;
 }
 
-/* The literal report is a list of phrases, each openable onto the places it appears. The
-   structural half sits below it, in its own block, because it costs a request. */
+/* The literal report and the structural reading each own a tab. One tabpanel scrolls;
+   they no longer share a column where structural `flex: none` crushed the phrase list. */
+.repetition-tab-bar {
+  flex: none;
+  padding: 0 14px 10px;
+}
+
+.repetition-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 2px;
+  padding: 3px;
+  border-radius: var(--radius-md);
+  background: var(--surface-sunken);
+}
+
+.repetition-tab {
+  min-width: 0;
+  padding: 6px 8px;
+  overflow: hidden;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition:
+    background-color var(--motion),
+    color var(--motion);
+}
+
+.repetition-tab:hover {
+  background: var(--fill-hover);
+  color: var(--text);
+}
+
+.repetition-tab.active,
+.repetition-tab.active:hover {
+  background: var(--accent-strong);
+  color: var(--accent-contrast);
+  font-weight: 600;
+}
+
+.repetition-panels {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* The sole vertical scroller for whichever tab is visible. */
+.repetition-tabpanel {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  overflow: auto;
+}
+
+.repetition-tabpanel[hidden] {
+  display: none;
+}
+
 .repetition-controls {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 14px;
+  padding: 0 14px 12px;
 }
 
 .repetition-count {
   margin: 0;
   color: var(--text-muted);
   font-size: 11px;
+}
+
+.repetition-text-results {
+  padding: 0 9px 9px;
 }
 
 .repetition-item {
@@ -3649,14 +3717,10 @@ body[data-theme='dark'] .preview-pane {
   white-space: nowrap;
 }
 
-/* Stepping down to the sunken surface separates the paid half from the free one without a
-   rule across the dialog. */
+/* Structural content lives in its own tabpanel; keep the sunken surface as a content
+   frame rather than a competing flex sibling of the phrase list. */
 .repetition-structural {
-  flex: none;
-  padding: 12px 14px;
-  border-radius: var(--radius-md);
-  margin: 0 9px 9px;
-  background: var(--surface-sunken);
+  padding: 4px 14px 14px;
 }
 
 .repetition-structural h3 {

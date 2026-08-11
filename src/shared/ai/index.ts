@@ -10,6 +10,7 @@ import type { SceneView } from '../fountain/ast.js';
 import type { Locale } from '../i18n/types.js';
 import type { AiProviderKind } from './providers/types.js';
 import { DEFAULT_PROVIDER, isProviderKind } from './providers/types.js';
+import { enforceRewriteContract, type RewriteContractResult } from './rewrite-contract.js';
 
 export {
   AI_REQUEST_LIMIT_DEFAULTS,
@@ -19,6 +20,15 @@ export {
 } from './limits.js';
 
 export { aiEndpointOrigin, sameAiEndpointOrigin } from './origin.js';
+
+export {
+  enforceRewriteContract,
+  introducesCameraStructure,
+  introducesEmphasisDrift,
+  introducesStructuralEscape,
+  type RewriteContractFailure,
+  type RewriteContractResult,
+} from './rewrite-contract.js';
 
 export interface AiConnectionProfile {
   id: string;
@@ -228,18 +238,23 @@ const EXCERPT_LANGUAGE = 'Answer in the language of the excerpt, never in anothe
 export type RewriteTone =
   'neutral' | 'concise' | 'cinematic' | 'dramatic' | 'comic' | 'formal' | 'colloquial' | 'custom';
 
-export const REWRITE_SYSTEM_PROMPT = `You rewrite an excerpt of a Fountain screenplay.
-You produce exactly three genuinely different variants. ${EXCERPT_LANGUAGE}
-You keep the meaning, the character's voice, and the Fountain syntax the element kind calls for.
-You never touch Fountain markers that lie outside the selected passage.
-Answer with nothing but a valid JSON object of the form {"variants":["...", "...", "..."]}, no Markdown and no commentary.`;
+export const REWRITE_SYSTEM_PROMPT = `You rewrite an exact selected excerpt of a Fountain screenplay.
+You produce exactly three genuinely different variants of that selected text only. ${EXCERPT_LANGUAGE}
+You keep the meaning and the character's voice.
+You must not expand the screenplay scope beyond the selection:
+- do not invent scene headings (INT./EXT./EST./I/E.)
+- do not invent character cues, dialogue blocks, parentheticals, or transitions
+- do not invent shot headings or camera directions (CAMERA, TRAVELLING, GROS PLAN, CLOSE-UP, and similar)
+- do not continue the scene or add neighbouring narrative
+- do not add Markdown or Fountain emphasis markers that the selection does not already use
+- do not explain your choices or quote the original
+A more visual or cinematic style means more evocative prose about what can be seen — not coverage, camera moves, or screenplay structure.
+Answer with nothing but a valid JSON object of the form {"variants":["...", "...", "..."]}, no Markdown fences and no commentary.`;
 
 export interface RewritePromptInput {
   selection: string;
   elementKind: string;
   speaker: string | null;
-  sceneHeading: string | null;
-  sceneContext: string;
   tone: RewriteTone;
   customStyle: string;
 }
@@ -247,7 +262,8 @@ export interface RewritePromptInput {
 const TONE_INSTRUCTIONS: Record<Exclude<RewriteTone, 'custom'>, string> = {
   neutral: 'Neutral, natural, faithful to the text.',
   concise: 'Tighter, without losing anything essential.',
-  cinematic: 'More visual and cinematic, favouring what a camera can see.',
+  cinematic:
+    'More visual and cinematic prose: favour imagery of what can be seen and felt, without camera directions or screenplay structure.',
   dramatic: 'More dramatic, with more tension and more at stake.',
   comic: 'Lighter or funnier, without breaking the scene apart.',
   formal: 'In a formal register.',
@@ -259,24 +275,29 @@ export function buildRewritePrompt(input: RewritePromptInput): string {
     input.tone === 'custom'
       ? input.customStyle.trim() || TONE_INSTRUCTIONS.neutral
       : TONE_INSTRUCTIONS[input.tone];
+  const speakerLine =
+    input.speaker || input.elementKind === 'dialogue' || input.elementKind === 'parenthetical'
+      ? `Speaking character: ${input.speaker ?? 'none'}\n`
+      : '';
   return `Rewrite the selected passage as three variants.
 
-Fountain kind: ${input.elementKind}
-Speaking character: ${input.speaker ?? 'none'}
-Scene: ${input.sceneHeading ?? 'outside any scene'}
-Requested style: ${style}
+Fountain kind of the selection: ${input.elementKind}
+${speakerLine}Requested style: ${style}
 
-Context, for consistency only — do not reproduce it:
-<scene>
-${input.sceneContext}
-</scene>
+Rewrite ONLY the text inside <selection>. Output three rewrites of that text alone — never the surrounding scene.
 
-Passage to rewrite:
 <selection>
 ${input.selection}
 </selection>`;
 }
 
+/**
+ * Strict rewrite payload parser.
+ *
+ * Requires exactly three distinct non-empty strings. Does not truncate extras, and does
+ * not promote a short list by padding. Fence wrappers at the outer edges are stripped;
+ * commentary around the JSON is rejected.
+ */
 export function parseRewriteVariants(raw: string): string[] {
   try {
     const cleaned = raw
@@ -286,20 +307,25 @@ export function parseRewriteVariants(raw: string): string[] {
     const parsed = JSON.parse(cleaned) as unknown;
     if (typeof parsed !== 'object' || parsed === null) return [];
     const variants = (parsed as { variants?: unknown }).variants;
-    if (!Array.isArray(variants)) return [];
-    return variants
-      .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
-      .map((value) => value.trim())
-      .filter((value, index, all) => all.indexOf(value) === index)
-      .slice(0, 3);
+    if (!Array.isArray(variants) || variants.length !== 3) return [];
+    if (!variants.every((value): value is string => typeof value === 'string')) return [];
+    const normalized = variants.map((value) => value.trim());
+    if (normalized.some((value) => value.length === 0)) return [];
+    if (new Set(normalized).size !== 3) return [];
+    return normalized;
   } catch {
     return [];
   }
 }
 
+/** Parse then enforce selection-scope contract. */
+export function acceptRewriteVariants(raw: string, selection: string): RewriteContractResult {
+  return enforceRewriteContract(selection, parseRewriteVariants(raw));
+}
+
 export const SYNONYM_SYSTEM_PROMPT = `You suggest synonyms that suit a screenplay.
 You respect the register and the precise sense the word carries in its context. ${EXCERPT_LANGUAGE}
-Answer with nothing but a valid JSON object of the form {"suggestions":["..."]}, no Markdown and no commentary.
+Answer with nothing but a valid JSON object of the form {"suggestions":["..."]}, no Markdown fences and no commentary.
 Offer at most ten words or short phrases, with no explanation.`;
 
 export function buildSynonymPrompt(word: string, sceneContext: string): string {
@@ -317,8 +343,8 @@ ${word}
 export const CHARACTER_NAMES_SYSTEM_PROMPT = `You suggest character names for a narrative work.
 You respect the period, place, genre and tone the context lets you infer, and the language the
 screenplay is written in — a name is read aloud by the people in it.
-Answer with nothing but a valid JSON object of the form {"suggestions":["..."]}, no Markdown and no commentary.
-Offer at most ten distinct full names, with no explanation.`;
+Answer with nothing but a valid JSON object of the form {"suggestions":["..."]}, no Markdown fences and no commentary.
+Offer at most ten distinct full names, with no explanation, and no surrounding commentary.`;
 
 export type CharacterNameStyle = 'common' | 'rare' | 'creative';
 
@@ -362,6 +388,30 @@ export function parseShortSuggestions(raw: string, maximum = 10): string[] {
   } catch {
     return [];
   }
+}
+
+/**
+ * Character-name suggestions that can be inserted as cue text.
+ *
+ * Rejects commentary wrappers and sentence-like strings that would otherwise become
+ * the character's name in the screenplay.
+ */
+export function parseCharacterNameSuggestions(raw: string, maximum = 10): string[] {
+  return parseShortSuggestions(raw, maximum).filter(isPlausibleCharacterName);
+}
+
+export function isPlausibleCharacterName(name: string): boolean {
+  const trimmed = name.trim();
+  if (!trimmed || trimmed.length > 80) return false;
+  if (/[\n\r]/.test(trimmed)) return false;
+  if (/[!?;:]/.test(trimmed)) return false;
+  // Commentary / instructional prefixes the model sometimes adds outside JSON.
+  if (/^(je\b|i\b|here'?s\b|voici\b|suggest|try|consider|maybe)\b/i.test(trimmed)) {
+    return false;
+  }
+  // A full sentence is not a character cue.
+  if (trimmed.split(/\s+/).length > 5) return false;
+  return true;
 }
 
 export type InconsistencyType =

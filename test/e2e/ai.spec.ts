@@ -875,12 +875,26 @@ test('measures literal repetition without a request, then asks about structure',
   // Two mouths, so it reads as the writer's formula rather than a character's signature.
   await expect(finding.locator('.repetition-badge')).toHaveClass(/is-spread/);
   expect(requests).toHaveLength(0);
+  // Default tab is the textual reading; structural CTA must not share that panel.
+  await expect(panel.getByRole('tab', { name: 'Text repetitions' })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+  await expect(panel.locator('#repetition-panel-text')).toBeVisible();
+  await expect(panel.locator('#repetition-panel-structural')).toBeHidden();
+  await expect(panel.getByRole('button', { name: 'Look for structural repetition' })).toHaveCount(
+    0,
+  );
 
   // Each occurrence takes the editor to the block it sits in.
   await finding.getByRole('button', { name: /places it appears/ }).click();
   await expect(panel.locator('.repetition-occurrences li')).toHaveCount(2);
 
-  // The structural half is a judgement, so it is asked for explicitly.
+  // The structural half is a judgement, so it is asked for explicitly — on its own tab.
+  await panel.getByRole('tab', { name: 'Structural repetitions' }).click();
+  await expect(panel.locator('#repetition-panel-structural')).toBeVisible();
+  await expect(panel.locator('#repetition-panel-text')).toBeHidden();
+  await expect(panel.locator('.repetition-item:visible')).toHaveCount(0);
   await expect(panel.locator('.repetition-structural-empty')).toContainText('has not been run');
   await panel.getByRole('button', { name: 'Look for structural repetition' }).click();
   const structural = panel.locator('.repetition-structural .consistency-item');
@@ -898,6 +912,13 @@ test('measures literal repetition without a request, then asks about structure',
   const sent = JSON.stringify(prompt?.body?.['messages']);
   expect(sent).toContain('INT. LAB - NIGHT');
   expect(sent).not.toContain('second door');
+
+  // Findings and the textual filter survive a round-trip through the other tab.
+  await panel.getByRole('tab', { name: 'Text repetitions' }).click();
+  await expect(panel.locator('.repetition-item:visible')).toHaveCount(1);
+  await panel.getByRole('tab', { name: 'Structural repetitions' }).click();
+  await expect(structural).toBeVisible();
+  await expect(structural).toHaveCount(1);
 
   await expect
     .poll(async () => {

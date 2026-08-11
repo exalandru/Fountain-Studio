@@ -464,6 +464,8 @@ export const en = {
   'repetition.truncated': 'the weakest findings were left out',
   'repetition.signature': '{speaker}, {count} times',
   'repetition.spread': 'spread across the screenplay, {count} times',
+  'repetition.tab.text': 'Text repetitions',
+  'repetition.tab.structural': 'Structural repetitions',
   'repetition.structuralTitle': 'Structural repetition',
   'repetition.structuralHint':
     'Two scenes doing the same job, a beat played twice, a revelation revealed again. This one needs a model, and reads a one-line summary of every scene.',

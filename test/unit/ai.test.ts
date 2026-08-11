@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { parse } from '../../src/shared/fountain/index.js';
 import {
   approximateTokens,
+  acceptRewriteVariants,
   buildCharacterNamesPrompt,
   BIBLE_SYSTEM_PROMPT,
   buildCharacterVoiceContext,
@@ -12,6 +13,7 @@ import {
   chunkScenes,
   DEFAULT_AI_PROFILE,
   modeTemperature,
+  parseCharacterNameSuggestions,
   parseInconsistencies,
   parseRewriteVariants,
   parseShortSuggestions,
@@ -97,15 +99,17 @@ describe('M6 structured AI helpers', () => {
       selection: 'Je pars.',
       elementKind: 'dialogue',
       speaker: 'ALICE',
-      sceneHeading: 'INT. CUISINE - NUIT',
-      sceneContext: 'ALICE\nJe pars.',
       tone: 'dramatic',
       customStyle: '',
     });
-    expect(prompt).toContain('Fountain kind: dialogue');
+    expect(prompt).toContain('Fountain kind of the selection: dialogue');
     expect(prompt).toContain('Speaking character: ALICE');
     expect(prompt).toContain('More dramatic');
-    expect(parseRewriteVariants('```json\n{"variants":["A","B","C","D"]}\n```')).toEqual([
+    expect(prompt).not.toContain('<scene>');
+    expect(prompt).not.toContain('INT. CUISINE');
+    // Old behaviour truncated four variants to three; the contract now rejects extras.
+    expect(parseRewriteVariants('```json\n{"variants":["A","B","C","D"]}\n```')).toEqual([]);
+    expect(parseRewriteVariants('```json\n{"variants":["A","B","C"]}\n```')).toEqual([
       'A',
       'B',
       'C',
@@ -405,5 +409,200 @@ describe('prompt language', () => {
       expect(prompt, prompt.slice(0, 40)).not.toMatch(/[àâçèéêëîïôûùœ]/i);
       expect(prompt).not.toMatch(/\b(Tu|Réponds|Retourne|Propose|scénario|réplique)\b/);
     }
+  });
+});
+
+/**
+ * Rewrite Selection contract.
+ *
+ * These witnesses encode the product rule the screenshots violated: three variants may be
+ * well-formed JSON and still be invalid when they escape the selected prose's scope.
+ * Against the previous parser (shape-only, silent 4→3 truncate, no scope check), every
+ * rejection case below would have been accepted.
+ */
+describe('rewrite selection contract', () => {
+  const SELECTION =
+    'Un ciel immense, cuivré, figé dans un crépuscule éternel. Une lueur persiste, telle une braise sous les cendres.';
+
+  const payload = (variants: string[]) => JSON.stringify({ variants });
+
+  it('accepts three valid plain rewrites of the selected prose', () => {
+    const variants = [
+      'Le ciel cuivré s’étend à perte de vue, suspendu dans un crépuscule immobile.',
+      'Un firmament immense, teinté de cuivre, reste figé dans un soir sans fin.',
+      'Le ciel occupe tout l’horizon, cuivré, comme une braise sous la cendre du jour.',
+    ];
+    const accepted = acceptRewriteVariants(payload(variants), SELECTION);
+    expect(accepted).toEqual({ ok: true, variants });
+  });
+
+  it('rejects a scene-heading escape for ordinary action prose', () => {
+    // Previous implementation: parseRewriteVariants returned three strings → dialog accepted.
+    const raw = payload([
+      'EXT. MÉTROPOLE MORTE - JOUR\n\nLe ciel occupe tout le cadre.',
+      'Un ciel cuivré s’étend.',
+      'Une lueur persiste sous les cendres.',
+    ]);
+    expect(parseRewriteVariants(raw)).toEqual([
+      'EXT. MÉTROPOLE MORTE - JOUR\n\nLe ciel occupe tout le cadre.',
+      'Un ciel cuivré s’étend.',
+      'Une lueur persiste sous les cendres.',
+    ]);
+    expect(acceptRewriteVariants(raw, SELECTION)).toEqual({ ok: false, reason: 'scope' });
+  });
+
+  it('rejects structural screenplay escapes such as character cues', () => {
+    const raw = payload([
+      'NARRATEUR\nLe ciel cuivré s’étend.',
+      'Un firmament immense reste figé.',
+      'Une lueur persiste sous les cendres.',
+    ]);
+    expect(acceptRewriteVariants(raw, SELECTION)).toEqual({ ok: false, reason: 'scope' });
+  });
+
+  it('rejects transition lines the isolated Fountain parse may not classify', () => {
+    // `CUT TO:` alone is often not a `transition` element (title-page key / blank-line
+    // sandwich). The previous shape-only gate would have accepted it.
+    expect(
+      acceptRewriteVariants(
+        payload(['CUT TO:', 'Un firmament immense reste figé.', 'Une lueur persiste.']),
+        SELECTION,
+      ),
+    ).toEqual({ ok: false, reason: 'scope' });
+    expect(
+      acceptRewriteVariants(
+        payload([
+          'CUT TO:\n\nLe ciel occupe tout le cadre.',
+          'Un firmament immense reste figé.',
+          'Une lueur persiste.',
+        ]),
+        SELECTION,
+      ),
+    ).toEqual({ ok: false, reason: 'scope' });
+  });
+
+  it('accepts cinematic visual prose without screenplay structure', () => {
+    const variants = [
+      'La lumière glisse sur les ruines sous un ciel cuivré.',
+      'Une braise de crépuscule couve au-dessus de la métropole morte.',
+      'Le firmament, immense et figé, tient le soir comme une cendre chaude.',
+    ];
+    expect(acceptRewriteVariants(payload(variants), SELECTION)).toEqual({
+      ok: true,
+      variants,
+    });
+  });
+
+  it('rejects Fountain emphasis that the selection did not use', () => {
+    // Observed failure mode: **cuivré** appeared although the source had no emphasis.
+    const raw = payload([
+      'Un ciel immense, **cuivré**, figé dans un crépuscule éternel.',
+      'Un firmament immense reste figé.',
+      'Une lueur persiste sous les cendres.',
+    ]);
+    expect(acceptRewriteVariants(raw, SELECTION)).toEqual({ ok: false, reason: 'formatting' });
+  });
+
+  it('preserves emphasis when the selection already uses it', () => {
+    const selection = 'Un ciel **cuivré** s’étend.';
+    const variants = [
+      'Un firmament **cuivré** demeure.',
+      'Le ciel **cuivré** reste immense.',
+      'Une voûte **cuivrée** s’immobilise.',
+    ];
+    expect(acceptRewriteVariants(payload(variants), selection)).toEqual({
+      ok: true,
+      variants,
+    });
+  });
+
+  it('rejects camera-direction structure absent from the selection', () => {
+    const raw = payload([
+      'CAMÉRA PLONGE sur un ciel cuivré.',
+      'Un firmament immense reste figé.',
+      'Une lueur persiste sous les cendres.',
+    ]);
+    expect(acceptRewriteVariants(raw, SELECTION)).toEqual({ ok: false, reason: 'camera' });
+  });
+
+  it('rejects too few, too many, empty, and duplicate variants', () => {
+    expect(parseRewriteVariants(payload(['A', 'B']))).toEqual([]);
+    expect(parseRewriteVariants(payload(['A', 'B', 'C', 'D']))).toEqual([]);
+    expect(parseRewriteVariants(payload(['A', 'B', '   ']))).toEqual([]);
+    expect(parseRewriteVariants(payload(['A', 'A', 'B']))).toEqual([]);
+  });
+
+  it('rejects commentary wrappers instead of extracting embedded JSON', () => {
+    const wrapped =
+      'Voici trois propositions :\n' +
+      payload([
+        'Le ciel cuivré s’étend.',
+        'Un firmament immense reste figé.',
+        'Une lueur persiste sous les cendres.',
+      ]);
+    expect(parseRewriteVariants(wrapped)).toEqual([]);
+    expect(acceptRewriteVariants(wrapped, SELECTION)).toEqual({ ok: false, reason: 'shape' });
+  });
+
+  it('keeps French accents and punctuation through a valid payload', () => {
+    const variants = [
+      "L'horizon s'embrase, cuivré, figé.",
+      'Une lueur d’ambre persiste sous les cendres.',
+      'Le crépuscule étreint la métropole.',
+    ];
+    expect(acceptRewriteVariants(payload(variants), SELECTION)).toEqual({
+      ok: true,
+      variants,
+    });
+  });
+
+  it('forbids inventing structure in the rewrite system prompt', () => {
+    expect(REWRITE_SYSTEM_PROMPT).toContain('selected text only');
+    expect(REWRITE_SYSTEM_PROMPT).toContain('scene headings');
+    expect(REWRITE_SYSTEM_PROMPT).toContain('camera directions');
+    expect(REWRITE_SYSTEM_PROMPT).toContain('evocative prose');
+  });
+
+  it('omits surrounding scene context from the rewrite user prompt', () => {
+    // Context leakage was a plausible cause of EXT. MÉTROPOLE… escaping into variants.
+    const prompt = buildRewritePrompt({
+      selection: SELECTION,
+      elementKind: 'action',
+      speaker: null,
+      tone: 'cinematic',
+      customStyle: '',
+    });
+    expect(prompt).toContain('<selection>');
+    expect(prompt).toContain(SELECTION);
+    expect(prompt).not.toContain('<scene>');
+    expect(prompt).toContain('without camera directions');
+  });
+});
+
+describe('synonym and character-name contracts', () => {
+  it('bounds synonym suggestions and rejects non-JSON commentary', () => {
+    expect(parseShortSuggestions('Voici des synonymes : marche, avance')).toEqual([]);
+    expect(
+      parseShortSuggestions(JSON.stringify({ suggestions: ['marche', 'avance', 'marche'] })),
+    ).toEqual(['marche', 'avance']);
+  });
+
+  it('rejects character-name commentary that would be inserted as a cue', () => {
+    // Old parseShortSuggestions would have accepted the commentary string as a name.
+    expect(
+      parseCharacterNameSuggestions(
+        JSON.stringify({
+          suggestions: ['Je suggère : CORIN', 'CORIN', 'EVELYN STONE', 'Maybe Nora?'],
+        }),
+      ),
+    ).toEqual(['CORIN', 'EVELYN STONE']);
+  });
+
+  it('accepts ordinary multi-word names', () => {
+    expect(
+      parseCharacterNameSuggestions(
+        JSON.stringify({ suggestions: ['EVELYN STONE', 'MAYA VALE', 'NORA BLAKE'] }),
+      ),
+    ).toEqual(['EVELYN STONE', 'MAYA VALE', 'NORA BLAKE']);
   });
 });

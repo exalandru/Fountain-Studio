@@ -475,6 +475,8 @@ export const fr: Catalog = {
   'repetition.truncated': 'les constats les plus faibles ont été écartés',
   'repetition.signature': '{speaker}, {count} fois',
   'repetition.spread': 'réparti dans le scénario, {count} fois',
+  'repetition.tab.text': 'Répétitions de texte',
+  'repetition.tab.structural': 'Répétitions structurelles',
   'repetition.structuralTitle': 'Répétitions structurelles',
   'repetition.structuralHint':
     'Deux scènes qui font le même travail, un beat rejoué, une révélation révélée à nouveau. Celle-ci demande un modèle, et lit un résumé d’une ligne par scène.',

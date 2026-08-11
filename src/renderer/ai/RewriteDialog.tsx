@@ -2,9 +2,9 @@ import { useEffect, useRef, useState } from 'react';
 import type { RewriteState } from '@shared/appdata/index.js';
 import type { RewriteTone } from '@shared/ai/index.js';
 import {
+  acceptRewriteVariants,
   buildRewritePrompt,
   buildSynonymPrompt,
-  parseRewriteVariants,
   parseShortSuggestions,
   REWRITE_SYSTEM_PROMPT,
   SYNONYM_SYSTEM_PROMPT,
@@ -53,6 +53,15 @@ const TONES: RewriteTone[] = [
   'colloquial',
   'custom',
 ];
+
+const REWRITE_REPAIR_INSTRUCTION = `Your previous reply was not valid for this task.
+Return only a JSON object {"variants":["...","...","..."]} with exactly three distinct rewrites of the selected text alone.
+Do not invent scene headings, character cues, dialogue blocks, transitions, camera directions, or Fountain/Markdown emphasis absent from the selection.
+No Markdown fences and no commentary.`;
+
+const SYNONYM_REPAIR_INSTRUCTION = `Your previous reply was not valid for this task.
+Return only a JSON object {"suggestions":["..."]} with at most ten synonym words or short phrases and no commentary.
+No Markdown fences.`;
 
 export function RewriteDialog({
   selection,
@@ -106,49 +115,75 @@ export function RewriteDialog({
     setVariants([]);
     setError(null);
     setPhase('waiting');
+
+    const isCurrent = () => latestOperation.current?.requestId === operation.requestId;
+
+    const primaryUserContent =
+      tool === 'synonyms'
+        ? buildSynonymPrompt(selection.text, selection.sceneContext)
+        : buildRewritePrompt({
+            selection: selection.text,
+            elementKind: selection.elementKind,
+            speaker: selection.speaker,
+            tone: state.lastTone,
+            customStyle: state.customStyle,
+          });
+
+    const accept = (output: string): string[] | null => {
+      if (tool === 'synonyms') {
+        const parsed = parseShortSuggestions(output);
+        return parsed.length > 0 ? parsed : null;
+      }
+      const accepted = acceptRewriteVariants(output, selection.text);
+      return accepted.ok ? accepted.variants : null;
+    };
+
     try {
       const config = await window.quantum.invoke('ai:config:get', undefined);
-      if (latestOperation.current?.requestId !== operation.requestId) return;
-      const request = startCollectedAiRequest(
-        {
-          requestId: operation.requestId,
-          profileId: config.activeProfileId,
-          mode: 'creative',
-          temperature: tool === 'synonyms' ? 0.7 : 0.8,
-          reasoning: 'disabled',
-          systemPrompt: tool === 'synonyms' ? SYNONYM_SYSTEM_PROMPT : REWRITE_SYSTEM_PROMPT,
-          messages: [
-            {
-              role: 'user',
-              content:
-                tool === 'synonyms'
-                  ? buildSynonymPrompt(selection.text, selection.sceneContext)
-                  : buildRewritePrompt({
-                      selection: selection.text,
-                      elementKind: selection.elementKind,
-                      speaker: selection.speaker,
-                      sceneHeading: selection.sceneHeading,
-                      sceneContext: selection.sceneContext,
-                      tone: state.lastTone,
-                      customStyle: state.customStyle,
-                    }),
-            },
-          ],
-        },
-        setPhase,
-      );
-      requestRef.current = request;
-      const output = await request.promise;
-      if (latestOperation.current?.requestId !== operation.requestId) return;
-      const parsed =
-        tool === 'synonyms' ? parseShortSuggestions(output) : parseRewriteVariants(output);
-      if (parsed.length === 0 || (tool === 'rewrite' && parsed.length !== 3)) {
-        throw new Error(t('rewrite.invalidResponse'));
+      if (!isCurrent()) return;
+
+      const runOnce = async (messages: Array<{ role: 'user' | 'assistant'; content: string }>) => {
+        const request = startCollectedAiRequest(
+          {
+            requestId: operation.requestId,
+            profileId: config.activeProfileId,
+            mode: 'creative',
+            temperature: tool === 'synonyms' ? 0.7 : 0.8,
+            reasoning: 'disabled',
+            systemPrompt: tool === 'synonyms' ? SYNONYM_SYSTEM_PROMPT : REWRITE_SYSTEM_PROMPT,
+            messages,
+          },
+          setPhase,
+        );
+        requestRef.current = request;
+        return request.promise;
+      };
+
+      let output = await runOnce([{ role: 'user', content: primaryUserContent }]);
+      if (!isCurrent()) return;
+
+      let parsed = accept(output);
+      if (!parsed) {
+        // One bounded repair attempt for malformed / contract-invalid model output.
+        // Gate before starting: regenerate/unmount must not orphan a second network call.
+        if (!isCurrent()) return;
+        output = await runOnce([
+          { role: 'user', content: primaryUserContent },
+          { role: 'assistant', content: output.slice(0, 4_000) },
+          {
+            role: 'user',
+            content: tool === 'synonyms' ? SYNONYM_REPAIR_INSTRUCTION : REWRITE_REPAIR_INSTRUCTION,
+          },
+        ]);
+        if (!isCurrent()) return;
+        parsed = accept(output);
       }
+
+      if (!parsed) throw new Error(t('rewrite.invalidResponse'));
       setVariants(parsed);
       setPhase('idle');
     } catch (reason) {
-      if (latestOperation.current?.requestId !== operation.requestId) return;
+      if (!isCurrent()) return;
       setError(reason instanceof Error ? reason.message : String(reason));
       setPhase('idle');
     }
