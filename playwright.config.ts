@@ -1,6 +1,16 @@
 import { defineConfig } from '@playwright/test';
 
 /**
+ * Every spec launches its own Electron application and copies this process's environment
+ * into it, so setting the flag here reaches all of them. The windows are created and driven
+ * exactly as before — they are simply never shown, which keeps a full run from taking focus
+ * a hundred times on the machine it runs on.
+ *
+ * Set `FOUNTAIN_STUDIO_HEADLESS=0` to watch a run.
+ */
+process.env['FOUNTAIN_STUDIO_HEADLESS'] ??= '1';
+
+/**
  * End-to-end tests against the actual Electron application build.
  *
  * They execute the content of `out/`, so `npm run build` must run first.

@@ -60,8 +60,23 @@ function alternating(
   return result;
 }
 
-function thinking(capabilities: ProviderCapabilities): Record<string, unknown> {
-  if (capabilities.reasoning) return { thinking: { type: 'adaptive' } };
+/**
+ * Depth travels in `output_config.effort`, not in `thinking.budget_tokens`: current Claude
+ * models reject a token budget outright, and `thinking` itself only carries on/off. At `auto`
+ * the effort field is omitted so the model applies its own default.
+ */
+function thinking(
+  profile: AiConnectionProfile,
+  capabilities: ProviderCapabilities,
+): Record<string, unknown> {
+  if (capabilities.reasoning) {
+    return {
+      thinking: { type: 'adaptive' },
+      ...(capabilities.gradedReasoning
+        ? { output_config: { effort: profile.reasoningEffort } }
+        : {}),
+    };
+  }
   if (capabilities.disableReasoning) return { thinking: { type: 'disabled' } };
   return {};
 }
@@ -123,7 +138,7 @@ export const anthropicAdapter: AiProviderAdapter = {
       system: request.systemPrompt,
       messages: alternating(request.messages),
       stream: true,
-      ...thinking(capabilities),
+      ...thinking(profile, capabilities),
     };
     if (capabilities.temperature) {
       body['temperature'] = request.temperature ?? modeTemperature(request.mode);
@@ -189,15 +204,26 @@ export const anthropicAdapter: AiProviderAdapter = {
     _status: number,
     body: string,
   ): ProviderCapabilities | null {
-    const droppedThinking = { ...current, reasoning: false, disableReasoning: false };
+    const droppedThinking = {
+      ...current,
+      reasoning: false,
+      gradedReasoning: false,
+      disableReasoning: false,
+    };
     if (current.temperature && mentions(body, 'temperature')) {
       return { ...current, temperature: false };
+    }
+    // `output_config` is refused by models predating the effort parameter, while `thinking`
+    // itself is accepted — so the level goes before the reasoning it qualifies.
+    if (current.gradedReasoning && mentions(body, 'effort')) {
+      return { ...current, gradedReasoning: false };
     }
     if ((current.reasoning || current.disableReasoning) && mentions(body, 'thinking')) {
       return droppedThinking;
     }
     // Blind ladder: `temperature` is the field current Claude models reject.
     if (current.temperature) return { ...current, temperature: false };
+    if (current.gradedReasoning) return { ...current, gradedReasoning: false };
     if (current.reasoning || current.disableReasoning) return droppedThinking;
     return null;
   },

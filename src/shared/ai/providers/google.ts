@@ -31,6 +31,17 @@ import {
 /** Dynamic thinking: the model decides its own budget. */
 const DYNAMIC_THINKING_BUDGET = -1;
 
+/**
+ * Gemini grades thinking by token budget rather than by name, so each level is a number.
+ * The values sit inside the range every thinking-capable Gemini accepts; a model with a
+ * narrower range refuses them, and the graded rung of `degrade` falls back to dynamic.
+ */
+const GRADED_THINKING_BUDGETS: Readonly<Record<'low' | 'medium' | 'high', number>> = {
+  low: 2_048,
+  medium: 8_192,
+  high: 24_576,
+};
+
 function headers(apiKey: string): Record<string, string> {
   return { ...JSON_HEADERS, ...(apiKey ? { 'x-goog-api-key': apiKey } : {}) };
 }
@@ -52,7 +63,11 @@ function generationConfig(
   const config: Record<string, unknown> = { maxOutputTokens: profile.maxTokens };
   if (capabilities.temperature) config['temperature'] = temperature;
   if (capabilities.reasoning) {
-    config['thinkingConfig'] = { thinkingBudget: DYNAMIC_THINKING_BUDGET };
+    const graded =
+      capabilities.gradedReasoning && profile.reasoningEffort !== 'auto'
+        ? GRADED_THINKING_BUDGETS[profile.reasoningEffort]
+        : DYNAMIC_THINKING_BUDGET;
+    config['thinkingConfig'] = { thinkingBudget: graded };
   } else if (capabilities.disableReasoning) {
     config['thinkingConfig'] = { thinkingBudget: 0 };
   }
@@ -177,14 +192,25 @@ export const googleAdapter: AiProviderAdapter = {
     _status: number,
     body: string,
   ): ProviderCapabilities | null {
-    const droppedThinking = { ...current, reasoning: false, disableReasoning: false };
-    // Several Pro models refuse a zero budget and some refuse the block entirely.
+    const droppedThinking = {
+      ...current,
+      reasoning: false,
+      gradedReasoning: false,
+      disableReasoning: false,
+    };
+    // Several Pro models refuse a zero budget and some refuse the block entirely. A graded
+    // budget outside a model's range is refused the same way, so try dynamic before giving
+    // up on thinking altogether.
+    if (current.gradedReasoning && mentions(body, 'thinking')) {
+      return { ...current, gradedReasoning: false };
+    }
     if ((current.reasoning || current.disableReasoning) && mentions(body, 'thinking')) {
       return droppedThinking;
     }
     if (current.temperature && mentions(body, 'temperature')) {
       return { ...current, temperature: false };
     }
+    if (current.gradedReasoning) return { ...current, gradedReasoning: false };
     if (current.reasoning || current.disableReasoning) return droppedThinking;
     if (current.temperature) return { ...current, temperature: false };
     return null;

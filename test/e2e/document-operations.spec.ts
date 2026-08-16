@@ -185,9 +185,11 @@ test.beforeAll(async () => {
               provider: 'openai',
               baseUrl: endpoint,
               model: 'h4-test',
-              timeoutMs: 10_000,
+              // The stored floor is one minute; a shorter value is refused on save.
+              timeoutMs: 60_000,
               maxTokens: 1_024,
               reasoningEnabled: false,
+              reasoningEffort: 'auto',
             },
           ],
         },

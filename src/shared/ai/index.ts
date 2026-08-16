@@ -30,6 +30,21 @@ export {
   type RewriteContractResult,
 } from './rewrite-contract.js';
 
+/**
+ * How much hidden reasoning to ask for, once reasoning is enabled at all.
+ *
+ * `auto` means "whatever the provider does by default": the graded field is left out of the
+ * request entirely rather than sent with a middle value, because every provider spells its
+ * own default differently and guessing one would override a choice the model already makes.
+ */
+export const AI_REASONING_EFFORTS = ['auto', 'low', 'medium', 'high'] as const;
+
+export type AiReasoningEffort = (typeof AI_REASONING_EFFORTS)[number];
+
+export function isReasoningEffort(value: unknown): value is AiReasoningEffort {
+  return typeof value === 'string' && (AI_REASONING_EFFORTS as readonly string[]).includes(value);
+}
+
 export interface AiConnectionProfile {
   id: string;
   name: string;
@@ -38,7 +53,10 @@ export interface AiConnectionProfile {
   model: string;
   timeoutMs: number;
   maxTokens: number;
+  /** Whether to ask for hidden reasoning at all. Off means the request says so explicitly. */
   reasoningEnabled: boolean;
+  /** Depth to ask for while `reasoningEnabled`; ignored when reasoning is off. */
+  reasoningEffort: AiReasoningEffort;
 }
 
 export interface AiConfig {
@@ -62,15 +80,33 @@ export interface AiKeyUpdate {
   key: string | null;
 }
 
+/**
+ * Bounds for a profile's wall-clock request timeout. One definition, because the sanitizer,
+ * the IPC validator and the settings input must agree: a value one of them accepts and
+ * another rejects is a setting that silently reverts on save.
+ *
+ * The setting is expressed in whole minutes, so the bounds are whole minutes too. The lower
+ * one is the shortest deadline that is not a mistake.
+ *
+ * The deadline is not the only limit in play: `aiRequestLimits` also aborts after 30 s
+ * without any network progress, so raising this ceiling only helps an exchange that keeps
+ * producing bytes. It does not let a silent endpoint run for half an hour.
+ */
+export const AI_TIMEOUT_MS_MIN = 60_000;
+export const AI_TIMEOUT_MS_MAX = 1_800_000;
+
 export const DEFAULT_AI_PROFILE: Readonly<AiConnectionProfile> = {
   id: 'default',
   name: 'OpenAI',
   provider: DEFAULT_PROVIDER,
   baseUrl: 'https://api.openai.com',
   model: 'gpt-5',
-  timeoutMs: 60_000,
+  timeoutMs: 600_000,
   maxTokens: 8_192,
-  reasoningEnabled: true,
+  // Off by default: a reasoning model can spend the whole deadline on hidden tokens, and a
+  // screenplay assistant is worth more answering quickly than thinking deeply.
+  reasoningEnabled: false,
+  reasoningEffort: 'auto',
 };
 
 export const DEFAULT_AI_CONFIG: Readonly<AiConfig> = {
@@ -138,14 +174,19 @@ export function sanitizeAiConfig(raw: unknown): AiConfig {
         timeoutMs: boundedInteger(
           profile['timeoutMs'],
           DEFAULT_AI_PROFILE.timeoutMs,
-          1_000,
-          600_000,
+          AI_TIMEOUT_MS_MIN,
+          AI_TIMEOUT_MS_MAX,
         ),
         maxTokens: boundedInteger(profile['maxTokens'], DEFAULT_AI_PROFILE.maxTokens, 64, 200_000),
         reasoningEnabled:
           typeof profile['reasoningEnabled'] === 'boolean'
             ? profile['reasoningEnabled']
             : DEFAULT_AI_PROFILE.reasoningEnabled,
+        // Profiles written before the depth setting carry no `reasoningEffort`, and an
+        // unknown level must not reach an adapter: both resolve to the provider default.
+        reasoningEffort: isReasoningEffort(profile['reasoningEffort'])
+          ? profile['reasoningEffort']
+          : DEFAULT_AI_PROFILE.reasoningEffort,
       });
     }
   }
@@ -169,8 +210,9 @@ export interface AiChatRequest {
   /** Task-specific override, otherwise the mode's temperature applies. */
   temperature?: number;
   /**
-   * Per-task override. Short transformation tasks deliberately bypass thinking, while
-   * consistency analysis keeps the profile preference.
+   * Per-task override. Structured JSON tasks (rewrite, bible, inconsistency report) bypass
+   * thinking: a local reasoning model otherwise spends the whole timeout on hidden tokens
+   * and never returns the payload. Voice/repetition still follow the profile preference.
    */
   reasoning?: 'profile' | 'disabled';
 }

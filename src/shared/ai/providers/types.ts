@@ -46,6 +46,13 @@ export interface AiRequestPlan {
 export interface ProviderCapabilities {
   /** Ask for reasoning. */
   reasoning: boolean;
+  /**
+   * Ask for a specific reasoning depth rather than the provider's own default. Separate from
+   * `reasoning` so an endpoint that refuses a graded level — an out-of-range Gemini budget, a
+   * string `think` an older Ollama does not know — falls back to plain reasoning instead of
+   * losing reasoning altogether.
+   */
+  gradedReasoning: boolean;
   /** Ask explicitly for reasoning to be switched off. */
   disableReasoning: boolean;
   /** Send a sampling temperature. */

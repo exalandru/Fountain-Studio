@@ -34,8 +34,24 @@ function endpoint(baseUrl: string, path: '/chat' | '/tags'): string {
   return joinPath(baseUrl, '/api', path);
 }
 
-function think(capabilities: ProviderCapabilities): Record<string, unknown> {
-  if (capabilities.reasoning) return { think: true };
+/**
+ * `think` is a boolean on every Ollama that supports thinking, and additionally accepts a
+ * level string on newer releases for models that grade their reasoning. A release or model
+ * that only knows the boolean rejects the string, and the graded rung of `degrade` falls
+ * back to plain `think: true`.
+ */
+function think(
+  profile: AiConnectionProfile,
+  capabilities: ProviderCapabilities,
+): Record<string, unknown> {
+  if (capabilities.reasoning) {
+    return {
+      think:
+        capabilities.gradedReasoning && profile.reasoningEffort !== 'auto'
+          ? profile.reasoningEffort
+          : true,
+    };
+  }
   if (capabilities.disableReasoning) return { think: false };
   return {};
 }
@@ -112,7 +128,7 @@ export const ollamaAdapter: AiProviderAdapter = {
           capabilities,
           request.temperature ?? modeTemperature(request.mode),
         ),
-        ...think(capabilities),
+        ...think(profile, capabilities),
       }),
     };
   },
@@ -138,12 +154,21 @@ export const ollamaAdapter: AiProviderAdapter = {
     _status: number,
     body: string,
   ): ProviderCapabilities | null {
-    const droppedThink = { ...current, reasoning: false, disableReasoning: false };
+    const droppedThink = {
+      ...current,
+      reasoning: false,
+      gradedReasoning: false,
+      disableReasoning: false,
+    };
     // Ollama releases before 0.9 reject `think` outright; non-reasoning models reject it
-    // for their own reasons.
+    // for their own reasons; releases that know only the boolean reject the level string.
+    if (current.gradedReasoning && mentions(body, 'think')) {
+      return { ...current, gradedReasoning: false };
+    }
     if ((current.reasoning || current.disableReasoning) && mentions(body, 'think')) {
       return droppedThink;
     }
+    if (current.gradedReasoning) return { ...current, gradedReasoning: false };
     if (current.reasoning || current.disableReasoning) return droppedThink;
     if (current.temperature) return { ...current, temperature: false };
     return null;

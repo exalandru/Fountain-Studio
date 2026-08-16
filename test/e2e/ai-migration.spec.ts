@@ -74,6 +74,10 @@ test('a connection profile saved before multi-provider support still works', asy
     expect(view.activeProfileId).toBe('legacy');
     expect(view.profiles[0]?.provider).toBe('openai');
     expect(view.profiles[0]?.model).toBe('legacy-model');
+    // Fields added since: an absent reasoning depth resolves to the provider default, and a
+    // timeout below the one-minute floor is raised to it rather than rejecting the profile.
+    expect(view.profiles[0]?.reasoningEffort).toBe('auto');
+    expect(view.profiles[0]?.timeoutMs).toBe(60_000);
     // The retired brainstorming prompt is dropped rather than echoed back.
     expect(view).not.toHaveProperty('brainstormingPrompt');
 

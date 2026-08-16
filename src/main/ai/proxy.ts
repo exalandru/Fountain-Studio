@@ -23,14 +23,23 @@ const supportedCapabilities = new Map<string, ProviderCapabilities>();
 
 const ALL_CAPABILITIES: ProviderCapabilities = {
   reasoning: true,
+  gradedReasoning: true,
   disableReasoning: true,
   temperature: true,
 };
 
-const CAPABILITY_KEYS = ['reasoning', 'disableReasoning', 'temperature'] as const;
+const CAPABILITY_KEYS = [
+  'reasoning',
+  'gradedReasoning',
+  'disableReasoning',
+  'temperature',
+] as const;
 
-/** A degraded retry only ever drops fields, so three attempts exhaust the ladder. */
-const MAX_ATTEMPTS = 3;
+/**
+ * A degraded retry only ever drops fields, so four attempts exhaust the ladder — one more
+ * than before, because the graded reasoning level is now a rung of its own above `reasoning`.
+ */
+const MAX_ATTEMPTS = 4;
 
 export class AiOriginError extends Error {
   constructor(
@@ -92,20 +101,30 @@ function rememberDegradation(
 }
 
 /**
- * What this request would ideally use, narrowed by what the endpoint has already
- * refused. `request` is absent for the connection probe, which never asks for reasoning.
+ * What this request would ideally use, narrowed by what the endpoint has already refused.
+ *
+ * `request` is absent for the connection probe. The probe is offered the same capabilities a
+ * chat would be, but each adapter decides how much of that to put in its probe body, so how
+ * much a probe can narrow the memo differs per provider: the OpenAI-compatible one sends
+ * whichever reasoning field the profile implies, Google sends only the off form, and
+ * Anthropic and Ollama send none at all — Claude's 16-token probe budget would be spent
+ * thinking and report an empty answer instead of a working connection.
+ *
+ * Switching reasoning off asks for it to be off, rather than saying nothing: a local model
+ * that reasons by default would otherwise keep reasoning through the whole deadline while
+ * the setting claims it is disabled.
  */
 function effectiveCapabilities(
   profile: AiConnectionProfile,
   request?: AiChatRequest,
 ): ProviderCapabilities {
   const support = knownSupport(profile);
-  const wantsReasoning = request
-    ? request.reasoning !== 'disabled' && profile.reasoningEnabled
-    : profile.reasoningEnabled;
+  const wantsReasoning = request?.reasoning === 'disabled' ? false : profile.reasoningEnabled;
   return {
     reasoning: wantsReasoning && support.reasoning,
-    disableReasoning: request?.reasoning === 'disabled' && support.disableReasoning,
+    gradedReasoning:
+      wantsReasoning && profile.reasoningEffort !== 'auto' && support.gradedReasoning,
+    disableReasoning: !wantsReasoning && support.disableReasoning,
     temperature: support.temperature,
   };
 }

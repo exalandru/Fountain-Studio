@@ -2757,8 +2757,7 @@ body[data-theme='dark'] .preview-pane {
   gap: 12px;
 }
 
-.ai-field-grid label,
-.ai-advanced label {
+.ai-field-grid label {
   display: flex;
   flex-direction: column;
   gap: 5px;
@@ -2768,8 +2767,7 @@ body[data-theme='dark'] .preview-pane {
 }
 
 .ai-field-grid input,
-.ai-field-grid select,
-.ai-advanced textarea {
+.ai-field-grid select {
   width: 100%;
 }
 
@@ -2842,20 +2840,17 @@ body[data-theme='dark'] .preview-pane {
   line-height: 1.35;
 }
 
-.ai-advanced summary {
-  color: var(--text-muted);
-  cursor: pointer;
-}
-
-.ai-advanced .ai-reasoning-toggle {
+/* The tick reads as a sentence, so it runs across rather than stacking like a field.
+   No `width` here: the shared `input[type='checkbox']` rule owns the box geometry, and
+   `width: auto` on an `appearance: none` control collapses it to a 0px-wide border —
+   a bare vertical line next to the label, with no visible checked state. */
+.ai-reasoning-toggle {
+  display: flex;
   flex-direction: row;
   align-items: center;
-  margin-top: 10px;
+  gap: 8px;
   color: var(--text);
-}
-
-.ai-advanced .ai-reasoning-toggle input {
-  width: auto;
+  font-size: 12px;
 }
 
 .ai-warning {

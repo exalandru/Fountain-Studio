@@ -1,7 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import type { AiConfig, AiConfigView, AiConnectionProfile, AiKeyUpdate } from '@shared/ai/index.js';
-import { DEFAULT_AI_PROFILE, sanitizeAiConfig } from '@shared/ai/index.js';
+import type { AiReasoningEffort } from '@shared/ai/index.js';
+import {
+  AI_REASONING_EFFORTS,
+  AI_TIMEOUT_MS_MAX,
+  AI_TIMEOUT_MS_MIN,
+  DEFAULT_AI_PROFILE,
+  sanitizeAiConfig,
+} from '@shared/ai/index.js';
 import type { AiProviderKind } from '@shared/ai/providers/index.js';
 import { PROVIDER_KINDS, PROVIDER_PRESETS } from '@shared/ai/providers/index.js';
 import type { MessageKey } from '@shared/i18n/types.js';
@@ -17,6 +24,16 @@ interface AiSettingsDialogProps {
   onClose: () => void;
   onSaved: () => void;
 }
+
+/** The timeout is authored in minutes and stored in milliseconds. */
+const MS_PER_MINUTE = 60_000;
+
+const EFFORT_LABEL: Readonly<Record<AiReasoningEffort, MessageKey>> = {
+  auto: 'ai.settings.effort.auto',
+  low: 'ai.settings.effort.low',
+  medium: 'ai.settings.effort.medium',
+  high: 'ai.settings.effort.high',
+};
 
 const PROVIDER_LABEL: Readonly<Record<AiProviderKind, MessageKey>> = {
   openai: 'ai.settings.provider.openai',
@@ -463,11 +480,18 @@ export function AiSettingsDialog({ onClose, onSaved }: AiSettingsDialogProps) {
                 <Field label={t('ai.settings.timeout')}>
                   <TextInput
                     type="number"
-                    min={1}
-                    max={600}
-                    value={Math.round(activeProfile.timeoutMs / 1_000)}
+                    min={AI_TIMEOUT_MS_MIN / MS_PER_MINUTE}
+                    max={AI_TIMEOUT_MS_MAX / MS_PER_MINUTE}
+                    step={1}
+                    value={Math.round(activeProfile.timeoutMs / MS_PER_MINUTE)}
                     onChange={(event) =>
-                      patchProfile('timeoutMs', Math.max(1, Number(event.target.value)) * 1_000)
+                      patchProfile(
+                        'timeoutMs',
+                        Math.min(
+                          AI_TIMEOUT_MS_MAX,
+                          Math.max(AI_TIMEOUT_MS_MIN, Number(event.target.value) * MS_PER_MINUTE),
+                        ),
+                      )
                     }
                   />
                 </Field>
@@ -490,18 +514,45 @@ export function AiSettingsDialog({ onClose, onSaved }: AiSettingsDialogProps) {
               </div>
             </section>
 
-            <details className="ai-advanced">
-              <summary>{t('ai.settings.advanced')}</summary>
+            {/* Reasoning is a setting of its own, not a compatibility escape hatch: the
+                checkbox says what it turns on, and the depth below it only means anything
+                while it is on. */}
+            <section className="ai-settings-section">
+              <h3>{t('ai.settings.sectionReasoning')}</h3>
               <Checkbox
                 className="ai-reasoning-toggle"
-                label={<span>{t('ai.settings.disableReasoning')}</span>}
-                checked={!activeProfile.reasoningEnabled}
-                onChange={(checked) => patchProfile('reasoningEnabled', !checked)}
+                label={<span>{t('ai.settings.reasoningEnabled')}</span>}
+                checked={activeProfile.reasoningEnabled}
+                onChange={(checked) => patchProfile('reasoningEnabled', checked)}
               />
+              <div className="ai-field-grid">
+                <Field
+                  label={t('ai.settings.reasoningEffort')}
+                  hint={
+                    activeProfile.reasoningEnabled && activeProfile.reasoningEffort === 'auto' ? (
+                      <small className="ai-field-note">{t('ai.settings.effortAutoHint')}</small>
+                    ) : null
+                  }
+                >
+                  <Select
+                    disabled={!activeProfile.reasoningEnabled}
+                    value={activeProfile.reasoningEffort}
+                    onChange={(event) =>
+                      patchProfile('reasoningEffort', event.target.value as AiReasoningEffort)
+                    }
+                  >
+                    {AI_REASONING_EFFORTS.map((effort) => (
+                      <option key={effort} value={effort}>
+                        {t(EFFORT_LABEL[effort])}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+              </div>
               {activeProfile.provider === 'google' && activeProfile.reasoningEnabled ? (
                 <small className="ai-field-note">{t('ai.settings.googleReasoningHint')}</small>
               ) : null}
-            </details>
+            </section>
 
             {feedback ? (
               <p className="ai-feedback" role="status">

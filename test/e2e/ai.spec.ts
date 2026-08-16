@@ -614,12 +614,20 @@ test('configures, tests and falls back on an OpenAI-compatible endpoint securely
   await dialog.getByRole('button', { name: 'List models' }).click();
   await expect(dialog.locator('.ai-feedback')).toContainText('2 models found');
   await dialog.getByRole('radio', { name: 'test-model' }).check();
+
+  // Reasoning is off on a fresh profile, so the setting is switched on here — both to
+  // exercise the new controls and so the probe below has a level to negotiate.
+  await dialog.getByLabel('Let the model reason before answering').check();
+  await dialog.getByLabel('Depth').selectOption('high');
+
   await dialog.getByRole('button', { name: 'Test connection' }).click();
   await expect(dialog.locator('.ai-feedback')).toContainText('Connection successful');
   const connectionTests = requests.filter(
     ({ path, body }) => path === '/v1/chat/completions' && body?.['stream'] === false,
   );
   expect(connectionTests).toHaveLength(2);
+  // The chosen depth reaches the wire; this endpoint refuses it, and the retry keeps
+  // reasoning while dropping only the level.
   expect(connectionTests[0]?.body?.['reasoning_effort']).toBe('high');
   expect(connectionTests[1]?.body?.['reasoning_effort']).toBeUndefined();
   await dialog.getByRole('button', { name: 'Save', exact: true }).click();
@@ -714,6 +722,14 @@ test('offers fast synonyms, renames a character and persists an inconsistency re
   await expect(panel.locator('.consistency-running')).toBeVisible();
   await expect(panel.locator('.consistency-running')).toContainText('Elapsed time');
   await expect(panel.locator('.consistency-item')).toContainText('The object changes hands.');
+  const inconsistencyRequest = requests.find(({ body }) =>
+    JSON.stringify(body?.['messages']).includes('Analyse the whole screenplay'),
+  );
+  // Consistency analysis carries no task override: it follows the profile, which has
+  // reasoning switched on above. Nothing asks for reasoning to be off, and the level was
+  // already degraded away by the probe — so neither hint is on the wire.
+  expect(inconsistencyRequest?.body?.['reasoning_effort']).toBeUndefined();
+  expect(inconsistencyRequest?.body?.['chat_template_kwargs']).toBeUndefined();
   await panel.locator('.consistency-item select').selectOption('resolved');
   await expect(panel.locator('.consistency-item select')).toHaveValue('resolved');
 
@@ -1070,6 +1086,8 @@ test('speaks the Anthropic protocol, degrading temperature and remembering it', 
   expect(chats[0]?.body?.['system']).toBe('Plain text only.');
   expect(chats[0]?.body?.['max_tokens']).toBeDefined();
   expect(chats[0]?.body?.['thinking']).toEqual({ type: 'adaptive' });
+  // The depth chosen in the dialog travels in `output_config`, never as a token budget.
+  expect(chats[0]?.body?.['output_config']).toEqual({ effort: 'high' });
 });
 
 test('speaks the native Gemini protocol', async () => {
@@ -1104,7 +1122,8 @@ test('speaks the native Gemini protocol', async () => {
   ]);
   expect(chat?.body?.['generationConfig']).toMatchObject({
     temperature: 0.2,
-    thinkingConfig: { thinkingBudget: -1 },
+    // Gemini grades thinking by budget, so the "high" depth is a number here.
+    thinkingConfig: { thinkingBudget: 24_576 },
   });
 });
 
@@ -1131,7 +1150,8 @@ test('speaks the native Ollama protocol over newline-delimited JSON', async () =
   expect(answer).toEqual({ content: 'Ollama native answer', error: null, reasoning: true });
 
   const chat = requests.find(({ path, body }) => path === '/api/chat' && body?.['stream'] === true);
-  expect(chat?.body?.['think']).toBe(true);
+  // Ollama takes the depth as a level string rather than a bare boolean.
+  expect(chat?.body?.['think']).toBe('high');
   expect(chat?.body?.['options']).toMatchObject({ temperature: 0.2 });
   expect(chat?.body?.['messages']).toEqual([
     { role: 'system', content: 'Plain text only.' },

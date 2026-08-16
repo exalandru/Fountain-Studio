@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import type { AiChatRequest, AiConnectionProfile } from '../../src/shared/ai/index.js';
+import type {
+  AiChatRequest,
+  AiConnectionProfile,
+  AiReasoningEffort,
+} from '../../src/shared/ai/index.js';
 import { DEFAULT_AI_PROFILE } from '../../src/shared/ai/index.js';
 import type { AiProviderKind, ProviderCapabilities } from '../../src/shared/ai/providers/index.js';
 import {
@@ -24,6 +28,14 @@ function profile(
   };
 }
 
+/** A profile with reasoning switched on, at a given depth. */
+function reasoning(
+  provider: AiProviderKind,
+  effort: AiReasoningEffort = 'auto',
+): AiConnectionProfile {
+  return profile(provider, { reasoningEnabled: true, reasoningEffort: effort });
+}
+
 function chat(overrides: Partial<AiChatRequest> = {}): AiChatRequest {
   return {
     requestId: 'req-1',
@@ -35,9 +47,25 @@ function chat(overrides: Partial<AiChatRequest> = {}): AiChatRequest {
   };
 }
 
-const ALL: ProviderCapabilities = { reasoning: true, disableReasoning: false, temperature: true };
+/** Reasoning on at the provider's own depth: what an `auto` profile negotiates. */
+const ALL: ProviderCapabilities = {
+  reasoning: true,
+  gradedReasoning: false,
+  disableReasoning: false,
+  temperature: true,
+};
+/** Reasoning on and the endpoint still believed to accept a graded depth. */
+const GRADED: ProviderCapabilities = { ...ALL, gradedReasoning: true };
+/** Reasoning explicitly switched off. */
+const OFF: ProviderCapabilities = {
+  reasoning: false,
+  gradedReasoning: false,
+  disableReasoning: true,
+  temperature: true,
+};
 const NONE: ProviderCapabilities = {
   reasoning: false,
+  gradedReasoning: false,
   disableReasoning: false,
   temperature: false,
 };
@@ -77,7 +105,8 @@ describe('OpenAI-compatible adapter', () => {
   });
 
   it('sends the key as a bearer and the prompt as a system message', () => {
-    const plan = adapter.chatRequest(profile('openai'), 'secret', chat(), ALL);
+    // Reasoning on, so the prompt carries no `/no_think` suffix to assert around.
+    const plan = adapter.chatRequest(reasoning('openai'), 'secret', chat(), ALL);
     expect(plan.headers['Authorization']).toBe('Bearer secret');
     expect(bodyOf(plan)['messages']).toEqual([
       { role: 'system', content: 'Tu es un assistant.' },
@@ -93,13 +122,7 @@ describe('OpenAI-compatible adapter', () => {
 
   it('keeps the /no_think marker after the structured hints are degraded away', () => {
     const request = chat({ reasoning: 'disabled' });
-    const hinted = bodyOf(
-      adapter.chatRequest(profile('openai'), 'k', request, {
-        reasoning: false,
-        disableReasoning: true,
-        temperature: true,
-      }),
-    );
+    const hinted = bodyOf(adapter.chatRequest(profile('openai'), 'k', request, OFF));
     expect(hinted['reasoning_effort']).toBe('none');
     expect(hinted['chat_template_kwargs']).toEqual({ enable_thinking: false });
 
@@ -112,6 +135,38 @@ describe('OpenAI-compatible adapter', () => {
       { role: 'system', content: 'Tu es un assistant.\n/no_think' },
       { role: 'user', content: 'Bonjour' },
     ]);
+  });
+
+  it('sends each reasoning level verbatim and omits the field at auto', () => {
+    const effortOf = (effort: AiReasoningEffort): unknown =>
+      bodyOf(adapter.chatRequest(reasoning('openai', effort), 'k', chat(), GRADED))[
+        'reasoning_effort'
+      ];
+    expect(effortOf('low')).toBe('low');
+    expect(effortOf('medium')).toBe('medium');
+    expect(effortOf('high')).toBe('high');
+    // `auto` defers to the server, which means saying nothing rather than picking a level.
+    expect(bodyOf(adapter.chatRequest(reasoning('openai'), 'k', chat(), ALL))).not.toHaveProperty(
+      'reasoning_effort',
+    );
+  });
+
+  it('switches reasoning off from the profile alone, with no task override', () => {
+    const body = bodyOf(adapter.chatRequest(profile('openai'), 'k', chat(), OFF));
+    expect(body['reasoning_effort']).toBe('none');
+    expect(body['chat_template_kwargs']).toEqual({ enable_thinking: false });
+  });
+
+  it('still sends the chosen depth after an unrelated refusal', () => {
+    // `reasoning` puts nothing on the wire for this protocol, so a refusal recorded against
+    // it must not take the author's depth down with it.
+    const body = bodyOf(
+      adapter.chatRequest(reasoning('openai', 'low'), 'k', chat(), {
+        ...GRADED,
+        reasoning: false,
+      }),
+    );
+    expect(body['reasoning_effort']).toBe('low');
   });
 
   it('parses deltas, non-streamed messages, reasoning and stream errors', () => {
@@ -135,16 +190,21 @@ describe('OpenAI-compatible adapter', () => {
     expect(adapter.parseFrame('not json')).toEqual({ content: '', reasoning: false });
   });
 
-  it('drops reasoning, then the non-reasoning hints, then temperature', () => {
+  it('drops the graded level, then reasoning, then the hints, then temperature', () => {
     const start: ProviderCapabilities = {
       reasoning: true,
+      gradedReasoning: true,
       disableReasoning: true,
       temperature: true,
     };
+    // The level goes first: an endpoint that refuses `reasoning_effort: 'low'` may still
+    // reason at its own depth.
     const first = adapter.degrade(start, 400, 'reasoning_effort unsupported');
-    expect(first).toMatchObject({ reasoning: false, disableReasoning: true, temperature: true });
+    expect(first).toMatchObject({ reasoning: true, gradedReasoning: false });
+    // Then both reasoning hints together — `reasoning` alone changes no bytes here, so
+    // dropping it on its own would resend an identical body.
     const second = adapter.degrade(first!, 422, 'extra_forbidden: chat_template_kwargs');
-    expect(second).toMatchObject({ disableReasoning: false, temperature: true });
+    expect(second).toMatchObject({ reasoning: false, disableReasoning: false, temperature: true });
     const third = adapter.degrade(second!, 400, 'unsupported parameter');
     expect(third).toMatchObject({ temperature: false });
     expect(adapter.degrade(third!, 400, 'still broken')).toBeNull();
@@ -187,13 +247,29 @@ describe('Anthropic adapter', () => {
     expect(body['thinking']).toEqual({ type: 'adaptive' });
   });
 
+  it('carries the level in output_config.effort, never as a token budget', () => {
+    for (const effort of ['low', 'medium', 'high'] as const) {
+      const body = bodyOf(adapter.chatRequest(reasoning('anthropic', effort), 'k', chat(), GRADED));
+      expect(body['thinking']).toEqual({ type: 'adaptive' });
+      expect(body['output_config']).toEqual({ effort });
+      // Current Claude models reject a thinking budget outright.
+      expect(body['thinking']).not.toHaveProperty('budget_tokens');
+    }
+    const auto = bodyOf(adapter.chatRequest(reasoning('anthropic'), 'k', chat(), ALL));
+    expect(auto).not.toHaveProperty('output_config');
+  });
+
+  it('keeps thinking after the effort field alone is refused', () => {
+    const dropped = adapter.degrade(GRADED, 400, 'output_config.effort: unsupported');
+    expect(dropped).toMatchObject({ reasoning: true, gradedReasoning: false });
+    const body = bodyOf(adapter.chatRequest(reasoning('anthropic', 'high'), 'k', chat(), dropped!));
+    expect(body['thinking']).toEqual({ type: 'adaptive' });
+    expect(body).not.toHaveProperty('output_config');
+  });
+
   it('switches thinking off explicitly, then omits it once refused', () => {
     const off = bodyOf(
-      adapter.chatRequest(profile('anthropic'), 'k', chat({ reasoning: 'disabled' }), {
-        reasoning: false,
-        disableReasoning: true,
-        temperature: true,
-      }),
+      adapter.chatRequest(profile('anthropic'), 'k', chat({ reasoning: 'disabled' }), OFF),
     );
     expect(off['thinking']).toEqual({ type: 'disabled' });
     const none = bodyOf(adapter.chatRequest(profile('anthropic'), 'k', chat(), NONE));
@@ -225,13 +301,7 @@ describe('Anthropic adapter', () => {
   });
 
   it('never asks the probe for reasoning, so a tiny budget still returns text', () => {
-    const body = bodyOf(
-      adapter.probeRequest(profile('anthropic'), 'k', {
-        reasoning: true,
-        disableReasoning: false,
-        temperature: true,
-      }),
-    );
+    const body = bodyOf(adapter.probeRequest(profile('anthropic'), 'k', GRADED));
     expect(body).not.toHaveProperty('thinking');
     expect(body['max_tokens']).toBe(16);
     expect(body['stream']).toBe(false);
@@ -362,11 +432,31 @@ describe('Google adapter', () => {
     });
   });
 
+  it('grades thinking by budget, and falls back to dynamic once a budget is refused', () => {
+    const budgetOf = (effort: AiReasoningEffort): unknown =>
+      (
+        bodyOf(adapter.chatRequest(reasoning('google', effort), 'k', chat(), GRADED))[
+          'generationConfig'
+        ] as Record<string, unknown>
+      )['thinkingConfig'];
+    expect(budgetOf('low')).toEqual({ thinkingBudget: 2_048 });
+    expect(budgetOf('medium')).toEqual({ thinkingBudget: 8_192 });
+    expect(budgetOf('high')).toEqual({ thinkingBudget: 24_576 });
+    expect(budgetOf('auto')).toEqual({ thinkingBudget: -1 });
+
+    // A model with a narrower range refuses the number; dynamic thinking survives.
+    const dropped = adapter.degrade(GRADED, 400, 'thinkingBudget out of range');
+    expect(dropped).toMatchObject({ reasoning: true, gradedReasoning: false });
+    const body = bodyOf(adapter.chatRequest(reasoning('google', 'high'), 'k', chat(), dropped!));
+    expect((body['generationConfig'] as Record<string, unknown>)['thinkingConfig']).toEqual({
+      thinkingBudget: -1,
+    });
+  });
+
   it('uses a zero thinking budget to switch reasoning off', () => {
     const body = bodyOf(
       adapter.chatRequest(profile('google'), 'k', chat({ reasoning: 'disabled' }), {
-        reasoning: false,
-        disableReasoning: true,
+        ...OFF,
         temperature: false,
       }),
     );
@@ -442,16 +532,28 @@ describe('Ollama adapter', () => {
     ).toBe('Bearer proxy-token');
   });
 
+  it('sends the level as a string, and falls back to the boolean once refused', () => {
+    const thinkOf = (effort: AiReasoningEffort): unknown =>
+      bodyOf(adapter.chatRequest(reasoning('ollama', effort), '', chat(), GRADED))['think'];
+    expect(thinkOf('low')).toBe('low');
+    expect(thinkOf('medium')).toBe('medium');
+    expect(thinkOf('high')).toBe('high');
+    expect(thinkOf('auto')).toBe(true);
+
+    // A release that only knows the boolean refuses the string but still reasons.
+    const dropped = adapter.degrade(GRADED, 400, 'think: invalid value');
+    expect(dropped).toMatchObject({ reasoning: true, gradedReasoning: false });
+    expect(
+      bodyOf(adapter.chatRequest(reasoning('ollama', 'high'), '', chat(), dropped!))['think'],
+    ).toBe(true);
+  });
+
   it('maps output tokens to options.num_predict and reasoning to think', () => {
-    const body = bodyOf(adapter.chatRequest(profile('ollama'), '', chat(), ALL));
+    const body = bodyOf(adapter.chatRequest(reasoning('ollama'), '', chat(), ALL));
     expect(body['options']).toEqual({ num_predict: 4_096, temperature: 0.2 });
     expect(body['think']).toBe(true);
     const off = bodyOf(
-      adapter.chatRequest(profile('ollama'), '', chat({ reasoning: 'disabled' }), {
-        reasoning: false,
-        disableReasoning: true,
-        temperature: true,
-      }),
+      adapter.chatRequest(profile('ollama'), '', chat({ reasoning: 'disabled' }), OFF),
     );
     expect(off['think']).toBe(false);
     expect(bodyOf(adapter.chatRequest(profile('ollama'), '', chat(), NONE))).not.toHaveProperty(

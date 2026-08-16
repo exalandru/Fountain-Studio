@@ -30,6 +30,28 @@ function endpoint(baseUrl: string, path: '/models' | '/chat/completions'): strin
   return joinPath(baseUrl, '/v1', path);
 }
 
+/**
+ * `reasoning_effort` already speaks in levels, so the profile's level maps straight onto it.
+ * At `auto` the field is left out entirely rather than sent as a middle value: servers vary
+ * in what they default to, and naming one here would override the model's own choice. This
+ * protocol therefore has no field for "reason at your own depth" — wanting reasoning is
+ * expressed by not forbidding it.
+ *
+ * The graded branch is gated on `gradedReasoning` alone. Gating it on `reasoning` as well
+ * would let an unrelated refusal — recorded against a capability this adapter never puts on
+ * the wire — silently discard the depth the author chose.
+ */
+function reasoningFields(
+  profile: AiConnectionProfile,
+  capabilities: ProviderCapabilities,
+): Record<string, unknown> {
+  if (capabilities.disableReasoning) {
+    return { reasoning_effort: 'none', chat_template_kwargs: { enable_thinking: false } };
+  }
+  if (capabilities.gradedReasoning) return { reasoning_effort: profile.reasoningEffort };
+  return {};
+}
+
 function streamError(json: Record<string, unknown>): string | undefined {
   const error = asRecord(json['error']);
   if (!error) return undefined;
@@ -68,7 +90,7 @@ export function createOpenAiAdapter(kind: AiProviderKind): AiProviderAdapter {
           ...(capabilities.temperature ? { temperature: 0 } : {}),
           max_tokens: 4,
           stream: false,
-          ...(capabilities.reasoning ? { reasoning_effort: 'high' } : {}),
+          ...reasoningFields(profile, capabilities),
         }),
       };
     },
@@ -83,9 +105,10 @@ export function createOpenAiAdapter(kind: AiProviderKind): AiProviderAdapter {
       request: AiChatRequest,
       capabilities: ProviderCapabilities,
     ): AiRequestPlan {
-      // The `/no_think` marker is inert text for servers that ignore it, so it is kept
-      // even after the structured hints below have been degraded away.
-      const reasoningOff = request.reasoning === 'disabled';
+      // The `/no_think` marker is inert text for servers that ignore it, so it is kept even
+      // after the structured hints below have been degraded away — which is why it reads the
+      // profile and the task override rather than `capabilities.disableReasoning`.
+      const reasoningOff = request.reasoning === 'disabled' || !profile.reasoningEnabled;
       const body: Record<string, unknown> = {
         model: profile.model,
         messages: [
@@ -101,11 +124,7 @@ export function createOpenAiAdapter(kind: AiProviderKind): AiProviderAdapter {
       if (capabilities.temperature) {
         body['temperature'] = request.temperature ?? modeTemperature(request.mode);
       }
-      if (capabilities.disableReasoning) {
-        body['reasoning_effort'] = 'none';
-        body['chat_template_kwargs'] = { enable_thinking: false };
-      }
-      if (capabilities.reasoning) body['reasoning_effort'] = 'high';
+      Object.assign(body, reasoningFields(profile, capabilities));
       return {
         method: 'POST',
         url: endpoint(profile.baseUrl, '/chat/completions'),
@@ -145,8 +164,15 @@ export function createOpenAiAdapter(kind: AiProviderKind): AiProviderAdapter {
       if (current.temperature && mentions(body, 'temperature')) {
         return { ...current, temperature: false };
       }
-      if (current.reasoning) return { ...current, reasoning: false };
-      if (current.disableReasoning) return { ...current, disableReasoning: false };
+      if (current.gradedReasoning) return { ...current, gradedReasoning: false };
+      // Dropped together rather than as two rungs: this protocol has no "reason at your own
+      // depth" field, so once the level is gone the only reasoning hint left is the off
+      // form, and separating them would spend an attempt on an identical body. At `auto`
+      // the rung is still a no-op — a refusal there was never about reasoning — but the
+      // ladder has to keep moving, and `temperature` is the next thing worth dropping.
+      if (current.reasoning || current.disableReasoning) {
+        return { ...current, reasoning: false, disableReasoning: false };
+      }
       if (current.temperature) return { ...current, temperature: false };
       return null;
     },

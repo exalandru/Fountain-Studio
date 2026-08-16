@@ -68,6 +68,8 @@ describe('catalogues', () => {
       'bible.field.arc',
       'bible.kind.concept',
       'bible.imageFilter',
+      // “Auto” is the same abbreviation in both languages.
+      'ai.settings.effort.auto',
       // Provider names are brands, identical in every locale.
       'ai.settings.provider.openai',
       'ai.settings.provider.anthropic',

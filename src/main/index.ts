@@ -24,6 +24,18 @@ function collectCliFiles(argv: string[]): string[] {
     .filter((arg) => !arg.startsWith('-') && /\.(fountain|txt)$/i.test(arg));
 }
 
+/**
+ * Suppresses the window's presentation, not the window itself.
+ *
+ * End-to-end runs drive the real application through Playwright; on a developer machine a
+ * hundred windows taking focus in sequence make the computer unusable for the length of the
+ * suite. The window is still created, still loads and still renders, so anything the tests
+ * observe through the DOM behaves identically — only `show()` is skipped. Background timer
+ * throttling is turned off with it, since an unshown window would otherwise be throttled
+ * like a minimised one and make timing-sensitive tests flaky.
+ */
+const HEADLESS = process.env['FOUNTAIN_STUDIO_HEADLESS'] === '1';
+
 async function createWindow(): Promise<BrowserWindow> {
   const settings = await getSettings();
   // The background colour has to be set before the first paint, otherwise the window
@@ -47,10 +59,13 @@ async function createWindow(): Promise<BrowserWindow> {
       sandbox: true,
       spellcheck: true,
       devTools: !app.isPackaged,
+      backgroundThrottling: !HEADLESS,
     },
   });
 
-  window.once('ready-to-show', () => window.show());
+  window.once('ready-to-show', () => {
+    if (!HEADLESS) window.show();
+  });
 
   // Any attempt to open an external URL goes to the browser, never inside the app.
   window.webContents.setWindowOpenHandler(({ url }) => {

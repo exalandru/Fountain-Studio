@@ -52,12 +52,32 @@ describe('AI configuration', () => {
           id: 'local',
           name: 'Local',
           baseUrl: DEFAULT_AI_PROFILE.baseUrl,
-          timeoutMs: 1_000,
+          timeoutMs: 60_000,
           maxTokens: 200_000,
           reasoningEnabled: false,
         },
       ],
     });
+  });
+
+  it('resolves an absent or unknown reasoning level to the provider default', () => {
+    const profiles = sanitizeAiConfig({
+      version: 1,
+      activeProfileId: 'a',
+      profiles: [
+        // Written before the depth setting existed.
+        { id: 'a', name: 'A', model: 'm', reasoningEnabled: true },
+        { id: 'b', name: 'B', model: 'm', reasoningEffort: 'turbo' },
+        { id: 'c', name: 'C', model: 'm', reasoningEffort: 'high' },
+      ],
+    }).profiles;
+
+    expect(profiles.map((entry) => entry.reasoningEffort)).toEqual(['auto', 'auto', 'high']);
+  });
+
+  it('leaves reasoning off on a fresh profile', () => {
+    expect(DEFAULT_AI_PROFILE.reasoningEnabled).toBe(false);
+    expect(DEFAULT_AI_PROFILE.reasoningEffort).toBe('auto');
   });
 
   it('adopts a declared provider and falls back to OpenAI otherwise', () => {

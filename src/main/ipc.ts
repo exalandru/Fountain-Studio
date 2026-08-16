@@ -49,6 +49,7 @@ import type { IpcMainInvokeEvent } from 'electron';
 import { basename, extname, isAbsolute, join } from 'node:path';
 import { parseAppData } from '@shared/appdata/index.js';
 import type { AiConnectionProfile } from '@shared/ai/index.js';
+import { AI_TIMEOUT_MS_MAX, AI_TIMEOUT_MS_MIN, isReasoningEffort } from '@shared/ai/index.js';
 import { isProviderKind } from '@shared/ai/providers/index.js';
 import { isBibleId } from '@shared/bible/index.js';
 import { isSnapshotId, MAX_SNAPSHOT_NAME } from '@shared/snapshots/index.js';
@@ -169,13 +170,18 @@ function validAiProfile(value: unknown): value is AiConnectionProfile {
     value['model'].length <= 200 &&
     typeof value['timeoutMs'] === 'number' &&
     Number.isInteger(value['timeoutMs']) &&
-    value['timeoutMs'] >= 1_000 &&
-    value['timeoutMs'] <= 600_000 &&
+    value['timeoutMs'] >= AI_TIMEOUT_MS_MIN &&
+    value['timeoutMs'] <= AI_TIMEOUT_MS_MAX &&
     typeof value['maxTokens'] === 'number' &&
     Number.isInteger(value['maxTokens']) &&
     value['maxTokens'] >= 64 &&
     value['maxTokens'] <= 200_000 &&
-    typeof value['reasoningEnabled'] === 'boolean'
+    typeof value['reasoningEnabled'] === 'boolean' &&
+    // Required, not merely well-formed when present: `ai:models:list` and
+    // `ai:connection:test` hand this profile straight to an adapter without a sanitizing
+    // round-trip, and an absent level would reach the wire as `effort: undefined`.
+    // The renderer only ever sends sanitized profiles, which always carry the field.
+    isReasoningEffort(value['reasoningEffort'])
   );
 }
 
